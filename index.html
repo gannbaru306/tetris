@@ -884,12 +884,11 @@ function scoreAgainstTemplate(candidate, variant) {
     const actual = candidate.board[start + pr][c];
     if (target !== '.') {
       occupiedTarget++;
-      if (actual === target) exact++;
-      else if (actual !== null) wrong++;
+      if (actual !== null) exact++;
     } else if (actual !== null) extra++;
   }
   if (!occupiedTarget) return null;
-  // Exact template cells are rewarded; misplaced/wrong blocks are penalized.
+  // Target silhouette cells are rewarded regardless of which piece type fills them.
   const similarity = (exact * 5 - wrong * 4 - extra * 2) / occupiedTarget;
   // Progress in early setup matters, but don't force a template if nothing matches.
   const score = similarity * 100 + variant.priority * 0.12 + candidate.cleared * 5;
@@ -926,14 +925,14 @@ function placementFitsTemplate(candidate, variant) {
     const yy = candidate.y + r, xx = candidate.x + c;
     const pr = yy - start;
     if (yy < 0 || pr < 0 || pr >= rows.length || xx < 0 || xx >= COLS) return false;
-    if (rows[pr][xx] !== candidate.type) return false;
+    if (rows[pr][xx] === '.') return false;
     cells++;
   }
   if (cells !== 4) return false;
   // Existing blocks inside the template area must already agree with the target.
   for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) {
     const actual = candidate.board[start + r][c];
-    if (actual !== null && actual !== rows[r][c]) return false;
+    if (actual !== null && rows[r][c] === '.') return false;
   }
   return true;
 }
@@ -947,12 +946,11 @@ function rawTemplateScore(candidate, variant) {
     const target = rows[r][c], actual = candidate.board[start + r][c];
     if (target !== '.') {
       targetCount++;
-      if (actual === target) exact++;
-      else if (actual !== null) wrong++;
+      if (actual !== null) exact++;
     } else if (actual !== null) extra++;
   }
   if (!targetCount) return -Infinity;
-  // Reward matching cells, strongly penalize blocks in the wrong places, and mildly prefer lower-risk placements.
+  // Reward occupied target cells regardless of piece color; penalize blocks outside the target silhouette.
   const heightPenalty = candidate.board.findIndex(row => row.some(Boolean));
   const height = heightPenalty < 0 ? 0 : ROWS - heightPenalty;
   return (exact * 6) - (wrong * 5) - (extra * 2) + candidate.cleared * 8 - height * 0.08 - Math.abs(candidate.x - 3) * 0.01;
