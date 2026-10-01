@@ -46,6 +46,8 @@
       width: 100%; max-width: 400px;
     }
     .board-box { display: flex; flex-direction: column; align-items: center; }
+    .board-row { display: flex; align-items: flex-start; gap: 0; }
+    #garbagePreviewCanvas { width: 20px; height: 400px; background: transparent; border: 0; border-radius: 0; }
     .side-box { display: flex; flex-direction: column; gap: 4px; width: 50px; }
     canvas { background: #11111b; border: 2px solid var(--border); border-radius: 4px; display: block; }
     
@@ -54,11 +56,9 @@
     #nextCanvas { width: 50px; height: 250px; }
     #p2Canvas { width: 100px; height: 200px; }
     
-    .gb-wrap {
-      width: 200px; height: 8px; background: #222; border: 1px solid var(--border);
-      border-radius: 4px; overflow: hidden; margin-top: 6px;
-    }
-    .gb-bar { width: 0%; height: 100%; background: #f38ba8; transition: width 0.15s; }
+    #rematchArea { display: none; width: 100%; max-width: 400px; margin-top: 10px; text-align: center; }
+    #rematchArea.active { display: block; }
+    #rematchStatus { color: var(--sub); font-size: 0.85rem; margin-top: 6px; }
 
     .p2-container {
       display: none; flex-direction: column; align-items: center;
@@ -131,8 +131,10 @@
       </div>
 
       <div class="board-box">
-        <canvas id="mainCanvas" width="200" height="400"></canvas>
-        <div class="gb-wrap"><div id="garbageBar" class="gb-bar"></div></div>
+        <div class="board-row">
+          <canvas id="garbagePreviewCanvas" width="20" height="400" aria-label="受信おじゃまライン"></canvas>
+          <canvas id="mainCanvas" width="200" height="400"></canvas>
+        </div>
       </div>
 
       <div class="side-box">
@@ -144,6 +146,11 @@
         <div class="p2-title">OPPONENT</div>
         <canvas id="p2Canvas" width="100" height="200"></canvas>
       </div>
+    </div>
+
+    <div id="rematchArea">
+      <button id="btnRematch">再戦する</button>
+      <div id="rematchStatus">両者が再戦を選ぶと始まります</div>
     </div>
 
     <div class="controls">
@@ -250,8 +257,10 @@ let lockMoves = 0;
 let config = { das: 150, arr: 30, sd: 20 };
 let vsRule = { nextMode: 'common', holeChange: 0.3, seed: 12345, posInterval: 33 };
 let peer = null, conn = null, isHost = false, lastSendPosT = 0;
+let rematchRequested = false, remoteRematchRequested = false;
 
 const ctx = document.getElementById('mainCanvas').getContext('2d');
+const garbagePreviewCtx = document.getElementById('garbagePreviewCanvas').getContext('2d');
 const holdCtx = document.getElementById('holdCanvas').getContext('2d');
 const nextCtx = document.getElementById('nextCanvas').getContext('2d');
 const p2Ctx = document.getElementById('p2Canvas').getContext('2d');
@@ -322,7 +331,19 @@ function setupConn() {
     if (data.type === 'POS') drawP2(data.board, data.cur);
     if (data.type === 'LOCK') drawP2(data.board, null);
     if (data.type === 'ATTACK') receiveAttack(data.holes);
-    if (data.type === 'GAMEOVER') { toast('WIN! 相手を倒しました！'); isEnded = true; }
+    if (data.type === 'GAMEOVER') {
+      isEnded = true;
+      showRematch('WIN! 相手を倒しました！');
+    }
+    if (data.type === 'REMATCH') {
+      remoteRematchRequested = true;
+      updateRematchStatus();
+      tryStartRematch();
+    }
+    if (data.type === 'REMATCH_START') {
+      vsRule = data.rule;
+      resetForRematch();
+    }
   });
   conn.on('close', () => { isEnded = true; toast('相手が切断しました'); document.getElementById('netStatus').textContent = '切断されました'; });
 }
@@ -344,6 +365,44 @@ function startVsGame() {
 }
 
 function sendNet(data) { if (isVsMode && conn && conn.open) conn.send(data); }
+
+function showRematch(message) {
+  document.getElementById('rematchArea').classList.add('active');
+  document.getElementById('rematchStatus').textContent = message || '再戦するには両者がボタンを押してください';
+}
+
+function updateRematchStatus() {
+  const status = document.getElementById('rematchStatus');
+  status.textContent = rematchRequested
+    ? (remoteRematchRequested ? '再戦します…' : '相手の再戦待ち…')
+    : (remoteRematchRequested ? '相手が再戦を希望しています。ボタンを押してください' : '両者が再戦を選ぶと始まります');
+}
+
+document.getElementById('btnRematch').onclick = () => {
+  if (!isVsMode || !isEnded || rematchRequested) return;
+  rematchRequested = true;
+  sendNet({ type: 'REMATCH' });
+  updateRematchStatus();
+  tryStartRematch();
+};
+
+function tryStartRematch() {
+  if (!isHost || !rematchRequested || !remoteRematchRequested) return;
+  vsRule.seed = Math.floor(Math.random() * 1000000);
+  const rule = { ...vsRule };
+  sendNet({ type: 'REMATCH_START', rule });
+  resetForRematch();
+}
+
+function resetForRematch() {
+  rematchRequested = false;
+  remoteRematchRequested = false;
+  document.getElementById('rematchArea').classList.remove('active');
+  document.getElementById('rematchStatus').textContent = '';
+  initGame();
+  toast('再戦スタート！');
+  sendPosNow();
+}
 
 document.getElementById('btnBackToLobby').onclick = () => {
   isEnded = true;
@@ -397,7 +456,7 @@ function spawnPiece() {
   canHold = true; lockMoves = 0; groundedAt = 0;
 
   if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
-    isEnded = true; sendNet({ type: 'GAMEOVER' }); toast('GAME OVER');
+    isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER');
   } else {
     sendPosNow();
   }
@@ -506,7 +565,7 @@ function lockPiece() {
     else if (y < ROWS && x >= 0 && x < COLS) board[y][x] = cur.type;
   }));
   if (aboveTop) {
-    isEnded = true; sendNet({ type: 'GAMEOVER' }); toast('GAME OVER');
+    isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER');
     return;
   }
 
@@ -599,11 +658,11 @@ function applyGarbageOnLock() {
   if (toppedOut) {
     isEnded = true;
     sendNet({ type: 'GAMEOVER' });
-    toast('GAME OVER');
+    showRematch('GAME OVER');
   }
 }
 
-function updateGbBar() { document.getElementById('garbageBar').style.width = Math.min(100, (pendingGarbage / 20) * 100) + '%'; }
+function updateGbBar() { drawGarbagePreview(); }
 
 function doHold() {
   if (!canHold || isEnded || !cur) return;
@@ -616,7 +675,7 @@ function doHold() {
     holdPiece = outgoing;
     groundedAt = 0; lockMoves = 0;
     if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
-      isEnded = true; sendNet({ type: 'GAMEOVER' }); toast('GAME OVER');
+      isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER');
     } else sendPosNow();
   }
   canHold = false;
@@ -666,6 +725,7 @@ function handlePressEnd(actionKey) {
 // 描画関連
 // ==========================================
 function render() {
+  drawGarbagePreview();
   ctx.clearRect(0, 0, 200, 400);
   board.forEach((row, r) => row.forEach((val, c) => {
     if (val) { ctx.fillStyle = COLORS[val]; ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1); }
@@ -685,6 +745,22 @@ function render() {
   m.forEach((row, r) => row.forEach((val, c) => {
     if (val) ctx.fillRect((cur.x + c) * BLOCK_SIZE, (cur.y + r) * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
   }));
+}
+
+
+function drawGarbagePreview() {
+  const w = 20, h = 20;
+  garbagePreviewCtx.clearRect(0, 0, w, 400);
+  // Each outlined grey cell represents one queued garbage line; they stack from the bottom.
+  const count = Math.min(pendingGarbage, ROWS);
+  for (let i = 0; i < count; i++) {
+    const y = 400 - (i + 1) * h;
+    garbagePreviewCtx.fillStyle = 'rgba(190, 190, 190, 0.32)';
+    garbagePreviewCtx.fillRect(1, y + 1, w - 2, h - 2);
+    garbagePreviewCtx.strokeStyle = 'rgba(190, 190, 190, 0.85)';
+    garbagePreviewCtx.lineWidth = 1;
+    garbagePreviewCtx.strokeRect(0.5, y + 0.5, w - 1, h - 1);
+  }
 }
 
 function drawHold() {
@@ -718,6 +794,7 @@ function initGame() {
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
   isEnded = false; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
+  drawHold(); drawNext(); drawGarbagePreview();
 
   if (vsRule.nextMode === 'common') rnd = seededRandom(vsRule.seed);
   else rnd = Math.random;
