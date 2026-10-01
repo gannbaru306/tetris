@@ -2,773 +2,383 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Web Tetris VS Complete</title>
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <title>Tetris Versus - Smooth Engine</title>
   <style>
-    :root {
-      --bg: #1e1e2e; --panel: #2a2a3c; --accent: #89b4fa;
-      --text: #cdd6f4; --sub: #a6adc8; --border: #45475a;
-    }
-    * { box-sizing: border-box; user-select: none; touch-action: manipulation; }
     body {
-      margin: 0; padding: 10px; background: var(--bg); color: var(--text);
-      font-family: system-ui, -apple-system, sans-serif;
-      display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
     }
-    h1 { margin: 0 0 10px; font-size: 1.4rem; color: var(--accent); text-align: center; }
-
-    /* 通信・対戦バー */
-    .net-bar {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-      padding: 8px 12px; margin-bottom: 10px; width: 100%; max-width: 500px;
-      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center;
+    .versus-container {
+      display: flex;
+      gap: 40px;
     }
-    .net-bar input {
-      width: 90px; padding: 6px; border-radius: 4px; border: 1px solid var(--border);
-      background: #11111b; color: #fff; text-align: center; font-size: 0.9rem;
+    .player-board {
+      display: flex;
+      gap: 15px;
     }
-    button {
-      padding: 6px 12px; border-radius: 4px; border: none; background: var(--accent);
-      color: #11111b; font-weight: bold; cursor: pointer; font-size: 0.85rem;
+    canvas {
+      border: 2px solid #555;
+      background: #000;
     }
-    button.alt { background: #45475a; color: #fff; }
-    button.danger { background: #f38ba8; color: #11111b; }
-    #netStatus { font-size: 0.8rem; color: #f9e2af; width: 100%; text-align: center; }
-
-    /* モーダル（設定パネル） */
-    .modal {
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100;
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100px;
     }
-    .modal.hidden { display: none; }
-    .panel {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-      padding: 16px; width: 90%; max-width: 380px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    .box {
+      background: #222;
+      padding: 8px;
+      border-radius: 4px;
+      text-align: center;
+      font-size: 14px;
     }
-    .panel h3 { margin: 0 0 12px; color: var(--accent); font-size: 1.1rem; text-align: center; }
-    .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.85rem; }
-    .row select, .row input[type="number"] {
-      background: #11111b; border: 1px solid var(--border); color: #fff; padding: 4px 8px; border-radius: 4px;
-    }
-
-    /* メイン対戦レイアウト */
-    .game-container {
-      display: flex; gap: 8px; justify-content: center; align-items: flex-start;
-    }
-    .board-box { display: flex; flex-direction: column; align-items: center; }
-    .side-box { display: flex; flex-direction: column; gap: 6px; width: 45px; }
-    canvas { background: #11111b; border: 2px solid var(--border); border-radius: 4px; display: block; }
-    
-    /* 保留ゲージ */
-    .gb-wrap {
-      width: 100%; height: 8px; background: #222; border: 1px solid var(--border);
-      border-radius: 4px; overflow: hidden; margin-top: 4px;
-    }
-    .gb-bar { width: 0%; height: 100%; background: #f38ba8; transition: width 0.15s; }
-
-    /* 2P 相手ミニ画面 */
-    .p2-container {
-      display: flex; flex-direction: column; align-items: center;
-      background: var(--panel); padding: 6px; border-radius: 8px; border: 1px solid var(--border);
-    }
-    .p2-title { font-size: 0.7rem; color: var(--sub); font-weight: bold; margin-bottom: 4px; }
-
-    /* モバイル操作ボタン (6列レイアウト) */
-    .controls {
-      display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
-      margin-top: 10px; width: 100%; max-width: 380px;
-    }
-    .controls button { height: 48px; font-size: 1.1rem; padding: 0; }
-
-    #toast {
-      position: fixed; bottom: 20px; background: #a6e3a1; color: #11111b;
-      padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.85rem;
-      opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 200;
+    .score-num {
+      font-size: 20px;
+      font-weight: bold;
+      color: #0f0;
     }
   </style>
 </head>
 <body>
 
-  <h1>Web Tetris VS</h1>
-
-  <!-- 対戦・通信メニュー -->
-  <div class="net-bar">
-    <button id="btnCreateRoom">部屋を作る</button>
-    <input type="number" id="roomInput" placeholder="5桁コード">
-    <button id="btnJoinRoom" class="alt">参加</button>
-    <button id="btnOpenSettings" class="alt">⚙ 設定</button>
-    <div id="netStatus">オフライン (ソロプレイ可能)</div>
-  </div>
-
-  <!-- メイン対戦領域 -->
-  <div class="game-container">
-    <!-- 1P HOLD -->
-    <div class="side-box">
-      <span style="font-size:0.65rem; color:var(--sub); text-align:center;">HOLD</span>
-      <canvas id="holdCanvas" width="45" height="45"></canvas>
-    </div>
-
-    <!-- 1P メイン盤面 -->
-    <div class="board-box">
-      <canvas id="mainCanvas" width="200" height="400"></canvas>
-      <div class="gb-wrap"><div id="garbageBar" class="gb-bar"></div></div>
-    </div>
-
-    <!-- 1P NEXT -->
-    <div class="side-box">
-      <span style="font-size:0.65rem; color:var(--sub); text-align:center;">NEXT</span>
-      <canvas id="nextCanvas" width="45" height="225"></canvas>
-    </div>
-
-    <!-- 2P 相手画面 -->
-    <div class="p2-container">
-      <div class="p2-title">OPPONENT</div>
-      <canvas id="p2Canvas" width="100" height="200"></canvas>
+<div class="versus-container">
+  <!-- 1P (YOU) -->
+  <div class="player-board">
+    <canvas id="p1-tetris" width="240" height="400"></canvas>
+    <div class="sidebar">
+      <div class="box">P1 SCORE<div id="p1-score" class="score-num">0</div></div>
+      <div class="box">NEXT<canvas id="p1-next" width="96" height="96"></canvas></div>
     </div>
   </div>
 
-  <!-- モバイル操作ボタン -->
-  <div class="controls">
-    <button id="btnL">←</button>
-    <button id="btnR">→</button>
-    <button id="btnSoft">↓</button>
-    <button id="btnHard" class="danger">↑</button>
-    <button id="btnRotL" class="alt">↺</button>
-    <button id="btnRotR">↻</button>
-    <button id="btnHold" class="alt" style="grid-column: span 6;">HOLD</button>
-  </div>
-
-  <!-- 設定・ホストルールのモーダル -->
-  <div id="settingsModal" class="modal hidden">
-    <div class="panel">
-      <h3>操作・対戦設定</h3>
-      
-      <div class="row">
-        <label>DAS (移動開始時間)</label>
-        <div><input type="number" id="cfgDas" value="150" step="10" style="width:60px"> ms</div>
-      </div>
-      <div class="row">
-        <label>ARR (連続移動速度)</label>
-        <div><input type="number" id="cfgArr" value="30" step="5" style="width:60px"> ms</div>
-      </div>
-      <div class="row">
-        <label>ソフトドロップ速度</label>
-        <div><input type="number" id="cfgSd" value="20" step="5" style="width:60px"> ms</div>
-      </div>
-
-      <hr style="border:0; border-top:1px solid var(--border); margin:10px 0;">
-      <div style="font-size:0.75rem; color:var(--sub); margin-bottom:6px;">対戦ルール (ホスト設定)</div>
-
-      <div class="row">
-        <label>NEXTツモ順</label>
-        <select id="cfgNextMode">
-          <option value="common">共通 (公平)</option>
-          <option value="random">各自ランダム</option>
-        </select>
-      </div>
-      <div class="row">
-        <label>穴切替確率 (穴バラ)</label>
-        <select id="cfgHoleChange">
-          <option value="0.3">30% (標準)</option>
-          <option value="0">0% (完全直進)</option>
-          <option value="0.5">50% (散らばる)</option>
-        </select>
-      </div>
-      <div class="row">
-        <label>通信同期 (更新頻度)</label>
-        <select id="cfgSyncInterval">
-          <option value="16">ヌルヌル (16ms / Wi-Fi推奨)</option>
-          <option value="40">標準 (40ms)</option>
-          <option value="80" selected>省データ (80ms / モバイル推奨)</option>
-        </select>
-      </div>
-
-      <div style="display:flex; gap:8px; margin-top:14px;">
-        <button id="btnCloseSettings" class="alt" style="flex:1">閉じる</button>
-        <button id="btnStartGame" style="flex:1">ゲーム開始</button>
-      </div>
+  <!-- 2P / CPU -->
+  <div class="player-board">
+    <canvas id="p2-tetris" width="240" height="400"></canvas>
+    <div class="sidebar">
+      <div class="box">P2 SCORE<div id="p2-score" class="score-num">0</div></div>
+      <div class="box">NEXT<canvas id="p2-next" width="96" height="96"></canvas></div>
     </div>
   </div>
-
-  <div id="toast"></div>
+</div>
 
 <script>
-// ==========================================
-// 定数 ＆ 初期データ
-// ==========================================
-const COLS = 10, ROWS = 20;
-const BLOCK_SIZE = 20;
+const COLS = 12;
+const ROWS = 20;
 
-const SHAPES = {
-  I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
-  J: [[1,0,0],[1,1,1],[0,0,0]],
-  L: [[0,0,1],[1,1,1],[0,0,0]],
-  O: [[1,1],[1,1]],
-  S: [[0,1,1],[1,1,0],[0,0,0]],
-  T: [[0,1,0],[1,1,1],[0,0,0]],
-  Z: [[1,1,0],[0,1,1],[0,0,0]]
+// SRS Kick Tables
+const KICK_TABLE_JLSTZ = {
+  '0-1': [[0,0], [-1,0], [-1,1], [0,-2], [-1,-2]],
+  '1-0': [[0,0], [1,0],  [1,-1], [0,2],  [1,2]],
+  '1-2': [[0,0], [1,0],  [1,-1], [0,2],  [1,2]],
+  '2-1': [[0,0], [-1,0], [-1,1], [0,-2], [-1,-2]],
+  '2-3': [[0,0], [1,0],  [1,1],  [0,-2], [1,-2]],
+  '3-2': [[0,0], [-1,0], [-1,-1],[0,2],  [-1,2]],
+  '3-0': [[0,0], [-1,0], [-1,-1],[0,2],  [-1,2]],
+  '0-3': [[0,0], [1,0],  [1,1],  [0,-2], [1,-2]]
 };
 
-const COLORS = {
-  I: '#00f0f0', J: '#0000f0', L: '#f0a000',
-  O: '#f0f000', S: '#00f000', T: '#a000f0', Z: '#f00000',
-  X: '#888888'
+const KICK_TABLE_I = {
+  '0-1': [[0,0], [-2,0], [1,0],  [-2,-1], [1,2]],
+  '1-0': [[0,0], [2,0],  [-1,0], [2,1],   [-1,-2]],
+  '1-2': [[0,0], [-1,0], [2,0],  [-1,2],  [2,-1]],
+  '2-1': [[0,0], [1,0],  [-2,0], [1,-2],  [-2,1]],
+  '2-3': [[0,0], [2,0],  [-1,0], [2,1],   [-1,-2]],
+  '3-2': [[0,0], [-2,0], [1,0],  [-2,-1], [1,2]],
+  '3-0': [[0,0], [1,0],  [-2,0], [1,-2],  [-2,1]],
+  '0-3': [[0,0], [-1,0], [2,0],  [-1,2],  [2,-1]]
 };
 
-const KICK_STD = {
-  '0-1': [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]], '1-0': [[0,0],[1,0],[1,-1],[0,2],[1,2]],
-  '1-2': [[0,0],[1,0],[1,-1],[0,2],[1,2]],   '2-1': [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
-  '2-3': [[0,0],[1,0],[1,1],[0,-2],[1,-2]],   '3-2': [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
-  '3-0': [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]], '0-3': [[0,0],[1,0],[1,1],[0,-2],[1,-2]]
-};
-const KICK_I = {
-  '0-1': [[0,0],[-2,0],[1,0],[-2,-1],[1,2]],  '1-0': [[0,0],[2,0],[-1,0],[2,1],[-1,-2]],
-  '1-2': [[0,0],[-1,0],[2,0],[-1,2],[2,-1]],  '2-1': [[0,0],[1,0],[-2,0],[1,-2],[-2,1]],
-  '2-3': [[0,0],[2,0],[-1,0],[2,1],[-1,-2]],  '3-2': [[0,0],[-2,0],[1,0],[-2,-1],[1,2]],
-  '3-0': [[0,0],[1,0],[-2,0],[1,-2],[-2,1]],  '0-3': [[0,0],[-1,0],[2,0],[-1,2],[2,-1]]
+const PIECES = {
+  'I': [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  'J': [[2,0,0],[2,2,2],[0,0,0]],
+  'L': [[0,0,3],[3,3,3],[0,0,0]],
+  'O': [[4,4],[4,4]],
+  'S': [[0,5,5],[5,5,0],[0,0,0]],
+  'T': [[0,6,0],[6,6,6],[0,0,0]],
+  'Z': [[7,7,0],[0,7,7],[0,0,0]]
 };
 
-// ==========================================
-// ゲーム状態 ＆ タイマー変数
-// ==========================================
-let board = Array.from({length: ROWS}, () => Array(COLS).fill(null));
-let cur = null, holdPiece = null, canHold = true;
-let bag = [], nextQ = [];
-let ren = -1, b2b = false;
-let pendingGarbage = 0, pendingHoles = [];
-let isEnded = false;
+const COLORS = [
+  null,
+  '#00f0f0', '#0000f0', '#f0a000', '#f0f000',
+  '#00f000', '#a000f0', '#f00000', '#888888' // 8: お邪魔ブロック(灰)
+];
 
-// 自然落下 ＆ DAS タイマー
-let dropTimer = null;
-const GRAVITY_DELAY = 1000;
-let keyTimers = {};
-
-// 設定パラメータ
-let config = { das: 150, arr: 30, sd: 20 };
-let vsRule = { nextMode: 'common', holeChange: 0.3, syncInterval: 80, seed: 12345 };
-
-// 通信関連
-let peer = null, conn = null, isHost = false;
-let lastSendPosT = 0;
-
-// Canvas Contexts
-const ctx = document.getElementById('mainCanvas').getContext('2d');
-const holdCtx = document.getElementById('holdCanvas').getContext('2d');
-const nextCtx = document.getElementById('nextCanvas').getContext('2d');
-const p2Ctx = document.getElementById('p2Canvas').getContext('2d');
-
-function seededRandom(s) {
-  let mask = 0xffffffff;
-  let m_w = (123456789 + s) & mask;
-  let m_z = (987654321 - s) & mask;
-  return function() {
-    m_z = (36969 * (m_z & 65535) + (m_z >> 16)) & mask;
-    m_w = (18000 * (m_w & 65535) + (m_w >> 16)) & mask;
-    let result = ((m_z << 16) + m_w) & mask;
-    return (result + 1.0) / 4294967296;
-  };
-}
-let rnd = Math.random;
-
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.style.opacity = 1;
-  setTimeout(() => t.style.opacity = 0, 2000);
+function createMatrix(w, h) {
+  const matrix = [];
+  while (h--) matrix.push(new Array(w).fill(0));
+  return matrix;
 }
 
-// ==========================================
-// PeerJS 通信処理
-// ==========================================
-document.getElementById('btnCreateRoom').onclick = () => {
-  const code = Math.floor(10000 + Math.random() * 90000).toString();
-  peer = new Peer('wtvs-' + code);
-  peer.on('open', () => {
-    isHost = true;
-    document.getElementById('netStatus').textContent = `部屋を作成しました: ${code}`;
-    document.getElementById('settingsModal').classList.remove('hidden');
-  });
-  peer.on('connection', (c) => {
-    conn = c; setupConn();
-    document.getElementById('netStatus').textContent = `相手が接続しました！`;
-  });
-  peer.on('error', err => toast('エラー: ' + err.type));
-};
+// プレイヤーオブジェクト生成クラス
+class Player {
+  constructor(canvasId, nextCanvasId, scoreId) {
+    this.canvas = document.getElementById(canvasId);
+    this.ctx = this.canvas.getContext('2d');
+    this.ctx.scale(20, 20);
 
-document.getElementById('btnJoinRoom').onclick = () => {
-  const code = document.getElementById('roomInput').value.trim();
-  if (code.length !== 5) return toast('5桁のコードを入力してください');
-  peer = new Peer();
-  peer.on('open', () => {
-    conn = peer.connect('wtvs-' + code);
-    isHost = false; setupConn();
-  });
-  peer.on('error', () => toast('部屋が見つかりません'));
-};
+    this.nextCanvas = document.getElementById(nextCanvasId);
+    this.nextCtx = this.nextCanvas.getContext('2d');
+    this.nextCtx.scale(24, 24);
 
-function setupConn() {
-  conn.on('open', () => {
-    document.getElementById('netStatus').textContent = '対戦接続完了！';
-    if (isHost) {
-      vsRule.seed = Math.floor(Math.random() * 1000000);
-      conn.send({ type: 'RULE', rule: vsRule });
+    this.scoreElement = document.getElementById(scoreId);
+
+    this.arena = createMatrix(COLS, ROWS);
+    this.score = 0;
+    this.dropCounter = 0;
+    this.dropInterval = 1000;
+    this.isGameOver = false;
+
+    this.pos = { x: 0, y: 0 };
+    this.matrix = null;
+    this.pieceType = null;
+    this.rotation = 0; // 0: 0 deg, 1: 90 deg, 2: 180 deg, 3: 270 deg
+
+    this.nextPieceType = this.getRandomType();
+    this.reset();
+  }
+
+  getRandomType() {
+    const keys = Object.keys(PIECES);
+    return keys[Math.floor(Math.random() * keys.length)];
+  }
+
+  reset() {
+    this.pieceType = this.nextPieceType;
+    this.matrix = PIECES[this.pieceType].map(row => [...row]);
+    this.nextPieceType = this.getRandomType();
+    this.rotation = 0;
+
+    this.pos.y = 0;
+    this.pos.x = (COLS / 2 | 0) - (this.matrix[0].length / 2 | 0);
+
+    if (this.collide()) {
+      this.isGameOver = true;
     }
-  });
-  conn.on('data', handleNetData);
-  conn.on('close', () => document.getElementById('netStatus').textContent = '相手が切断しました');
-}
-
-function handleNetData(data) {
-  switch (data.type) {
-    case 'RULE': vsRule = data.rule; break;
-    case 'START': vsRule = data.rule; initGame(); break;
-    case 'POS': drawP2(data.board, data.cur); break;
-    case 'LOCK': drawP2(data.board, null); break;
-    case 'ATTACK': receiveAttack(data.holes); break;
-    case 'GAMEOVER': toast('WIN! 相手が倒れました！'); isEnded = true; stopDropTimer(); break;
+    this.drawNext();
   }
-}
 
-function sendNet(data) {
-  if (conn && conn.open) conn.send(data);
-}
-
-// ==========================================
-// テトリス基本ロジック ＆ 自然落下
-// ==========================================
-function startDropTimer() {
-  stopDropTimer();
-  dropTimer = setInterval(() => {
-    if (isEnded) return;
-    if (!move(0, 1)) {
-      lockPiece();
-    }
-  }, GRAVITY_DELAY);
-}
-
-function stopDropTimer() {
-  if (dropTimer) clearInterval(dropTimer);
-}
-
-function getShapeMatrix(type, rot) {
-  let m = SHAPES[type];
-  for (let i = 0; i < rot; i++) {
-    m = m[0].map((_, c) => m.map(row => row[c]).reverse());
-  }
-  return m;
-}
-
-function refillBag() {
-  const pieces = ['I','J','L','O','S','T','Z'];
-  for (let i = pieces.length - 1; i > 0; i--) {
-    const j = Math.floor(rnd() * (i + 1));
-    [pieces[i], pieces[j]] = [pieces[j], pieces[i]];
-  }
-  bag.push(...pieces);
-}
-
-function spawnPiece() {
-  while (nextQ.length < 6) {
-    if (bag.length === 0) refillBag();
-    nextQ.push(bag.shift());
-  }
-  const type = nextQ.shift();
-  cur = { type, x: 3, y: 0, r: 0, lastRot: false };
-  canHold = true;
-
-  if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
-    isEnded = true;
-    stopDropTimer();
-    sendNet({ type: 'GAMEOVER' });
-    toast('GAME OVER');
-  }
-  drawNext();
-}
-
-function checkCollision(x, y, type, r) {
-  const m = getShapeMatrix(type, r);
-  for (let row = 0; row < m.length; row++) {
-    for (let col = 0; col < m[row].length; col++) {
-      if (m[row][col]) {
-        let nx = x + col, ny = y + row;
-        if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
-        if (ny >= 0 && board[ny][nx]) return true;
+  collide() {
+    const [m, o] = [this.matrix, this.pos];
+    for (let y = 0; y < m.length; ++y) {
+      for (let x = 0; x < m[y].length; ++x) {
+        if (m[y][x] !== 0 &&
+           (this.arena[y + o.y] && this.arena[y + o.y][x + o.x]) !== 0) {
+          return true;
+        }
       }
     }
-  }
-  return false;
-}
-
-function move(dx, dy) {
-  if (isEnded) return false;
-  if (!checkCollision(cur.x + dx, cur.y + dy, cur.type, cur.r)) {
-    cur.x += dx; cur.y += dy; cur.lastRot = false;
-
-    // 下移動（ソフトドロップ含む）成功時に自然落下タイマーをリセット
-    if (dy > 0) {
-      startDropTimer();
-    }
-
-    sendPosThrottled(); render(); return true;
-  }
-  return false;
-}
-
-function rotate(dir) {
-  if (isEnded) return;
-  const newR = (cur.r + dir + 4) % 4;
-  const key = `${cur.r}-${newR}`;
-  const kicks = (cur.type === 'I') ? KICK_I[key] : KICK_STD[key];
-
-  for (let [kx, ky] of kicks) {
-    if (!checkCollision(cur.x + kx, cur.y - ky, cur.type, newR)) {
-      cur.x += kx; cur.y -= ky; cur.r = newR; cur.lastRot = true;
-      sendPosThrottled(); render(); return;
-    }
-  }
-}
-
-function hardDrop() {
-  if (isEnded) return;
-  while (move(0, 1));
-  lockPiece();
-}
-
-function checkTSpin() {
-  if (cur.type !== 'T' || !cur.lastRot) return { isTS: false, isMini: false };
-  const corners = [[0,0],[2,0],[0,2],[2,2]];
-  let cnt = 0;
-  corners.forEach(([cx, cy]) => {
-    let nx = cur.x + cx, ny = cur.y + cy;
-    if (nx < 0 || nx >= COLS || ny >= ROWS || (ny >= 0 && board[ny][nx])) cnt++;
-  });
-  return { isTS: cnt >= 3, isMini: cnt === 3 };
-}
-
-function lockPiece() {
-  const m = getShapeMatrix(cur.type, cur.r);
-  m.forEach((row, r) => row.forEach((val, c) => {
-    if (val) {
-      let ny = cur.y + r;
-      if (ny >= 0) board[ny][cur.x + c] = cur.type;
-    }
-  }));
-
-  const ts = checkTSpin();
-  let cleared = 0;
-  for (let r = ROWS - 1; r >= 0; r--) {
-    if (board[r].every(c => c !== null)) {
-      board.splice(r, 1);
-      board.unshift(Array(COLS).fill(null));
-      cleared++; r++;
-    }
+    return false;
   }
 
-  let attack = 0;
-  if (cleared > 0) {
-    ren++;
-    const isDifficult = ts.isTS || cleared === 4;
-    let baseAtk = 0;
-
-    if (ts.isTS) {
-      if (ts.isMini) baseAtk = cleared === 1 ? 1 : 2;
-      else baseAtk = cleared === 1 ? 2 : cleared === 2 ? 4 : 6;
-    } else {
-      baseAtk = [0, 0, 1, 2, 4][cleared];
-    }
-
-    if (isDifficult) {
-      if (b2b) baseAtk += 1;
-      b2b = true;
-    } else {
-      b2b = false;
-    }
-
-    const renAtk = [0,0,1,1,2,2,3,3,4,4,5][Math.min(ren, 10)];
-    attack = baseAtk + renAtk;
-
-    if (board.every(row => row.every(c => c === null))) attack += 10;
-  } else {
-    ren = -1;
-  }
-
-  sendAttack(attack);
-  applyGarbageOnLock();
-
-  sendNet({ type: 'LOCK', board });
-  spawnPiece(); render();
-}
-
-function generateHoles(power, rate) {
-  if (power <= 0) return [];
-  const holes = [];
-  let h = Math.floor(Math.random() * COLS);
-  holes.push(h);
-  for (let i = 1; i < power; i++) {
-    if (Math.random() < rate) {
-      let nh;
-      do { nh = Math.floor(Math.random() * COLS); } while (nh === h);
-      h = nh;
-    }
-    holes.push(h);
-  }
-  return holes;
-}
-
-function sendAttack(power) {
-  if (power <= 0) return;
-  if (pendingGarbage > 0) {
-    if (power >= pendingGarbage) {
-      power -= pendingGarbage;
-      pendingGarbage = 0; pendingHoles = [];
-    } else {
-      pendingGarbage -= power;
-      pendingHoles.splice(0, power);
-      power = 0;
-    }
-    updateGbBar();
-  }
-  if (power > 0) {
-    const holes = generateHoles(power, vsRule.holeChange);
-    sendNet({ type: 'ATTACK', holes });
-  }
-}
-
-function receiveAttack(holes) {
-  pendingGarbage += holes.length;
-  pendingHoles.push(...holes);
-  updateGbBar();
-}
-
-function applyGarbageOnLock() {
-  if (pendingGarbage <= 0) return;
-  const count = pendingGarbage;
-  for (let i = 0; i < count; i++) {
-    const hole = pendingHoles.shift() ?? Math.floor(Math.random() * COLS);
-    board.shift();
-    const row = Array(COLS).fill('X');
-    row[hole] = null;
-    board.push(row);
-  }
-  pendingGarbage = 0; pendingHoles = [];
-  updateGbBar();
-}
-
-function updateGbBar() {
-  const bar = document.getElementById('garbageBar');
-  bar.style.width = Math.min(100, (pendingGarbage / 20) * 100) + '%';
-}
-
-function doHold() {
-  if (!canHold || isEnded) return;
-  if (!holdPiece) {
-    holdPiece = cur.type;
-    spawnPiece();
-  } else {
-    let tmp = cur.type;
-    cur = { type: holdPiece, x: 3, y: 0, r: 0, lastRot: false };
-    holdPiece = tmp;
-  }
-  canHold = false;
-  drawHold(); render();
-}
-
-function sendPosThrottled() {
-  const now = Date.now();
-  if (now - lastSendPosT >= (vsRule.syncInterval || 80)) {
-    sendNet({
-      type: 'POS', board,
-      cur: { x: cur.x, y: cur.y, r: cur.r, type: cur.type }
+  merge() {
+    this.matrix.forEach((row, y) => {
+      row.forEach((value, x) => {
+        if (value !== 0) {
+          this.arena[y + this.pos.y][x + this.pos.x] = value;
+        }
+      });
     });
-    lastSendPosT = now;
   }
-}
 
-// ==========================================
-// DAS / ARR / ソフトドロップ 長押し制御
-// ==========================================
-function updateConfigFromUI() {
-  config.das = parseInt(document.getElementById('cfgDas').value, 10) || 150;
-  config.arr = parseInt(document.getElementById('cfgArr').value, 10) || 30;
-  config.sd = parseInt(document.getElementById('cfgSd').value, 10) || 20;
-}
+  // SRS壁キック対応回転処理
+  rotateSRS(dir) {
+    const oldRotation = this.rotation;
+    const newRotation = (this.rotation + dir + 4) % 4;
+    const rotKey = `${oldRotation}-${newRotation}`;
 
-function handlePressStart(actionKey, actionFn, speedInterval) {
-  if (keyTimers[actionKey]) return;
-  updateConfigFromUI();
-  actionFn();
+    // 行列回転
+    this.rotateMatrix(this.matrix, dir);
+    this.rotation = newRotation;
 
-  const dasTimer = setTimeout(() => {
-    const arrTimer = setInterval(() => {
-      if (!actionFn()) handlePressEnd(actionKey);
-    }, speedInterval);
-    if (keyTimers[actionKey]) keyTimers[actionKey].arr = arrTimer;
-  }, config.das);
+    // SRS Offsets 選択
+    const kickTable = (this.pieceType === 'I') ? KICK_TABLE_I : KICK_TABLE_JLSTZ;
+    const offsets = kickTable[rotKey] || [[0, 0]];
 
-  keyTimers[actionKey] = { das: dasTimer, arr: null };
-}
+    // 壁キック試行
+    for (let i = 0; i < offsets.length; i++) {
+      const [dx, dy] = offsets[i];
+      // ※テトリスのSRS座標系（yが上向き）に合わせてdyの正負調整
+      this.pos.x += dx;
+      this.pos.y -= dy; 
 
-function handlePressEnd(actionKey) {
-  if (keyTimers[actionKey]) {
-    clearTimeout(keyTimers[actionKey].das);
-    if (keyTimers[actionKey].arr) clearInterval(keyTimers[actionKey].arr);
-    delete keyTimers[actionKey];
-  }
-}
-
-// ==========================================
-// 描画処理
-// ==========================================
-function render() {
-  ctx.clearRect(0, 0, 200, 400);
-
-  board.forEach((row, r) => row.forEach((val, c) => {
-    if (val) {
-      ctx.fillStyle = COLORS[val];
-      ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
-    }
-  }));
-
-  if (!cur || isEnded) return;
-
-  // ゴースト
-  let gy = cur.y;
-  while (!checkCollision(cur.x, gy + 1, cur.type, cur.r)) gy++;
-  const m = getShapeMatrix(cur.type, cur.r);
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  m.forEach((row, r) => row.forEach((val, c) => {
-    if (val) ctx.fillRect((cur.x + c) * BLOCK_SIZE, (gy + r) * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
-  }));
-
-  // 操作中ミノ
-  ctx.fillStyle = COLORS[cur.type];
-  m.forEach((row, r) => row.forEach((val, c) => {
-    if (val) ctx.fillRect((cur.x + c) * BLOCK_SIZE, (cur.y + r) * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
-  }));
-}
-
-function drawHold() {
-  holdCtx.clearRect(0, 0, 45, 45);
-  if (!holdPiece) return;
-  const m = SHAPES[holdPiece];
-  holdCtx.fillStyle = COLORS[holdPiece];
-  m.forEach((row, r) => row.forEach((val, c) => {
-    if (val) holdCtx.fillRect(c * 9 + 9, r * 9 + 9, 8, 8);
-  }));
-}
-
-function drawNext() {
-  nextCtx.clearRect(0, 0, 45, 225);
-  nextQ.slice(0, 5).forEach((type, idx) => {
-    const m = SHAPES[type];
-    nextCtx.fillStyle = COLORS[type];
-    m.forEach((row, r) => row.forEach((val, c) => {
-      if (val) nextCtx.fillRect(c * 8 + 7, idx * 40 + r * 8 + 8, 7, 7);
-    }));
-  });
-}
-
-function drawP2(bBoard, p2Cur) {
-  p2Ctx.clearRect(0, 0, 100, 200);
-  if (bBoard) {
-    bBoard.forEach((row, r) => row.forEach((val, c) => {
-      if (val) {
-        p2Ctx.fillStyle = COLORS[val];
-        p2Ctx.fillRect(c * 10, r * 10, 9, 9);
+      if (!this.collide()) {
+        return; // 衝突がなければ成功
       }
-    }));
+
+      // 戻す
+      this.pos.x -= dx;
+      this.pos.y += dy;
+    }
+
+    // すべてのキック失敗時は回転キャンセル
+    this.rotateMatrix(this.matrix, -dir);
+    this.rotation = oldRotation;
   }
-  if (p2Cur) {
-    const m = getShapeMatrix(p2Cur.type, p2Cur.r);
-    p2Ctx.fillStyle = COLORS[p2Cur.type];
-    m.forEach((row, r) => row.forEach((val, c) => {
-      if (val) p2Ctx.fillRect((p2Cur.x + c) * 10, (p2Cur.y + r) * 10, 9, 9);
-    }));
+
+  rotateMatrix(matrix, dir) {
+    for (let y = 0; y < matrix.length; ++y) {
+      for (let x = 0; x < y; ++x) {
+        [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+      }
+    }
+    if (dir > 0) matrix.forEach(row => row.reverse());
+    else matrix.reverse();
+  }
+
+  move(dir) {
+    this.pos.x += dir;
+    if (this.collide()) this.pos.x -= dir;
+  }
+
+  drop(opponent) {
+    this.pos.y++;
+    if (this.collide()) {
+      this.pos.y--;
+      this.lockPiece(opponent);
+    }
+    this.dropCounter = 0;
+  }
+
+  lockPiece(opponent) {
+    this.merge();
+    const clearedLines = this.arenaSweep();
+    
+    // 対戦：2ライン以上消したら相手にお邪魔ラインを送る
+    if (clearedLines >= 2 && opponent) {
+      const garbageLines = clearedLines - 1;
+      opponent.receiveGarbage(garbageLines);
+    }
+
+    this.reset();
+  }
+
+  // お邪魔ライン受信
+  receiveGarbage(count) {
+    for (let i = 0; i < count; i++) {
+      this.arena.shift(); // 上を1行削除
+      const garbageRow = new Array(COLS).fill(8); // 灰色ブロック
+      const holeIndex = Math.floor(Math.random() * COLS);
+      garbageRow[holeIndex] = 0; // 1穴空ける
+      this.arena.push(garbageRow);
+    }
+  }
+
+  arenaSweep() {
+    let linesCleared = 0;
+    outer: for (let y = this.arena.length - 1; y > 0; --y) {
+      for (let x = 0; x < this.arena[y].length; ++x) {
+        if (this.arena[y][x] === 0) continue outer;
+      }
+      const row = this.arena.splice(y, 1)[0].fill(0);
+      this.arena.unshift(row);
+      ++y;
+      linesCleared++;
+    }
+
+    if (linesCleared > 0) {
+      this.score += linesCleared * 100;
+      this.scoreElement.innerText = this.score;
+    }
+    return linesCleared;
+  }
+
+  update(deltaTime, opponent) {
+    if (this.isGameOver) return;
+
+    this.dropCounter += deltaTime;
+    if (this.dropCounter > this.dropInterval) {
+      this.drop(opponent);
+    }
+
+    this.draw();
+  }
+
+  draw() {
+    this.ctx.fillStyle = '#000';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    this.drawMatrix(this.arena, { x: 0, y: 0 }, this.ctx);
+    if (this.matrix) {
+      this.drawMatrix(this.matrix, this.pos, this.ctx);
+    }
+  }
+
+  drawNext() {
+    this.nextCtx.fillStyle = '#222';
+    this.nextCtx.fillRect(0, 0, this.nextCanvas.width, this.nextCanvas.height);
+
+    const matrix = PIECES[this.nextPieceType];
+    const offset = {
+      x: (4 - matrix[0].length) / 2,
+      y: (4 - matrix.length) / 2
+    };
+    this.drawMatrix(matrix, offset, this.nextCtx);
+  }
+
+  drawMatrix(matrix, offset, ctx) {
+    matrix.forEach((row, y) => {
+      row.forEach((value, x) => {
+        if (value !== 0) {
+          ctx.fillStyle = COLORS[value];
+          ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 0.05;
+          ctx.strokeRect(x + offset.x, y + offset.y, 1, 1);
+        }
+      });
+    });
   }
 }
 
-// ==========================================
-// 初期化 ＆ イベントバインド
-// ==========================================
-function initGame() {
-  board = Array.from({length: ROWS}, () => Array(COLS).fill(null));
-  bag = []; nextQ = []; holdPiece = null; canHold = true;
-  ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
-  isEnded = false; updateGbBar();
+// 1P / 2P インスタンス化
+const p1 = new Player('p1-tetris', 'p1-next', 'p1-score');
+const p2 = new Player('p2-tetris', 'p2-next', 'p2-score');
 
-  if (vsRule.nextMode === 'common') rnd = seededRandom(vsRule.seed);
-  else rnd = Math.random;
+// --- 単一のゲームループで両方のプレイヤーを更新 ---
+let lastTime = 0;
+function gameLoop(time = 0) {
+  const deltaTime = time - lastTime;
+  lastTime = time;
 
-  spawnPiece(); drawHold(); render();
-  startDropTimer();
+  p1.update(deltaTime, p2);
+  p2.update(deltaTime, p1);
+
+  requestAnimationFrame(gameLoop);
 }
 
-document.getElementById('btnOpenSettings').onclick = () => document.getElementById('settingsModal').classList.remove('hidden');
-document.getElementById('btnCloseSettings').onclick = () => document.getElementById('settingsModal').classList.add('hidden');
+// 1P 操作 (矢印キー / Q, W)
+document.addEventListener('keydown', event => {
+  if (p1.isGameOver) return;
 
-document.getElementById('btnStartGame').onclick = () => {
-  vsRule.nextMode = document.getElementById('cfgNextMode').value;
-  vsRule.holeChange = parseFloat(document.getElementById('cfgHoleChange').value);
-  vsRule.syncInterval = parseInt(document.getElementById('cfgSyncInterval').value, 10);
-  vsRule.seed = Math.floor(Math.random() * 1000000);
-
-  document.getElementById('settingsModal').classList.add('hidden');
-  sendNet({ type: 'START', rule: vsRule });
-  initGame();
-};
-
-// キーボード制御
-document.addEventListener('keydown', (e) => {
-  if (e.repeat) return;
-  if (e.key === 'ArrowLeft')  handlePressStart('left', () => move(-1, 0), config.arr);
-  if (e.key === 'ArrowRight') handlePressStart('right', () => move(1, 0), config.arr);
-  if (e.key === 'ArrowDown')  handlePressStart('down', () => move(0, 1), config.sd);
-  if (e.key === 'ArrowUp') hardDrop();
-  if (e.key === 'z' || e.key === 'Z') rotate(-1);
-  if (e.key === 'x' || e.key === 'X') rotate(1);
-  if (e.key === 'c' || e.key === 'C') doHold();
+  if (event.key === 'ArrowLeft') p1.move(-1);
+  else if (event.key === 'ArrowRight') p1.move(1);
+  else if (event.key === 'ArrowDown') p1.drop(p2);
+  else if (event.key === 'w' || event.key === 'W') p1.rotateSRS(1);  // 右回転
+  else if (event.key === 'q' || event.key === 'Q') p1.rotateSRS(-1); // 左回転
 });
 
-document.addEventListener('keyup', (e) => {
-  if (e.key === 'ArrowLeft')  handlePressEnd('left');
-  if (e.key === 'ArrowRight') handlePressEnd('right');
-  if (e.key === 'ArrowDown')  handlePressEnd('down');
+// 2P 操作 (A, D, S, KeyR, KeyT)
+document.addEventListener('keydown', event => {
+  if (p2.isGameOver) return;
+
+  if (event.code === 'KeyA') p2.move(-1);
+  else if (event.code === 'KeyD') p2.move(1);
+  else if (event.code === 'KeyS') p2.drop(p1);
+  else if (event.code === 'KeyT') p2.rotateSRS(1);  // 右回転
+  else if (event.code === 'KeyR') p2.rotateSRS(-1); // 左回転
 });
 
-// タッチボタン長押しバインド (DAS / ARR / ソフトドロップ)
-function bindTouchButton(elementId, actionKey, actionFn, intervalGetter) {
-  const btn = document.getElementById(elementId);
-  if (!btn) return;
-  const start = (e) => { e.preventDefault(); handlePressStart(actionKey, actionFn, intervalGetter()); };
-  const end = (e) => { e.preventDefault(); handlePressEnd(actionKey); };
-
-  btn.addEventListener('pointerdown', start);
-  btn.addEventListener('pointerup', end);
-  btn.addEventListener('pointercancel', end);
-  btn.addEventListener('pointerleave', end);
-}
-
-// タッチボタン単発タップバインド (二重発火防止)
-function bindTapButton(elementId, actionFn) {
-  const btn = document.getElementById(elementId);
-  if (!btn) return;
-  btn.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    actionFn();
-  });
-}
-
-bindTouchButton('btnL', 'left', () => move(-1, 0), () => config.arr);
-bindTouchButton('btnR', 'right', () => move(1, 0), () => config.arr);
-bindTouchButton('btnSoft', 'down', () => move(0, 1), () => config.sd);
-
-bindTapButton('btnHard', () => hardDrop());
-bindTapButton('btnRotL', () => rotate(-1));
-bindTapButton('btnRotR', () => rotate(1));
-bindTapButton('btnHold', () => doHold());
-
-// スタート
-initGame();
+// ゲーム開始
+requestAnimationFrame(gameLoop);
 </script>
+
 </body>
 </html>
