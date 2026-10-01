@@ -138,6 +138,10 @@
             <option value="">表示しない</option>
           </select>
         </div>
+        <div id="adminAutoControls" style="display:none;width:100%;max-width:200px;gap:5px;margin:2px 0 5px">
+          <button id="btnAutoBuild" style="flex:1;padding:5px;font-size:.72rem">自動積み開始</button>
+          <button id="btnAutoStop" class="alt" style="flex:1;padding:5px;font-size:.72rem" disabled>停止</button>
+        </div>
         <div id="aiGuideStatus" aria-live="polite"></div>
         <div class="board-row">
           <canvas id="garbagePreviewCanvas" width="20" height="400" aria-label="受信おじゃまライン"></canvas>
@@ -293,6 +297,8 @@ let aiGuideEnabled = false;
 let aiSuggestion = null;
 let aiCacheKey = '';
 let aiCacheResult = null;
+let autoBuildRunning = false;
+let autoBuildToken = 0;
 const DEFAULT_TEMPLATE_DATA = [
   { name: '山岳積み2号', priority: 30, pattern: ['JJOO......','JSOO..L..I','JSS...LLLI','ISS.ZZLLLI','ISS..ZZTLI','IJS.ZZTTOO','IJJJ.ZZTOO'] },
   { name: '山岳積み2号・派生', priority: 30, pattern: ['......ZZ..','.......ZZ.','I..J..LLOO','IJJJ...LOO','IJJJSS.LZI','IJTSS..ZZI','OOTTSS.ZLI','OOTSS.LLLI'] },
@@ -462,6 +468,7 @@ function resetForRematch() {
 }
 
 document.getElementById('btnBackToLobby').onclick = () => {
+  if (autoBuildRunning) stopAutoBuild('自動積み停止');
   isEnded = true;
   if (peer) peer.destroy();
   switchScreen('lobbyScreen');
@@ -1157,6 +1164,7 @@ function tryOpenAdminMode() {
   if (arr !== 490 || sd !== 490) return;
   adminMode = true;
   document.getElementById('adminTemplateControls').style.display = 'flex';
+  document.getElementById('adminAutoControls').style.display = 'flex';
   document.getElementById('cfgArr').value = '30';
   document.getElementById('cfgSd').value = '20';
   config.arr = 30; config.sd = 20;
@@ -1221,6 +1229,76 @@ document.getElementById('btnAddTemplate').onclick = () => {
   document.getElementById('templateName').value = ''; document.getElementById('templatePattern').value = '';
 };
 document.getElementById('btnCloseAdmin').onclick = () => document.getElementById('adminModal').classList.add('hidden');
+
+function stopAutoBuild(message = '自動積み停止') {
+  autoBuildRunning = false;
+  autoBuildToken++;
+  document.getElementById('btnAutoBuild').disabled = false;
+  document.getElementById('btnAutoStop').disabled = true;
+  const status = document.getElementById('aiGuideStatus');
+  if (adminMode && message) status.textContent = message;
+}
+function waitAuto(ms, token) {
+  return new Promise(resolve => setTimeout(() => resolve(autoBuildRunning && token === autoBuildToken), ms));
+}
+function activeTemplateComplete(variant) {
+  if (!variant || !variant.pattern) return false;
+  const start = ROWS - variant.pattern.length;
+  for (let r = 0; r < variant.pattern.length; r++) for (let c = 0; c < COLS; c++) {
+    if (variant.pattern[r][c] !== '.' && !board[start + r]?.[c]) return false;
+    if (variant.pattern[r][c] === '.' && board[start + r]?.[c]) return false;
+  }
+  return true;
+}
+async function startAutoBuild() {
+  if (!adminMode || autoBuildRunning || isEnded) return;
+  autoBuildRunning = true;
+  const token = ++autoBuildToken;
+  document.getElementById('btnAutoBuild').disabled = true;
+  document.getElementById('btnAutoStop').disabled = false;
+  let activeTemplate = null;
+  let safety = 0;
+  document.getElementById('aiGuideStatus').textContent = '自動積み準備中…';
+  while (autoBuildRunning && token === autoBuildToken && !isEnded && safety++ < 80) {
+    if (!cur) { if (!(await waitAuto(80, token))) break; continue; }
+    aiCacheKey = '';
+    const suggestion = findAiSuggestion();
+    if (!suggestion) { stopAutoBuild('自動積み停止：配置候補なし'); return; }
+    activeTemplate = templateData.find(t => t.name === suggestion.template) || activeTemplate;
+    if (suggestion.useHold) {
+      doHold();
+      if (!(await waitAuto(100, token))) break;
+      if (!cur || cur.type !== suggestion.type) { stopAutoBuild('自動積み停止：HOLD不一致'); return; }
+    }
+    const startType = cur.type;
+    let rotations = 0;
+    while (cur && cur.r !== suggestion.rot && rotations++ < 4) {
+      const before = cur.r; rotate(1);
+      if (cur.r === before) { stopAutoBuild('自動積み停止：回転できません'); return; }
+      if (!(await waitAuto(45, token))) return;
+    }
+    let moves = 0;
+    while (cur && cur.x !== suggestion.x && moves++ < COLS + 2) {
+      const dx = suggestion.x > cur.x ? 1 : -1;
+      if (!move(dx, 0)) { stopAutoBuild('自動積み停止：横移動できません'); return; }
+      if (!(await waitAuto(35, token))) return;
+    }
+    if (!cur || cur.type !== startType || cur.x !== suggestion.x || cur.r !== suggestion.rot) {
+      stopAutoBuild('自動積み停止：配置位置が一致しません'); return;
+    }
+    hardDrop();
+    if (!(await waitAuto(140, token))) break;
+    if (activeTemplate && activeTemplateComplete(activeTemplate)) {
+      stopAutoBuild('テンプレ完成：自動積み停止'); return;
+    }
+  }
+  if (autoBuildRunning && safety >= 80) stopAutoBuild('自動積み停止：手数上限');
+  else if (autoBuildRunning) stopAutoBuild('自動積み停止');
+}
+document.getElementById('btnAutoBuild').addEventListener('click', startAutoBuild);
+document.getElementById('btnAutoStop').addEventListener('click', () => stopAutoBuild('手動停止'));
+
+
 
 document.addEventListener('keydown', (e) => {
   if (e.repeat || !document.getElementById('gameScreen').classList.contains('active')) return;
