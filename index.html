@@ -1,1 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P 接続テスト</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #181825; color: #cdd6f4; }
+    button, input { font-size: 16px; padding: 10px; margin: 5px 0; border-radius: 6px; border: none; }
+    button { background: #89b4fa; color: #11111b; font-weight: bold; cursor: pointer; }
+    input { background: #313244; color: #fff; width: 150px; }
+    .box { border: 1px solid #45475a; padding: 15px; margin-top: 15px; border-radius: 8px; }
+    #log { background: #11111b; height: 150px; overflow-y: auto; padding: 10px; font-family: monospace; border-radius: 4px; }
+  </style>
+</head>
+<body>
 
+  <h2>P2P 通信テスト</h2>
+  <p>ステータス: <strong id="status" style="color:#f9e2af">未接続</strong></p>
+
+  <!-- 1. 部屋作成エリア (ホスト側) -->
+  <div class="box">
+    <h3>【ホスト】部屋を作る</h3>
+    <button id="btnCreate">部屋作成</button>
+    <p>あなたの部屋ID: <span id="myRoomId" style="font-size:1.2rem; font-weight:bold; color:#a6e3a1">-</span></p>
+  </div>
+
+  <!-- 2. 部屋参加エリア (ゲスト側) -->
+  <div class="box">
+    <h3>【ゲスト】部屋に入る</h3>
+    <input type="number" id="inputRoomId" placeholder="5桁のIDを入力">
+    <button id="btnJoin">参加</button>
+  </div>
+
+  <!-- 3. テスト送信エリア -->
+  <div class="box">
+    <h3>送信テスト</h3>
+    <button id="btnSendPos">「位置データ (x: 5, y: 10)」を送信</button><br>
+    <button id="btnSendAttack" style="background:#f38ba8">「攻撃データ (5段)」を送信</button>
+  </div>
+
+  <!-- 4. 受信ログ -->
+  <div class="box">
+    <h3>通信ログ</h3>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    let peer = null;
+    let conn = null;
+
+    function log(msg) {
+      const logDiv = document.getElementById('log');
+      logDiv.innerHTML += `<div>> ${msg}</div>`;
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // --- 1. 部屋を作る（ホスト） ---
+    document.getElementById('btnCreate').onclick = () => {
+      // 5桁のランダム数字を部屋IDにする
+      const roomId = Math.floor(10000 + Math.random() * 90000).toString();
+      peer = new Peer('ttp-test-' + roomId);
+
+      peer.on('open', (id) => {
+        document.getElementById('myRoomId').textContent = roomId;
+        document.getElementById('status').textContent = '相手の参加待ち...';
+        log(`部屋を作成しました (ID: ${roomId})`);
+      });
+
+      // 相手からの接続を待受
+      peer.on('connection', (c) => {
+        conn = c;
+        setupEvents();
+      });
+
+      peer.on('error', (err) => log(`エラー: ${err.type}`));
+    };
+
+    // --- 2. 部屋に参加する（ゲスト） ---
+    document.getElementById('btnJoin').onclick = () => {
+      const roomId = document.getElementById('inputRoomId').value.trim();
+      if (roomId.length !== 5) return alert('5桁の部屋IDを入力してください');
+
+      peer = new Peer(); // ランダムIDで自分のPeerを作成
+      peer.on('open', () => {
+        log(`ホスト(${roomId})へ接続試行中...`);
+        conn = peer.connect('ttp-test-' + roomId);
+        setupEvents();
+      });
+
+      peer.on('error', (err) => log(`エラー: ${err.type}`));
+    };
+
+    // --- 通信イベントのセットアップ ---
+    function setupEvents() {
+      conn.on('open', () => {
+        document.getElementById('status').textContent = '接続成功！対戦可能';
+        document.getElementById('status').style.color = '#a6e3a1';
+        log('★ 通信が接続されました！');
+      });
+
+      // データを受信した時
+      conn.on('data', (data) => {
+        log(`【受信】 ${JSON.stringify(data)}`);
+      });
+
+      conn.on('close', () => {
+        document.getElementById('status').textContent = '切断されました';
+        document.getElementById('status').style.color = '#f38ba8';
+        log('通信が切断されました');
+      });
+    }
+
+    // --- 3. データ送信テスト ---
+    document.getElementById('btnSendPos').onclick = () => {
+      if (!conn || !conn.open) return alert('先に接続してください');
+      const data = { type: 'POS', x: 5, y: 10, time: Date.now() };
+      conn.send(data);
+      log(`【送信】 ${JSON.stringify(data)}`);
+    };
+
+    document.getElementById('btnSendAttack').onclick = () => {
+      if (!conn || !conn.open) return alert('先に接続してください');
+      const data = { type: 'ATTACK', power: 5, holes: [2, 2, 2, 7, 7] };
+      conn.send(data);
+      log(`【送信】 ${JSON.stringify(data)}`);
+    };
+  </script>
+</body>
+</html>
