@@ -1293,46 +1293,63 @@ function activeTemplateComplete(variant) {
   return true;
 }
 function findExactGhostPlacement(type) {
-  // Search only real gravity landings. A candidate is accepted only when all four
-  // mino cells exactly occupy cells of the same type in the template.
+  // Only target the first unfilled four-cell group in the template, never any
+  // other matching cells elsewhere in the pattern.
   const variants = getTemplateVariants();
   for (const variant of variants) {
     const rows = variant.pattern;
     if (!rows?.length || rows.some(row => row.length !== COLS || /[^IJLOSTZ.]/.test(row))) continue;
     const top = ROWS - rows.length;
-    for (let rot = 0; rot < 4; rot++) for (let x = -3; x < COLS; x++) {
-      const landing = simulateLanding(board, type, x, rot);
-      if (!landing || landing.cleared) continue;
-      const matrix = getShapeMatrix(type, rot);
-      const cells = [];
-      let valid = true;
-      for (let r = 0; r < matrix.length; r++) for (let c = 0; c < matrix[r].length; c++) if (matrix[r][c]) {
-        const yy = landing.y + r, xx = x + c, pr = yy - top;
-        if (pr < 0 || pr >= rows.length || xx < 0 || xx >= COLS || rows[pr][xx] !== type) valid = false;
-        cells.push([pr, xx]);
+    const groups = [];
+    for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) {
+      if (rows[r][c] !== type) continue;
+      // Enumerate four-cell subsets beginning at this cell, then retain only
+      // subsets whose normalized coordinates match this tetromino's geometry.
+      const same = [];
+      for (let rr = r; rr < rows.length; rr++) for (let cc = 0; cc < COLS; cc++)
+        if (rows[rr][cc] === type && (rr > r || cc >= c)) same.push([rr,cc]);
+      for (let i=0; i<same.length; i++) for (let j=i+1; j<same.length; j++)
+      for (let k=j+1; k<same.length; k++) for (let l=k+1; l<same.length; l++) {
+        const cells=[same[i],same[j],same[k],same[l]];
+        const key=cells.map(([rr,cc])=>`${rr-r},${cc-c}`).sort().join('|');
+        let shapeMatch=false;
+        for(let rot=0;rot<4;rot++) {
+          const m=getShapeMatrix(type,rot), coords=[];
+          for(let mr=0;mr<m.length;mr++) for(let mc=0;mc<m[mr].length;mc++) if(m[mr][mc]) coords.push([mr,mc]);
+          const minR=Math.min(...coords.map(v=>v[0])), minC=Math.min(...coords.map(v=>v[1]));
+          const mk=coords.map(([rr,cc])=>`${rr-minR},${cc-minC}`).sort().join('|');
+          if(key===mk){shapeMatch=true;break;}
+        }
+        if(shapeMatch) groups.push(cells);
       }
-      if (!valid || cells.length !== 4) continue;
-      // Require the selected four cells to match the exact four-cell target group;
-      // no partial or merely similar placement is allowed.
-      const target = [];
-      for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) if (rows[r][c] === type) target.push([r,c]);
-      if (target.length !== 4) continue;
-      const a = cells.map(v => v.join(',')).sort().join('|');
-      const b = target.map(v => v.join(',')).sort().join('|');
-      if (a !== b) continue;
-      // Do not place over existing blocks, nor if the resulting board contradicts target.
-      let boardOK = true;
-      for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) {
-        const existing = board[top + r]?.[c];
-        if (existing && existing !== rows[r][c]) boardOK = false;
-        if (existing && rows[r][c] === '.') boardOK = false;
+    }
+    groups.sort((a,b)=>Math.min(...a.map(v=>v[0]))-Math.min(...b.map(v=>v[0])) || Math.min(...a.map(v=>v[1]))-Math.min(...b.map(v=>v[1])));
+    const unique=[]; const seen=new Set();
+    for(const g of groups){const k=g.map(v=>v.join(',')).sort().join('|');if(!seen.has(k)){seen.add(k);unique.push(g)}}
+    const target=unique.find(g=>!g.every(([r,c])=>board[top+r]?.[c]===type));
+    if(!target) continue;
+    // Reject ambiguous templates: if target cells overlap another valid target
+    // group, the intended order cannot be inferred safely.
+    const targetSet=new Set(target.map(v=>v.join(',')));
+    const ambiguous=unique.some(g=>g!==target && g.some(v=>targetSet.has(v.join(','))));
+    if(ambiguous) continue;
+    for(let rot=0;rot<4;rot++) for(let x=-3;x<COLS;x++) {
+      const landing=simulateLanding(board,type,x,rot);
+      if(!landing || landing.cleared) continue;
+      const m=getShapeMatrix(type,rot), cells=[]; let valid=true;
+      for(let r=0;r<m.length;r++) for(let c=0;c<m[r].length;c++) if(m[r][c]) {
+        const yy=landing.y+r, xx=x+c, pr=yy-top;
+        if(pr<0||pr>=rows.length||xx<0||xx>=COLS||rows[pr][xx]!==type||!targetSet.has(`${pr},${xx}`)) valid=false;
+        cells.push([pr,xx]);
       }
-      if (boardOK) return { ...landing, template: variant.name, variant };
+      if(!valid||cells.length!==4) continue;
+      const existingOK=target.every(([r,c])=>!board[top+r]?.[c] || board[top+r][c]===type) &&
+        board.every((row,br)=>row.every((v,bc)=>!v || (br>=top && br<ROWS && rows[br-top]?.[bc]===v)));
+      if(existingOK) return {...landing,template:variant.name,variant};
     }
   }
   return null;
 }
-
 async function startAutoBuild() {
   if (!adminMode || autoBuildRunning || isEnded) return;
   autoBuildRunning = true;
