@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Web Tetris VS Complete</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
@@ -10,79 +10,85 @@
       --bg: #1e1e2e; --panel: #2a2a3c; --accent: #89b4fa;
       --text: #cdd6f4; --sub: #a6adc8; --border: #45475a;
     }
-    * { box-sizing: border-box; user-select: none; touch-action: manipulation; }
+    * { box-sizing: border-box; user-select: none; touch-action: manipulation; -webkit-touch-callout: none; }
     body {
-      margin: 0; padding: 10px; background: var(--bg); color: var(--text);
+      margin: 0; padding: 10px 5px; background: var(--bg); color: var(--text);
       font-family: system-ui, -apple-system, sans-serif;
-      display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow: hidden;
     }
-    h1 { margin: 0 0 10px; font-size: 1.4rem; color: var(--accent); text-align: center; }
+    h1 { margin: 0 0 10px; font-size: 1.2rem; color: var(--accent); text-align: center; }
 
     /* 通信・対戦バー */
     .net-bar {
       background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-      padding: 8px 12px; margin-bottom: 10px; width: 100%; max-width: 500px;
-      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center;
+      padding: 8px; margin-bottom: 8px; width: 100%; max-width: 400px;
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;
     }
     .net-bar input {
-      width: 90px; padding: 6px; border-radius: 4px; border: 1px solid var(--border);
+      width: 80px; padding: 6px; border-radius: 4px; border: 1px solid var(--border);
       background: #11111b; color: #fff; text-align: center; font-size: 0.9rem;
     }
     button {
-      padding: 6px 12px; border-radius: 4px; border: none; background: var(--accent);
+      padding: 6px 10px; border-radius: 4px; border: none; background: var(--accent);
       color: #11111b; font-weight: bold; cursor: pointer; font-size: 0.85rem;
     }
     button.alt { background: #45475a; color: #fff; }
     button.danger { background: #f38ba8; color: #11111b; }
-    #netStatus { font-size: 0.8rem; color: #f9e2af; width: 100%; text-align: center; }
+    #netStatus { font-size: 0.75rem; color: #f9e2af; width: 100%; text-align: center; }
 
-    /* モーダル（設定パネル） */
+    /* モーダル */
     .modal {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100;
+      background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100;
     }
     .modal.hidden { display: none; }
     .panel {
       background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-      padding: 16px; width: 90%; max-width: 380px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      padding: 16px; width: 90%; max-width: 320px;
     }
     .panel h3 { margin: 0 0 12px; color: var(--accent); font-size: 1.1rem; text-align: center; }
     .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.85rem; }
     .row select, .row input[type="number"] {
-      background: #11111b; border: 1px solid var(--border); color: #fff; padding: 4px 8px; border-radius: 4px;
+      background: #11111b; border: 1px solid var(--border); color: #fff; padding: 4px; border-radius: 4px;
     }
 
-    /* メイン対戦レイアウト */
+    /* メイン対戦レイアウト (スマホ1画面最適化) */
     .game-container {
-      display: flex; gap: 8px; justify-content: center; align-items: flex-start;
+      display: flex; gap: 4px; justify-content: center; align-items: stretch;
+      width: 100%; max-width: 400px;
     }
     .board-box { display: flex; flex-direction: column; align-items: center; }
-    .side-box { display: flex; flex-direction: column; gap: 6px; width: 45px; }
+    .side-box { display: flex; flex-direction: column; gap: 4px; width: 40px; }
     canvas { background: #11111b; border: 2px solid var(--border); border-radius: 4px; display: block; }
     
-    /* 保留ゲージ */
+    /* スケール調整 */
+    #mainCanvas { width: 160px; height: 320px; }
+    #holdCanvas { width: 40px; height: 40px; }
+    #nextCanvas { width: 40px; height: 200px; }
+    #p2Canvas { width: 80px; height: 160px; }
+    
     .gb-wrap {
-      width: 100%; height: 8px; background: #222; border: 1px solid var(--border);
-      border-radius: 4px; overflow: hidden; margin-top: 4px;
+      width: 160px; height: 6px; background: #222; border: 1px solid var(--border);
+      border-radius: 3px; overflow: hidden; margin-top: 4px;
     }
     .gb-bar { width: 0%; height: 100%; background: #f38ba8; transition: width 0.15s; }
 
-    /* 2P 相手ミニ画面 */
     .p2-container {
       display: flex; flex-direction: column; align-items: center;
-      background: var(--panel); padding: 6px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--panel); padding: 4px; border-radius: 6px; border: 1px solid var(--border);
+      margin-left: 2px; height: fit-content;
     }
-    .p2-title { font-size: 0.7rem; color: var(--sub); font-weight: bold; margin-bottom: 4px; }
+    .p2-title { font-size: 0.6rem; color: var(--sub); font-weight: bold; margin-bottom: 2px; }
 
-    /* モバイル操作ボタン (6列レイアウト) */
+    /* モバイル操作ボタン */
     .controls {
-      display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
-      margin-top: 10px; width: 100%; max-width: 380px;
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+      margin-top: 8px; width: 100%; max-width: 360px;
     }
-    .controls button { height: 48px; font-size: 1.1rem; padding: 0; }
+    .controls button { height: 55px; font-size: 1.2rem; padding: 0; border-radius: 8px; }
 
     #toast {
-      position: fixed; bottom: 20px; background: #a6e3a1; color: #11111b;
+      position: fixed; top: 10px; background: #a6e3a1; color: #11111b;
       padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.85rem;
       opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 200;
     }
@@ -92,43 +98,36 @@
 
   <h1>Web Tetris VS</h1>
 
-  <!-- 対戦・通信メニュー -->
   <div class="net-bar">
-    <button id="btnCreateRoom">部屋を作る</button>
+    <button id="btnCreateRoom">部屋作成</button>
     <input type="number" id="roomInput" placeholder="5桁コード">
     <button id="btnJoinRoom" class="alt">参加</button>
     <button id="btnOpenSettings" class="alt">⚙ 設定</button>
     <div id="netStatus">オフライン (ソロプレイ可能)</div>
   </div>
 
-  <!-- メイン対戦領域 -->
   <div class="game-container">
-    <!-- 1P HOLD -->
     <div class="side-box">
-      <span style="font-size:0.65rem; color:var(--sub); text-align:center;">HOLD</span>
+      <span style="font-size:0.6rem; color:var(--sub); text-align:center;">HOLD</span>
       <canvas id="holdCanvas" width="45" height="45"></canvas>
     </div>
 
-    <!-- 1P メイン盤面 -->
     <div class="board-box">
       <canvas id="mainCanvas" width="200" height="400"></canvas>
       <div class="gb-wrap"><div id="garbageBar" class="gb-bar"></div></div>
     </div>
 
-    <!-- 1P NEXT -->
     <div class="side-box">
-      <span style="font-size:0.65rem; color:var(--sub); text-align:center;">NEXT</span>
+      <span style="font-size:0.6rem; color:var(--sub); text-align:center;">NEXT</span>
       <canvas id="nextCanvas" width="45" height="225"></canvas>
     </div>
 
-    <!-- 2P 相手画面 -->
     <div class="p2-container">
       <div class="p2-title">OPPONENT</div>
       <canvas id="p2Canvas" width="100" height="200"></canvas>
     </div>
   </div>
 
-  <!-- モバイル操作ボタン -->
   <div class="controls">
     <button id="btnL">←</button>
     <button id="btnR">→</button>
@@ -136,30 +135,26 @@
     <button id="btnHard" class="danger">↑</button>
     <button id="btnRotL" class="alt">↺</button>
     <button id="btnRotR">↻</button>
-    <button id="btnHold" class="alt" style="grid-column: span 6;">HOLD</button>
+    <button id="btnHold" class="alt" style="grid-column: span 6; height: 45px;">HOLD</button>
   </div>
 
-  <!-- 設定・ホストルールのモーダル -->
   <div id="settingsModal" class="modal hidden">
     <div class="panel">
-      <h3>操作・対戦設定</h3>
-      
+      <h3>設定・ルール</h3>
       <div class="row">
-        <label>DAS (移動開始時間)</label>
-        <div><input type="number" id="cfgDas" value="150" step="10" style="width:60px"> ms</div>
+        <label>DAS (長押し開始)</label>
+        <div><input type="number" id="cfgDas" value="150" step="10" style="width:55px"> ms</div>
       </div>
       <div class="row">
-        <label>ARR (連続移動速度)</label>
-        <div><input type="number" id="cfgArr" value="30" step="5" style="width:60px"> ms</div>
+        <label>ARR (連続移動)</label>
+        <div><input type="number" id="cfgArr" value="30" step="5" style="width:55px"> ms</div>
       </div>
       <div class="row">
-        <label>ソフトドロップ速度</label>
-        <div><input type="number" id="cfgSd" value="20" step="5" style="width:60px"> ms</div>
+        <label>ソフトドロップ</label>
+        <div><input type="number" id="cfgSd" value="20" step="5" style="width:55px"> ms</div>
       </div>
-
       <hr style="border:0; border-top:1px solid var(--border); margin:10px 0;">
       <div style="font-size:0.75rem; color:var(--sub); margin-bottom:6px;">対戦ルール (ホスト設定)</div>
-
       <div class="row">
         <label>NEXTツモ順</label>
         <select id="cfgNextMode">
@@ -168,7 +163,7 @@
         </select>
       </div>
       <div class="row">
-        <label>穴切替確率 (穴バラ)</label>
+        <label>穴切替確率</label>
         <select id="cfgHoleChange">
           <option value="0.3">30% (標準)</option>
           <option value="0">0% (完全直進)</option>
@@ -176,14 +171,12 @@
         </select>
       </div>
       <div class="row">
-        <label>通信同期 (更新頻度)</label>
+        <label>通信同期</label>
         <select id="cfgSyncInterval">
-          <option value="16">ヌルヌル (16ms / Wi-Fi推奨)</option>
           <option value="40">標準 (40ms)</option>
-          <option value="80" selected>省データ (80ms / モバイル推奨)</option>
+          <option value="80" selected>省データ (80ms)</option>
         </select>
       </div>
-
       <div style="display:flex; gap:8px; margin-top:14px;">
         <button id="btnCloseSettings" class="alt" style="flex:1">閉じる</button>
         <button id="btnStartGame" style="flex:1">ゲーム開始</button>
@@ -197,8 +190,7 @@
 // ==========================================
 // 定数 ＆ 初期データ
 // ==========================================
-const COLS = 10, ROWS = 20;
-const BLOCK_SIZE = 20;
+const COLS = 10, ROWS = 20, BLOCK_SIZE = 20;
 
 const SHAPES = {
   I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
@@ -210,11 +202,7 @@ const SHAPES = {
   Z: [[1,1,0],[0,1,1],[0,0,0]]
 };
 
-const COLORS = {
-  I: '#00f0f0', J: '#0000f0', L: '#f0a000',
-  O: '#f0f000', S: '#00f000', T: '#a000f0', Z: '#f00000',
-  X: '#888888'
-};
+const COLORS = { I: '#00f0f0', J: '#0000f0', L: '#f0a000', O: '#f0f000', S: '#00f000', T: '#a000f0', Z: '#f00000', X: '#888888' };
 
 const KICK_STD = {
   '0-1': [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]], '1-0': [[0,0],[1,0],[1,-1],[0,2],[1,2]],
@@ -232,28 +220,19 @@ const KICK_I = {
 // ==========================================
 // ゲーム状態 ＆ タイマー変数
 // ==========================================
-let board = Array.from({length: ROWS}, () => Array(COLS).fill(null));
-let cur = null, holdPiece = null, canHold = true;
+let board = [], cur = null, holdPiece = null, canHold = true;
 let bag = [], nextQ = [];
-let ren = -1, b2b = false;
-let pendingGarbage = 0, pendingHoles = [];
+let ren = -1, b2b = false, pendingGarbage = 0, pendingHoles = [];
 let isEnded = false;
 
-// 自然落下制御（requestAnimationFrame化によりタイマー重複を回避）
-let dropCounter = 0;
-let lastTime = 0;
-const GRAVITY_DELAY = 1000;
+let lastDropTime = 0, GRAVITY_DELAY = 1000;
 let keyTimers = {};
+let maxY = 0, lockMoves = 0; // 接地タイマー・15回制限用
 
-// 設定パラメータ
 let config = { das: 150, arr: 30, sd: 20 };
 let vsRule = { nextMode: 'common', holeChange: 0.3, syncInterval: 80, seed: 12345 };
+let peer = null, conn = null, isHost = false, lastSendPosT = 0;
 
-// 通信関連
-let peer = null, conn = null, isHost = false;
-let lastSendPosT = 0;
-
-// Canvas Contexts
 const ctx = document.getElementById('mainCanvas').getContext('2d');
 const holdCtx = document.getElementById('holdCanvas').getContext('2d');
 const nextCtx = document.getElementById('nextCanvas').getContext('2d');
@@ -286,19 +265,16 @@ document.getElementById('btnCreateRoom').onclick = () => {
   peer = new Peer('wtvs-' + code);
   peer.on('open', () => {
     isHost = true;
-    document.getElementById('netStatus').textContent = `部屋を作成しました: ${code}`;
+    document.getElementById('netStatus').textContent = `部屋: ${code} (相手を待っています...)`;
     document.getElementById('settingsModal').classList.remove('hidden');
   });
-  peer.on('connection', (c) => {
-    conn = c; setupConn();
-    document.getElementById('netStatus').textContent = `相手が接続しました！`;
-  });
+  peer.on('connection', (c) => { conn = c; setupConn(); document.getElementById('netStatus').textContent = `相手が接続しました`; });
   peer.on('error', err => toast('エラー: ' + err.type));
 };
 
 document.getElementById('btnJoinRoom').onclick = () => {
   const code = document.getElementById('roomInput').value.trim();
-  if (code.length !== 5) return toast('5桁のコードを入力してください');
+  if (code.length !== 5) return toast('5桁のコードを入力');
   peer = new Peer();
   peer.on('open', () => {
     conn = peer.connect('wtvs-' + code);
@@ -315,53 +291,39 @@ function setupConn() {
       conn.send({ type: 'RULE', rule: vsRule });
     }
   });
-  conn.on('data', handleNetData);
+  conn.on('data', data => {
+    if (data.type === 'RULE') vsRule = data.rule;
+    if (data.type === 'START') { vsRule = data.rule; initGame(); }
+    if (data.type === 'POS') drawP2(data.board, data.cur);
+    if (data.type === 'LOCK') drawP2(data.board, null);
+    if (data.type === 'ATTACK') receiveAttack(data.holes);
+    if (data.type === 'GAMEOVER') { toast('WIN! 相手が倒れました！'); isEnded = true; }
+  });
   conn.on('close', () => document.getElementById('netStatus').textContent = '相手が切断しました');
 }
-
-function handleNetData(data) {
-  switch (data.type) {
-    case 'RULE': vsRule = data.rule; break;
-    case 'START': vsRule = data.rule; initGame(); break;
-    case 'POS': drawP2(data.board, data.cur); break;
-    case 'LOCK': drawP2(data.board, null); break;
-    case 'ATTACK': receiveAttack(data.holes); break;
-    case 'GAMEOVER': toast('WIN! 相手が倒れました！'); isEnded = true; break;
-  }
-}
-
-function sendNet(data) {
-  if (conn && conn.open) conn.send(data);
-}
+function sendNet(data) { if (conn && conn.open) conn.send(data); }
 
 // ==========================================
-// テトリス基本ロジック ＆ 軽量ゲームループ
+// テトリス基本ロジック ＆ ゲームループ
 // ==========================================
-function startDropTimer() {
-  dropCounter = 0; // 重力落下タイマーのカウントのみクリア（setIntervalを使わない）
-}
-
-function gameLoop(time = 0) {
-  if (!isEnded) {
-    const deltaTime = time - lastTime;
-    lastTime = time;
-
-    dropCounter += deltaTime;
-    if (dropCounter >= GRAVITY_DELAY) {
+function gameLoop(timestamp) {
+  if (!lastDropTime) lastDropTime = timestamp;
+  if (!isEnded && cur) {
+    if (timestamp - lastDropTime >= GRAVITY_DELAY) {
       if (!move(0, 1)) {
         lockPiece();
       }
-      dropCounter = 0;
+      // 自然落下時はタイマーリセット
+      lastDropTime = timestamp;
     }
   }
+  render();
   requestAnimationFrame(gameLoop);
 }
 
 function getShapeMatrix(type, rot) {
   let m = SHAPES[type];
-  for (let i = 0; i < rot; i++) {
-    m = m[0].map((_, c) => m.map(row => row[c]).reverse());
-  }
+  for (let i = 0; i < rot; i++) m = m[0].map((_, c) => m.map(row => row[c]).reverse());
   return m;
 }
 
@@ -379,14 +341,11 @@ function spawnPiece() {
     if (bag.length === 0) refillBag();
     nextQ.push(bag.shift());
   }
-  const type = nextQ.shift();
-  cur = { type, x: 3, y: 0, r: 0, lastRot: false };
-  canHold = true;
+  cur = { type: nextQ.shift(), x: 3, y: 0, r: 0, lastRot: false };
+  canHold = true; maxY = 0; lockMoves = 0;
 
   if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
-    isEnded = true;
-    sendNet({ type: 'GAMEOVER' });
-    toast('GAME OVER');
+    isEnded = true; sendNet({ type: 'GAMEOVER' }); toast('GAME OVER');
   }
   drawNext();
 }
@@ -406,22 +365,26 @@ function checkCollision(x, y, type, r) {
 }
 
 function move(dx, dy) {
-  if (isEnded) return false;
+  if (isEnded || !cur) return false;
   if (!checkCollision(cur.x + dx, cur.y + dy, cur.type, cur.r)) {
     cur.x += dx; cur.y += dy; cur.lastRot = false;
-
-    // 下移動（ソフトドロップ含む）成功時に落下カウントをリセット
-    if (dy > 0) {
-      startDropTimer();
+    
+    // 最下層更新または横移動時の猶予タイマーリセット
+    if (dy > 0 && cur.y > maxY) {
+      maxY = cur.y; lockMoves = 0;
+      lastDropTime = performance.now();
+    } else if (dx !== 0 && lockMoves < 15) {
+      lockMoves++;
+      lastDropTime = performance.now();
     }
-
-    sendPosThrottled(); render(); return true;
+    sendPosThrottled();
+    return true;
   }
   return false;
 }
 
 function rotate(dir) {
-  if (isEnded) return;
+  if (isEnded || !cur) return;
   const newR = (cur.r + dir + 4) % 4;
   const key = `${cur.r}-${newR}`;
   const kicks = (cur.type === 'I') ? KICK_I[key] : KICK_STD[key];
@@ -429,38 +392,28 @@ function rotate(dir) {
   for (let [kx, ky] of kicks) {
     if (!checkCollision(cur.x + kx, cur.y - ky, cur.type, newR)) {
       cur.x += kx; cur.y -= ky; cur.r = newR; cur.lastRot = true;
-      sendPosThrottled(); render(); return;
+      if (lockMoves < 15) {
+        lockMoves++;
+        lastDropTime = performance.now();
+      }
+      sendPosThrottled();
+      return;
     }
   }
 }
 
 function hardDrop() {
-  if (isEnded) return;
-  while (move(0, 1));
+  if (isEnded || !cur) return;
+  while (!checkCollision(cur.x, cur.y + 1, cur.type, cur.r)) cur.y++;
   lockPiece();
-}
-
-function checkTSpin() {
-  if (cur.type !== 'T' || !cur.lastRot) return { isTS: false, isMini: false };
-  const corners = [[0,0],[2,0],[0,2],[2,2]];
-  let cnt = 0;
-  corners.forEach(([cx, cy]) => {
-    let nx = cur.x + cx, ny = cur.y + cy;
-    if (nx < 0 || nx >= COLS || ny >= ROWS || (ny >= 0 && board[ny][nx])) cnt++;
-  });
-  return { isTS: cnt >= 3, isMini: cnt === 3 };
 }
 
 function lockPiece() {
   const m = getShapeMatrix(cur.type, cur.r);
   m.forEach((row, r) => row.forEach((val, c) => {
-    if (val) {
-      let ny = cur.y + r;
-      if (ny >= 0) board[ny][cur.x + c] = cur.type;
-    }
+    if (val && cur.y + r >= 0) board[cur.y + r][cur.x + c] = cur.type;
   }));
 
-  const ts = checkTSpin();
   let cleared = 0;
   for (let r = ROWS - 1; r >= 0; r--) {
     if (board[r].every(c => c !== null)) {
@@ -470,50 +423,27 @@ function lockPiece() {
     }
   }
 
-  let attack = 0;
   if (cleared > 0) {
-    ren++;
-    const isDifficult = ts.isTS || cleared === 4;
-    let baseAtk = 0;
+    ren++; b2b = (cleared === 4);
+    let attack = [0,0,1,2,4][cleared] + [0,0,1,1,2,2,3,3,4,4,5][Math.min(ren, 10)];
+    if (b2b) attack += 1;
+    sendAttack(attack);
+  } else { ren = -1; }
 
-    if (ts.isTS) {
-      if (ts.isMini) baseAtk = cleared === 1 ? 1 : 2;
-      else baseAtk = cleared === 1 ? 2 : cleared === 2 ? 4 : 6;
-    } else {
-      baseAtk = [0, 0, 1, 2, 4][cleared];
-    }
-
-    if (isDifficult) {
-      if (b2b) baseAtk += 1;
-      b2b = true;
-    } else {
-      b2b = false;
-    }
-
-    const renAtk = [0,0,1,1,2,2,3,3,4,4,5][Math.min(ren, 10)];
-    attack = baseAtk + renAtk;
-
-    if (board.every(row => row.every(c => c === null))) attack += 10;
-  } else {
-    ren = -1;
-  }
-
-  sendAttack(attack);
   applyGarbageOnLock();
-
   sendNet({ type: 'LOCK', board });
-  spawnPiece(); render();
+  
+  spawnPiece();
+  lastDropTime = performance.now();
 }
 
 function generateHoles(power, rate) {
-  if (power <= 0) return [];
   const holes = [];
-  let h = Math.floor(Math.random() * COLS);
+  let h = Math.floor(Math.random() * COLS); // おじゃまの穴はMath.randomで生成
   holes.push(h);
   for (let i = 1; i < power; i++) {
     if (Math.random() < rate) {
-      let nh;
-      do { nh = Math.floor(Math.random() * COLS); } while (nh === h);
+      let nh; do { nh = Math.floor(Math.random() * COLS); } while (nh === h);
       h = nh;
     }
     holes.push(h);
@@ -524,76 +454,52 @@ function generateHoles(power, rate) {
 function sendAttack(power) {
   if (power <= 0) return;
   if (pendingGarbage > 0) {
-    if (power >= pendingGarbage) {
-      power -= pendingGarbage;
-      pendingGarbage = 0; pendingHoles = [];
-    } else {
-      pendingGarbage -= power;
-      pendingHoles.splice(0, power);
-      power = 0;
-    }
+    if (power >= pendingGarbage) { power -= pendingGarbage; pendingGarbage = 0; pendingHoles = []; }
+    else { pendingGarbage -= power; pendingHoles.splice(0, power); power = 0; }
     updateGbBar();
   }
-  if (power > 0) {
-    const holes = generateHoles(power, vsRule.holeChange);
-    sendNet({ type: 'ATTACK', holes });
-  }
+  if (power > 0) sendNet({ type: 'ATTACK', holes: generateHoles(power, vsRule.holeChange) });
 }
 
-function receiveAttack(holes) {
-  pendingGarbage += holes.length;
-  pendingHoles.push(...holes);
-  updateGbBar();
-}
+function receiveAttack(holes) { pendingGarbage += holes.length; pendingHoles.push(...holes); updateGbBar(); }
 
 function applyGarbageOnLock() {
   if (pendingGarbage <= 0) return;
-  const count = pendingGarbage;
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < pendingGarbage; i++) {
     const hole = pendingHoles.shift() ?? Math.floor(Math.random() * COLS);
     board.shift();
-    const row = Array(COLS).fill('X');
-    row[hole] = null;
+    const row = Array(COLS).fill('X'); row[hole] = null;
     board.push(row);
   }
-  pendingGarbage = 0; pendingHoles = [];
-  updateGbBar();
+  pendingGarbage = 0; pendingHoles = []; updateGbBar();
 }
 
-function updateGbBar() {
-  const bar = document.getElementById('garbageBar');
-  bar.style.width = Math.min(100, (pendingGarbage / 20) * 100) + '%';
-}
+function updateGbBar() { document.getElementById('garbageBar').style.width = Math.min(100, (pendingGarbage / 20) * 100) + '%'; }
 
 function doHold() {
-  if (!canHold || isEnded) return;
-  if (!holdPiece) {
-    holdPiece = cur.type;
-    spawnPiece();
-  } else {
+  if (!canHold || isEnded || !cur) return;
+  if (!holdPiece) { holdPiece = cur.type; spawnPiece(); }
+  else {
     let tmp = cur.type;
     cur = { type: holdPiece, x: 3, y: 0, r: 0, lastRot: false };
     holdPiece = tmp;
   }
-  canHold = false;
-  drawHold(); render();
+  canHold = false; maxY = 0; lockMoves = 0;
+  drawHold(); lastDropTime = performance.now();
 }
 
 function sendPosThrottled() {
   const now = Date.now();
   if (now - lastSendPosT >= (vsRule.syncInterval || 80)) {
-    sendNet({
-      type: 'POS', board,
-      cur: { x: cur.x, y: cur.y, r: cur.r, type: cur.type }
-    });
+    sendNet({ type: 'POS', board, cur: { x: cur.x, y: cur.y, r: cur.r, type: cur.type } });
     lastSendPosT = now;
   }
 }
 
 // ==========================================
-// DAS / ARR / ソフトドロップ 長押し制御
+// DAS / ARR / 長押し制御
 // ==========================================
-function updateConfigFromUI() {
+function updateConfig() {
   config.das = parseInt(document.getElementById('cfgDas').value, 10) || 150;
   config.arr = parseInt(document.getElementById('cfgArr').value, 10) || 30;
   config.sd = parseInt(document.getElementById('cfgSd').value, 10) || 20;
@@ -601,23 +507,18 @@ function updateConfigFromUI() {
 
 function handlePressStart(actionKey, actionFn, speedInterval) {
   if (keyTimers[actionKey]) return;
-  updateConfigFromUI();
-  actionFn();
-
+  updateConfig(); actionFn();
   const dasTimer = setTimeout(() => {
-    const arrTimer = setInterval(() => {
-      if (!actionFn()) handlePressEnd(actionKey);
-    }, speedInterval);
+    const arrTimer = setInterval(() => { if (!actionFn()) handlePressEnd(actionKey); }, speedInterval);
     if (keyTimers[actionKey]) keyTimers[actionKey].arr = arrTimer;
   }, config.das);
-
   keyTimers[actionKey] = { das: dasTimer, arr: null };
 }
 
 function handlePressEnd(actionKey) {
   if (keyTimers[actionKey]) {
     clearTimeout(keyTimers[actionKey].das);
-    if (keyTimers[actionKey].arr) clearInterval(keyTimers[actionKey].arr);
+    clearInterval(keyTimers[actionKey].arr);
     delete keyTimers[actionKey];
   }
 }
@@ -627,27 +528,21 @@ function handlePressEnd(actionKey) {
 // ==========================================
 function render() {
   ctx.clearRect(0, 0, 200, 400);
-
   board.forEach((row, r) => row.forEach((val, c) => {
-    if (val) {
-      ctx.fillStyle = COLORS[val];
-      ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
-    }
+    if (val) { ctx.fillStyle = COLORS[val]; ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1); }
   }));
 
   if (!cur || isEnded) return;
-
-  // ゴースト
   let gy = cur.y;
   while (!checkCollision(cur.x, gy + 1, cur.type, cur.r)) gy++;
   const m = getShapeMatrix(cur.type, cur.r);
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  
+  ctx.fillStyle = 'rgba(255,255,255,0.25)'; // ゴースト
   m.forEach((row, r) => row.forEach((val, c) => {
     if (val) ctx.fillRect((cur.x + c) * BLOCK_SIZE, (gy + r) * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
   }));
 
-  // 操作中ミノ
-  ctx.fillStyle = COLORS[cur.type];
+  ctx.fillStyle = COLORS[cur.type]; // 操作中
   m.forEach((row, r) => row.forEach((val, c) => {
     if (val) ctx.fillRect((cur.x + c) * BLOCK_SIZE, (cur.y + r) * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
   }));
@@ -656,40 +551,26 @@ function render() {
 function drawHold() {
   holdCtx.clearRect(0, 0, 45, 45);
   if (!holdPiece) return;
-  const m = SHAPES[holdPiece];
-  holdCtx.fillStyle = COLORS[holdPiece];
-  m.forEach((row, r) => row.forEach((val, c) => {
-    if (val) holdCtx.fillRect(c * 9 + 9, r * 9 + 9, 8, 8);
-  }));
+  const m = SHAPES[holdPiece]; holdCtx.fillStyle = COLORS[holdPiece];
+  m.forEach((row, r) => row.forEach((val, c) => { if (val) holdCtx.fillRect(c * 9 + 9, r * 9 + 9, 8, 8); }));
 }
 
 function drawNext() {
   nextCtx.clearRect(0, 0, 45, 225);
   nextQ.slice(0, 5).forEach((type, idx) => {
-    const m = SHAPES[type];
-    nextCtx.fillStyle = COLORS[type];
-    m.forEach((row, r) => row.forEach((val, c) => {
-      if (val) nextCtx.fillRect(c * 8 + 7, idx * 40 + r * 8 + 8, 7, 7);
-    }));
+    const m = SHAPES[type]; nextCtx.fillStyle = COLORS[type];
+    m.forEach((row, r) => row.forEach((val, c) => { if (val) nextCtx.fillRect(c * 8 + 7, idx * 40 + r * 8 + 8, 7, 7); }));
   });
 }
 
 function drawP2(bBoard, p2Cur) {
   p2Ctx.clearRect(0, 0, 100, 200);
-  if (bBoard) {
-    bBoard.forEach((row, r) => row.forEach((val, c) => {
-      if (val) {
-        p2Ctx.fillStyle = COLORS[val];
-        p2Ctx.fillRect(c * 10, r * 10, 9, 9);
-      }
-    }));
-  }
+  if (bBoard) bBoard.forEach((row, r) => row.forEach((val, c) => {
+    if (val) { p2Ctx.fillStyle = COLORS[val]; p2Ctx.fillRect(c * 10, r * 10, 9, 9); }
+  }));
   if (p2Cur) {
-    const m = getShapeMatrix(p2Cur.type, p2Cur.r);
-    p2Ctx.fillStyle = COLORS[p2Cur.type];
-    m.forEach((row, r) => row.forEach((val, c) => {
-      if (val) p2Ctx.fillRect((p2Cur.x + c) * 10, (p2Cur.y + r) * 10, 9, 9);
-    }));
+    const m = getShapeMatrix(p2Cur.type, p2Cur.r); p2Ctx.fillStyle = COLORS[p2Cur.type];
+    m.forEach((row, r) => row.forEach((val, c) => { if (val) p2Ctx.fillRect((p2Cur.x + c) * 10, (p2Cur.y + r) * 10, 9, 9); }));
   }
 }
 
@@ -702,11 +583,12 @@ function initGame() {
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
   isEnded = false; updateGbBar();
 
+  // シード値同期適用
   if (vsRule.nextMode === 'common') rnd = seededRandom(vsRule.seed);
   else rnd = Math.random;
 
-  spawnPiece(); drawHold(); render();
-  startDropTimer();
+  spawnPiece(); drawHold();
+  lastDropTime = performance.now();
 }
 
 document.getElementById('btnOpenSettings').onclick = () => document.getElementById('settingsModal').classList.remove('hidden');
@@ -716,7 +598,7 @@ document.getElementById('btnStartGame').onclick = () => {
   vsRule.nextMode = document.getElementById('cfgNextMode').value;
   vsRule.holeChange = parseFloat(document.getElementById('cfgHoleChange').value);
   vsRule.syncInterval = parseInt(document.getElementById('cfgSyncInterval').value, 10);
-  vsRule.seed = Math.floor(Math.random() * 1000000);
+  vsRule.seed = Math.floor(Math.random() * 1000000); // ホストがシードを生成
 
   document.getElementById('settingsModal').classList.add('hidden');
   sendNet({ type: 'START', rule: vsRule });
@@ -734,48 +616,39 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'x' || e.key === 'X') rotate(1);
   if (e.key === 'c' || e.key === 'C') doHold();
 });
-
 document.addEventListener('keyup', (e) => {
   if (e.key === 'ArrowLeft')  handlePressEnd('left');
   if (e.key === 'ArrowRight') handlePressEnd('right');
   if (e.key === 'ArrowDown')  handlePressEnd('down');
 });
 
-// タッチボタン長押しバインド (DAS / ARR / ソフトドロップ)
-function bindTouchButton(elementId, actionKey, actionFn, intervalGetter) {
-  const btn = document.getElementById(elementId);
+// スマホタッチ制御 (長押し対象のみ)
+function bindTouchButton(id, key, fn, interval) {
+  const btn = document.getElementById(id);
   if (!btn) return;
-  const start = (e) => { e.preventDefault(); handlePressStart(actionKey, actionFn, intervalGetter()); };
-  const end = (e) => { e.preventDefault(); handlePressEnd(actionKey); };
-
-  btn.addEventListener('pointerdown', start);
-  btn.addEventListener('pointerup', end);
-  btn.addEventListener('pointercancel', end);
-  btn.addEventListener('pointerleave', end);
+  const start = (e) => { e.preventDefault(); handlePressStart(key, fn, interval()); };
+  const end = (e) => { e.preventDefault(); handlePressEnd(key); };
+  btn.addEventListener('pointerdown', start); btn.addEventListener('pointerup', end);
+  btn.addEventListener('pointercancel', end); btn.addEventListener('pointerleave', end);
 }
-
-// タッチボタン単発タップバインド (二重発火防止)
-function bindTapButton(elementId, actionFn) {
-  const btn = document.getElementById(elementId);
+// スマホタッチ制御 (単発タップ専用)
+function bindTapButton(id, fn) {
+  const btn = document.getElementById(id);
   if (!btn) return;
-  btn.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    actionFn();
-  });
+  btn.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
 }
 
 bindTouchButton('btnL', 'left', () => move(-1, 0), () => config.arr);
 bindTouchButton('btnR', 'right', () => move(1, 0), () => config.arr);
 bindTouchButton('btnSoft', 'down', () => move(0, 1), () => config.sd);
 
-bindTapButton('btnHard', () => hardDrop());
+bindTapButton('btnHard', hardDrop);
 bindTapButton('btnRotL', () => rotate(-1));
 bindTapButton('btnRotR', () => rotate(1));
-bindTapButton('btnHold', () => doHold());
+bindTapButton('btnHold', doHold);
 
-// スタート
 initGame();
-requestAnimationFrame(gameLoop); // ゲームループ起動
+requestAnimationFrame(gameLoop);
 </script>
 </body>
 </html>
