@@ -214,6 +214,27 @@
     </div>
   </div>
 
+  <!-- 作者用テンプレート管理（隠しメニュー） -->
+  <div id="adminModal" class="modal hidden">
+    <div class="panel" style="max-height:85vh; overflow:auto;">
+      <h3>作者メニュー / テンプレ管理</h3>
+      <p style="font-size:.85rem;color:var(--sub)">このメニューはローカルのブラウザ内だけで動作します。追加したテンプレはこの端末に保存されます。</p>
+      <div id="templateList" style="display:flex;flex-direction:column;gap:8px;margin:12px 0"></div>
+      <hr style="border:0;border-top:1px solid var(--border);margin:12px 0">
+      <label for="templateName">テンプレ名</label>
+      <input id="templateName" type="text" placeholder="例：新しい積み方" style="width:100%;box-sizing:border-box;margin:6px 0 10px">
+      <label for="templatePattern">盤面パターン（1行10文字、使用文字 I J L O S T Z .）</label>
+      <textarea id="templatePattern" rows="7" placeholder="..........
+....T.....
+..TTT....." style="width:100%;box-sizing:border-box;margin:6px 0 10px;font-family:monospace"></textarea>
+      <label style="display:flex;align-items:center;gap:8px;margin:8px 0"><input id="templateMirror" type="checkbox" checked> 左右反転パターンも自動生成</label>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button id="btnAddTemplate" style="flex:1">テンプレ追加</button>
+        <button id="btnCloseAdmin" class="alt" style="flex:1">閉じる</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
 <script>
@@ -258,6 +279,29 @@ let config = { das: 150, arr: 30, sd: 20 };
 let vsRule = { nextMode: 'common', holeChange: 0.3, seed: 12345, posInterval: 33 };
 let peer = null, conn = null, isHost = false, lastSendPosT = 0;
 let rematchRequested = false, remoteRematchRequested = false;
+let adminMode = false;
+const DEFAULT_TEMPLATE_DATA = [
+  { name: '山岳積み2号', priority: 30, pattern: ['JJOO......','JSOO..L..I','JSS...LLLI','ISS.ZZLLLI','ISS..ZZTLI','IJS.ZZTTOO','IJJJ.ZZTOO'] },
+  { name: '山岳積み2号・派生', priority: 30, pattern: ['......ZZ..','.......ZZ.','I..J..LLOO','IJJJ...LOO','IJJJSS.LZI','IJTSS..ZZI','OOTTSS.ZLI','OOTSS.LLLI'] },
+  { name: 'アトラス積み', priority: 20, pattern: ['.........I','.ZZ......I','OOZZSS...I','OOLSS....I','LLLSS.JJJI','JJSSZ..TJI','JOOZZ.LTTI','JOOZLLLT.I'] },
+  { name: '開幕TSD', priority: 25, pattern: ['...JJJ....','L..ZZJS...','L...ZZSSOO','LL.IIIISOO'] },
+  { name: 'あずにゃん砲 / 開幕DT砲', priority: 10, pattern: ['..LL....SS','...LZZ.SSI','JJ.LTZZOOI','J..TTTIOOI','J...SSIZZI','OO.SSLIJZZ','OO.LLLIJJJ'] },
+  { name: 'ガムシロ積み・基本形', priority: 40, pattern: ['..I......Z','..IT....ZZ','OOITTSS.ZL','OOITSS.LLL'] }
+];
+let templateData = loadTemplateData();
+function loadTemplateData() {
+  try {
+    const saved = localStorage.getItem('p2pTetrisTemplatesV1');
+    return saved ? JSON.parse(saved) : DEFAULT_TEMPLATE_DATA.map(t => ({...t, enabled:true, mirror:true}));
+  } catch (_) { return DEFAULT_TEMPLATE_DATA.map(t => ({...t, enabled:true, mirror:true})); }
+}
+function saveTemplateData() {
+  try { localStorage.setItem('p2pTetrisTemplatesV1', JSON.stringify(templateData)); } catch (_) {}
+}
+function mirrorTemplateRows(rows) {
+  const swap = { J:'L', L:'J', S:'Z', Z:'S' };
+  return rows.map(row => [...row].reverse().map(ch => swap[ch] || ch).join(''));
+}
 
 const ctx = document.getElementById('mainCanvas').getContext('2d');
 const garbagePreviewCtx = document.getElementById('garbagePreviewCanvas').getContext('2d');
@@ -817,6 +861,54 @@ document.getElementById('btnOpenSettings').onclick = () => {
   document.getElementById('settingsModal').classList.remove('hidden');
 };
 document.getElementById('btnCloseSettings').onclick = () => document.getElementById('settingsModal').classList.add('hidden');
+
+function tryOpenAdminMode() {
+  const arr = Number(document.getElementById('cfgArr').value);
+  const sd = Number(document.getElementById('cfgSd').value);
+  if (arr !== 490 || sd !== 490) return;
+  adminMode = true;
+  document.getElementById('cfgArr').value = '30';
+  document.getElementById('cfgSd').value = '20';
+  config.arr = 30; config.sd = 20;
+  document.getElementById('settingsModal').classList.add('hidden');
+  renderTemplateList();
+  document.getElementById('adminModal').classList.remove('hidden');
+  if (typeof showToast === 'function') showToast('作者メニューを開きました');
+}
+document.getElementById('cfgArr').addEventListener('change', tryOpenAdminMode);
+document.getElementById('cfgSd').addEventListener('change', tryOpenAdminMode);
+function renderTemplateList() {
+  const list = document.getElementById('templateList');
+  list.innerHTML = '';
+  templateData.forEach((t, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:9px;display:flex;gap:8px;align-items:center';
+    const info = document.createElement('div'); info.style.flex = '1';
+    const count = Array.isArray(t.pattern) ? t.pattern.length : 0;
+    info.innerHTML = `<strong>${escapeHtml(t.name)}</strong><div style="font-size:.75rem;color:var(--sub)">${count}行 · 優先度 ${Number(t.priority)||0}${t.mirror ? ' · 左右反転あり' : ''}</div>`;
+    const toggle = document.createElement('button'); toggle.className = 'alt'; toggle.textContent = t.enabled === false ? '無効' : '有効';
+    toggle.onclick = () => { t.enabled = t.enabled === false; saveTemplateData(); renderTemplateList(); };
+    const mirror = document.createElement('button'); mirror.className = 'alt'; mirror.textContent = '反転';
+    mirror.onclick = () => { const preview = mirrorTemplateRows(t.pattern || []); alert(t.name + '（左右反転）\n\n' + preview.join('\n')); };
+    row.append(info, toggle, mirror); list.appendChild(row);
+  });
+}
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+document.getElementById('btnAddTemplate').onclick = () => {
+  const name = document.getElementById('templateName').value.trim();
+  const raw = document.getElementById('templatePattern').value.trim();
+  const rows = raw.split(/\r?\n/).map(r => r.trim());
+  if (!name || !raw) { alert('テンプレ名と盤面パターンを入力してください。'); return; }
+  if (rows.some(r => r.length !== 10 || /[^IJLOSTZ.]/.test(r))) {
+    alert('各行を10文字にし、I J L O S T Z . だけを使ってください。'); return;
+  }
+  templateData.push({ name, priority: 10, pattern: rows, enabled: true, mirror: document.getElementById('templateMirror').checked });
+  saveTemplateData(); renderTemplateList();
+  document.getElementById('templateName').value = ''; document.getElementById('templatePattern').value = '';
+};
+document.getElementById('btnCloseAdmin').onclick = () => document.getElementById('adminModal').classList.add('hidden');
 
 document.addEventListener('keydown', (e) => {
   if (e.repeat || !document.getElementById('gameScreen').classList.contains('active')) return;
