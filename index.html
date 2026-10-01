@@ -891,11 +891,12 @@ function scoreAgainstTemplate(candidate, variant) {
     const actual = candidate.board[start + pr][c];
     if (target !== '.') {
       occupiedTarget++;
-      if (actual !== null) exact++;
+      if (actual === target) exact++;
+      else if (actual !== null) wrong++;
     } else if (actual !== null) extra++;
   }
   if (!occupiedTarget) return null;
-  // Target silhouette cells are rewarded regardless of which piece type fills them.
+  // Only the matching mino type counts as correct; wrong types are penalized.
   const similarity = (exact * 5 - wrong * 4 - extra * 2) / occupiedTarget;
   // Progress in early setup matters, but don't force a template if nothing matches.
   const score = similarity * 100 + variant.priority * 0.12 + candidate.cleared * 5;
@@ -932,14 +933,14 @@ function placementFitsTemplate(candidate, variant) {
     const yy = candidate.y + r, xx = candidate.x + c;
     const pr = yy - start;
     if (yy < 0 || pr < 0 || pr >= rows.length || xx < 0 || xx >= COLS) return false;
-    if (rows[pr][xx] === '.') return false;
+    if (rows[pr][xx] !== candidate.type) return false;
     cells++;
   }
   if (cells !== 4) return false;
-  // Existing blocks inside the template area must already agree with the target.
+  // Existing blocks must match the exact template mino type and stay inside its shape.
   for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) {
     const actual = candidate.board[start + r][c];
-    if (actual !== null && rows[r][c] === '.') return false;
+    if (actual !== null && actual !== rows[r][c]) return false;
   }
   return true;
 }
@@ -953,14 +954,15 @@ function rawTemplateScore(candidate, variant) {
     const target = rows[r][c], actual = candidate.board[start + r][c];
     if (target !== '.') {
       targetCount++;
-      if (actual !== null) exact++;
+      if (actual === target) exact++;
+      else if (actual !== null) wrong++;
     } else if (actual !== null) extra++;
   }
   if (!targetCount) return -Infinity;
-  // Reward occupied target cells regardless of piece color; penalize blocks outside the target silhouette.
+  // Reward exact mino-type matches and penalize wrong types or blocks outside the target.
   const heightPenalty = candidate.board.findIndex(row => row.some(Boolean));
   const height = heightPenalty < 0 ? 0 : ROWS - heightPenalty;
-  return (exact * 6) - (wrong * 5) - (extra * 2) + candidate.cleared * 8 - height * 0.08 - Math.abs(candidate.x - 3) * 0.01;
+  return (exact * 6) - (wrong * 8) - (extra * 4) + candidate.cleared * 8 - height * 0.08 - Math.abs(candidate.x - 3) * 0.01;
 }
 
 function findAiSuggestion() {
@@ -1245,52 +1247,107 @@ function activeTemplateComplete(variant) {
   if (!variant || !variant.pattern) return false;
   const start = ROWS - variant.pattern.length;
   for (let r = 0; r < variant.pattern.length; r++) for (let c = 0; c < COLS; c++) {
-    if (variant.pattern[r][c] !== '.' && !board[start + r]?.[c]) return false;
+    if (variant.pattern[r][c] !== '.' && board[start + r]?.[c] !== variant.pattern[r][c]) return false;
     if (variant.pattern[r][c] === '.' && board[start + r]?.[c]) return false;
   }
   return true;
 }
+function findExactGhostPlacement(type) {
+  // Search only real gravity landings. A candidate is accepted only when all four
+  // mino cells exactly occupy cells of the same type in the template.
+  const variants = getTemplateVariants();
+  for (const variant of variants) {
+    const rows = variant.pattern;
+    if (!rows?.length || rows.some(row => row.length !== COLS || /[^IJLOSTZ.]/.test(row))) continue;
+    const top = ROWS - rows.length;
+    for (let rot = 0; rot < 4; rot++) for (let x = -3; x < COLS; x++) {
+      const landing = simulateLanding(board, type, x, rot);
+      if (!landing || landing.cleared) continue;
+      const matrix = getShapeMatrix(type, rot);
+      const cells = [];
+      let valid = true;
+      for (let r = 0; r < matrix.length; r++) for (let c = 0; c < matrix[r].length; c++) if (matrix[r][c]) {
+        const yy = landing.y + r, xx = x + c, pr = yy - top;
+        if (pr < 0 || pr >= rows.length || xx < 0 || xx >= COLS || rows[pr][xx] !== type) valid = false;
+        cells.push([pr, xx]);
+      }
+      if (!valid || cells.length !== 4) continue;
+      // Require the selected four cells to match the exact four-cell target group;
+      // no partial or merely similar placement is allowed.
+      const target = [];
+      for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) if (rows[r][c] === type) target.push([r,c]);
+      if (target.length !== 4) continue;
+      const a = cells.map(v => v.join(',')).sort().join('|');
+      const b = target.map(v => v.join(',')).sort().join('|');
+      if (a !== b) continue;
+      // Do not place over existing blocks, nor if the resulting board contradicts target.
+      let boardOK = true;
+      for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) {
+        const existing = board[top + r]?.[c];
+        if (existing && existing !== rows[r][c]) boardOK = false;
+        if (existing && rows[r][c] === '.') boardOK = false;
+      }
+      if (boardOK) return { ...landing, template: variant.name, variant };
+    }
+  }
+  return null;
+}
+
 async function startAutoBuild() {
   if (!adminMode || autoBuildRunning || isEnded) return;
   autoBuildRunning = true;
   const token = ++autoBuildToken;
   document.getElementById('btnAutoBuild').disabled = true;
   document.getElementById('btnAutoStop').disabled = false;
-  let activeTemplate = null;
   let safety = 0;
-  document.getElementById('aiGuideStatus').textContent = '自動積み準備中…';
+  const status = document.getElementById('aiGuideStatus');
+  status.textContent = 'ゴースト位置とテンプレを照合中…';
   while (autoBuildRunning && token === autoBuildToken && !isEnded && safety++ < 80) {
     if (!cur) { if (!(await waitAuto(80, token))) break; continue; }
-    aiCacheKey = '';
-    const suggestion = findAiSuggestion();
-    if (!suggestion) { stopAutoBuild('自動積み停止：配置候補なし'); return; }
-    activeTemplate = templateData.find(t => t.name === suggestion.template) || activeTemplate;
-    if (suggestion.useHold) {
+    let plan = findExactGhostPlacement(cur.type);
+    let useHold = false;
+    if (!plan && canHold) {
+      const heldType = holdPiece || nextQ[0];
+      if (heldType) {
+        plan = findExactGhostPlacement(heldType);
+        useHold = !!plan;
+      }
+    }
+    if (!plan) {
+      stopAutoBuild('自動積み停止：現在ミノ・HOLDともにテンプレと一致するゴースト位置なし');
+      return;
+    }
+    if (useHold) {
       doHold();
       if (!(await waitAuto(100, token))) break;
-      if (!cur || cur.type !== suggestion.type) { stopAutoBuild('自動積み停止：HOLD不一致'); return; }
+      if (!cur || cur.type !== plan.type) { stopAutoBuild('自動積み停止：HOLD後のミノ不一致'); return; }
     }
-    const startType = cur.type;
+    const expectedType = cur.type;
     let rotations = 0;
-    while (cur && cur.r !== suggestion.rot && rotations++ < 4) {
+    while (cur && cur.r !== plan.rot && rotations++ < 4) {
       const before = cur.r; rotate(1);
       if (cur.r === before) { stopAutoBuild('自動積み停止：回転できません'); return; }
       if (!(await waitAuto(45, token))) return;
     }
     let moves = 0;
-    while (cur && cur.x !== suggestion.x && moves++ < COLS + 2) {
-      const dx = suggestion.x > cur.x ? 1 : -1;
-      if (!move(dx, 0)) { stopAutoBuild('自動積み停止：横移動できません'); return; }
+    while (cur && cur.x !== plan.x && moves++ < COLS + 2) {
+      if (!move(plan.x > cur.x ? 1 : -1, 0)) { stopAutoBuild('自動積み停止：横移動できません'); return; }
       if (!(await waitAuto(35, token))) return;
     }
-    if (!cur || cur.type !== startType || cur.x !== suggestion.x || cur.r !== suggestion.rot) {
-      stopAutoBuild('自動積み停止：配置位置が一致しません'); return;
+    if (!cur || cur.type !== expectedType || cur.x !== plan.x || cur.r !== plan.rot) {
+      stopAutoBuild('自動積み停止：目標位置に到達できません'); return;
     }
+    // Re-check the real ghost immediately before hard drop to avoid stale plans.
+    const actual = findExactGhostPlacement(cur.type);
+    if (!actual || actual.x !== cur.x || actual.rot !== cur.r || actual.y !== plan.y || actual.template !== plan.template) {
+      stopAutoBuild('自動積み停止：ゴーストがテンプレと一致しません'); return;
+    }
+    const beforeCur = cur;
     hardDrop();
     if (!(await waitAuto(140, token))) break;
-    if (activeTemplate && activeTemplateComplete(activeTemplate)) {
-      stopAutoBuild('テンプレ完成：自動積み停止'); return;
-    }
+    if (cur === beforeCur) { stopAutoBuild('自動積み停止：固定を確認できません'); return; }
+    const variant = getTemplateVariants().find(v => v.name === plan.template);
+    if (variant && activeTemplateComplete(variant)) { stopAutoBuild('テンプレ完成：自動積み停止'); return; }
   }
   if (autoBuildRunning && safety >= 80) stopAutoBuild('自動積み停止：手数上限');
   else if (autoBuildRunning) stopAutoBuild('自動積み停止');
