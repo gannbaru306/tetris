@@ -141,6 +141,7 @@
         <div id="adminAutoControls" style="display:none;width:100%;max-width:200px;gap:5px;margin:2px 0 5px">
           <button id="btnAutoBuild" style="flex:1;padding:5px;font-size:.72rem">自動積み開始</button>
           <button id="btnAutoStop" class="alt" style="flex:1;padding:5px;font-size:.72rem" disabled>停止</button>
+          <label style="font-size:.68rem;color:var(--sub);display:flex;align-items:center;gap:4px;width:100%;justify-content:center"><input id="ensureTemplatePieces" type="checkbox">テンプレ完成用ミノを優先</label>
         </div>
         <div id="aiGuideStatus" aria-live="polite"></div>
         <div class="board-row">
@@ -511,11 +512,50 @@ function refillBag() {
   bag.push(...pieces);
 }
 
+function getQueueTargetType() {
+  if (!adminMode || !document.getElementById('ensureTemplatePieces')?.checked || !selectedTemplateOverlay) return null;
+  const [name, side] = selectedTemplateOverlay.split('|');
+  const item = templateData.find(v => v.name === name && v.enabled !== false);
+  if (!item?.pattern?.length) return null;
+  const rows = side === 'mirror' ? mirrorTemplateRows(item.pattern) : item.pattern;
+  const top = ROWS - rows.length;
+  const remaining = {};
+  for (const type of 'IJLOSTZ') {
+    let missing = 0;
+    for (let r = 0; r < rows.length; r++) for (let c = 0; c < Math.min(COLS, rows[r].length); c++) {
+      if (rows[r][c] === type && !board[top + r]?.[c]) missing++;
+    }
+    if (missing > 0) remaining[type] = missing;
+  }
+  // Prioritize a piece type still needed by the selected template.
+  const available = [...nextQ, ...bag];
+  for (const type of available) if (remaining[type] > 0) return type;
+  return null;
+}
+function prioritizeTemplatePiece() {
+  const type = getQueueTargetType();
+  if (!type) return;
+  const idx = nextQ.indexOf(type);
+  if (idx > 0) {
+    nextQ.splice(idx, 1);
+    nextQ.unshift(type);
+    return;
+  }
+  if (idx === 0) return;
+  const bagIdx = bag.indexOf(type);
+  if (bagIdx >= 0) {
+    const chosen = bag.splice(bagIdx, 1)[0];
+    const displaced = nextQ.pop();
+    nextQ.unshift(chosen);
+    if (displaced) bag.unshift(displaced);
+  }
+}
 function spawnPiece() {
   while (nextQ.length < 6) {
     if (bag.length === 0) refillBag();
     nextQ.push(bag.shift());
   }
+  prioritizeTemplatePiece();
   cur = { type: nextQ.shift(), x: 3, y: 0, r: 0, lastRot: false, lastKickIndex: -1 };
   canHold = true; lockMoves = 0; groundedAt = 0;
 
