@@ -132,6 +132,12 @@
       </div>
 
       <div class="board-box">
+        <div id="adminTemplateControls" style="display:none;width:100%;max-width:200px;flex-direction:column;align-items:center">
+          <label for="templateOverlaySelect" style="font-size:.72rem;color:var(--sub);width:100%;text-align:center;margin:2px 0 4px">管理者用テンプレ表示</label>
+          <select id="templateOverlaySelect" style="width:100%;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:5px;font-size:.75rem">
+            <option value="">表示しない</option>
+          </select>
+        </div>
         <div id="aiGuideStatus" aria-live="polite"></div>
         <div class="board-row">
           <canvas id="garbagePreviewCanvas" width="20" height="400" aria-label="受信おじゃまライン"></canvas>
@@ -785,6 +791,58 @@ function getTemplateVariants() {
   return variants;
 }
 
+let selectedTemplateOverlay = '';
+function refreshTemplateOverlayOptions() {
+  const select = document.getElementById('templateOverlaySelect');
+  if (!select) return;
+  const old = selectedTemplateOverlay || select.value;
+  select.innerHTML = '<option value="">表示しない</option>';
+  for (const t of templateData) {
+    if (t.enabled === false || !Array.isArray(t.pattern) || !t.pattern.length) continue;
+    const opt = document.createElement('option');
+    opt.value = t.name + '|normal'; opt.textContent = t.name;
+    select.appendChild(opt);
+    if (t.mirror) {
+      const mirrored = document.createElement('option');
+      mirrored.value = t.name + '|mirror'; mirrored.textContent = t.name + '（反転）';
+      select.appendChild(mirrored);
+    }
+  }
+  select.value = [...select.options].some(o => o.value === old) ? old : '';
+  selectedTemplateOverlay = select.value;
+}
+function drawTemplateOverlay() {
+  if (!adminMode || !selectedTemplateOverlay) return;
+  const [name, side] = selectedTemplateOverlay.split('|');
+  const t = templateData.find(v => v.name === name && v.enabled !== false);
+  if (!t || !t.pattern) return;
+  const rows = side === 'mirror' ? mirrorTemplateRows(t.pattern) : t.pattern;
+  const startY = ROWS - rows.length;
+  ctx.save();
+  for (let r = 0; r < rows.length; r++) {
+    for (let c = 0; c < Math.min(COLS, rows[r].length); c++) {
+      const type = rows[r][c];
+      if (!'IJLOSTZ'.includes(type)) continue;
+      const x = c * BLOCK_SIZE, y = (startY + r) * BLOCK_SIZE;
+      ctx.fillStyle = COLORS[type];
+      ctx.globalAlpha = 0.30;
+      ctx.fillRect(x + 1, y + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = COLORS[type];
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 1.5, y + 1.5, BLOCK_SIZE - 3, BLOCK_SIZE - 3);
+    }
+  }
+  ctx.restore();
+}
+document.getElementById('templateOverlaySelect').addEventListener('change', e => {
+  selectedTemplateOverlay = e.target.value;
+  try { localStorage.setItem('p2pTetrisTemplateOverlayV1', selectedTemplateOverlay); } catch (_) {}
+  render();
+});
+try { selectedTemplateOverlay = localStorage.getItem('p2pTetrisTemplateOverlayV1') || ''; } catch (_) {}
+refreshTemplateOverlayOptions();
+
 function cloneBoard(src) { return src.map(row => row.slice()); }
 
 function simulateLanding(srcBoard, type, x, rot) {
@@ -1005,6 +1063,7 @@ function render() {
   board.forEach((row, r) => row.forEach((val, c) => {
     if (val) { ctx.fillStyle = COLORS[val]; ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1); }
   }));
+  drawTemplateOverlay();
 
   if (!cur || isEnded) return;
   let gy = cur.y;
@@ -1099,6 +1158,7 @@ function tryOpenAdminMode() {
   const sd = Number(document.getElementById('cfgSd').value);
   if (arr !== 490 || sd !== 490) return;
   adminMode = true;
+  document.getElementById('adminTemplateControls').style.display = 'flex';
   document.getElementById('cfgArr').value = '30';
   document.getElementById('cfgSd').value = '20';
   config.arr = 30; config.sd = 20;
@@ -1139,7 +1199,7 @@ function renderTemplateList() {
     actions.style.cssText = 'display:flex;flex:0 0 auto;gap:5px;align-items:center;';
     const toggle = document.createElement('button'); toggle.className = 'alt'; toggle.textContent = t.enabled === false ? '無効' : '有効';
     toggle.style.cssText = 'padding:6px 8px;min-width:0;white-space:nowrap;';
-    toggle.onclick = () => { t.enabled = t.enabled === false; saveTemplateData(); renderTemplateList(); };
+    toggle.onclick = () => { t.enabled = t.enabled === false; saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions(); render(); };
     const mirror = document.createElement('button'); mirror.className = 'alt'; mirror.textContent = '反転';
     mirror.style.cssText = 'padding:6px 8px;min-width:0;white-space:nowrap;';
     mirror.onclick = () => { const preview = mirrorTemplateRows(t.pattern || []); alert(t.name + '（左右反転）\n\n' + preview.join('\n')); };
@@ -1159,7 +1219,7 @@ document.getElementById('btnAddTemplate').onclick = () => {
     alert('各行を10文字にし、I J L O S T Z . だけを使ってください。'); return;
   }
   templateData.push({ name, priority: 10, pattern: rows, enabled: true, mirror: document.getElementById('templateMirror').checked });
-  saveTemplateData(); renderTemplateList();
+  saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions();
   document.getElementById('templateName').value = ''; document.getElementById('templatePattern').value = '';
 };
 document.getElementById('btnCloseAdmin').onclick = () => document.getElementById('adminModal').classList.add('hidden');
