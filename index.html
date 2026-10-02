@@ -17,8 +17,12 @@
       display: flex; flex-direction: column; align-items: center; min-height: 100vh;
     }
     h1 { margin: 0 0 10px; font-size: 1.2rem; color: var(--accent); text-align: center; }
+
+    /* 画面切り替え用 */
     .screen { display: none; width: 100%; max-width: 400px; flex-direction: column; align-items: center; }
     .screen.active { display: flex; }
+
+    /* ロビー画面スタイル */
     .lobby-card {
       background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
       padding: 20px; width: 100%; display: flex; flex-direction: column; gap: 12px; margin-top: 20px;
@@ -35,6 +39,8 @@
     button.alt { background: #45475a; color: #fff; }
     button.danger { background: #f38ba8; color: #11111b; }
     #netStatus { font-size: 0.85rem; color: #f9e2af; text-align: center; margin-top: 10px; }
+
+    /* ゲーム画面レイアウト */
     .game-container {
       display: flex; gap: 6px; justify-content: center; align-items: flex-start;
       width: 100%; max-width: 400px;
@@ -44,14 +50,17 @@
     #garbagePreviewCanvas { width: 20px; height: 400px; background: transparent; border: 0; border-radius: 0; }
     .side-box { display: flex; flex-direction: column; gap: 4px; width: 50px; }
     canvas { background: #11111b; border: 2px solid var(--border); border-radius: 4px; display: block; }
+    
     #mainCanvas { width: 200px; height: 400px; }
     #aiGuideStatus { min-height: 18px; width: 100%; text-align: center; color: #a6e3a1; font-size: .72rem; font-weight: 700; margin-top: 3px; }
     #holdCanvas { width: 50px; height: 50px; }
     #nextCanvas { width: 50px; height: 250px; }
     #p2Canvas { width: 100px; height: 200px; }
+    
     #rematchArea { display: none; width: 100%; max-width: 400px; margin-top: 10px; text-align: center; }
     #rematchArea.active { display: block; }
     #rematchStatus { color: var(--sub); font-size: 0.85rem; margin-top: 6px; }
+
     .p2-container {
       display: none; flex-direction: column; align-items: center;
       background: var(--panel); padding: 6px; border-radius: 8px; border: 1px solid var(--border);
@@ -59,11 +68,15 @@
     }
     .p2-container.active { display: flex; }
     .p2-title { font-size: 0.65rem; color: var(--sub); font-weight: bold; margin-bottom: 4px; }
+
+    /* モバイル操作ボタン */
     .controls {
       display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
       margin-top: 12px; width: 100%; max-width: 400px;
     }
     .controls button { height: 60px; font-size: 1.3rem; padding: 0; border-radius: 8px; }
+
+    /* モーダル */
     .modal {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100;
@@ -78,6 +91,7 @@
     .row select, .row input[type="number"] {
       background: #11111b; border: 1px solid var(--border); color: #fff; padding: 4px; border-radius: 4px;
     }
+
     #toast {
       position: fixed; top: 15px; background: #a6e3a1; color: #11111b;
       padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.85rem;
@@ -86,8 +100,10 @@
   </style>
 </head>
 <body>
+
   <h1>Web Tetris VS</h1>
 
+  <!-- ロビー画面 -->
   <div id="lobbyScreen" class="screen active">
     <div class="lobby-card">
       <h2>モード選択</h2>
@@ -102,16 +118,19 @@
     <button id="btnOpenSettings" class="alt" style="margin-top: 15px;">⚙ 詳細ルール・感度設定</button>
   </div>
 
+  <!-- ゲーム画面 -->
   <div id="gameScreen" class="screen">
     <div style="width:100%; display:flex; justify-content:space-between; margin-bottom:6px;">
       <button id="btnBackToLobby" class="alt" style="width:80px; padding:4px; font-size:0.75rem;">ロビーへ戻る</button>
       <div id="matchModeLabel" style="font-size:0.8rem; color:var(--sub); font-weight:bold; align-self:center;"></div>
     </div>
+
     <div class="game-container">
       <div class="side-box">
         <span style="font-size:0.65rem; color:var(--sub); text-align:center;">HOLD</span>
         <canvas id="holdCanvas" width="50" height="50"></canvas>
       </div>
+
       <div class="board-box">
         <div id="adminTemplateControls" style="display:none;width:100%;max-width:200px;flex-direction:column;align-items:center">
           <label for="templateOverlaySelect" style="font-size:.72rem;color:var(--sub);width:100%;text-align:center;margin:2px 0 4px">管理者用テンプレ表示</label>
@@ -130,19 +149,23 @@
           <canvas id="mainCanvas" width="200" height="400"></canvas>
         </div>
       </div>
+
       <div class="side-box">
         <span style="font-size:0.65rem; color:var(--sub); text-align:center;">NEXT</span>
         <canvas id="nextCanvas" width="50" height="250"></canvas>
       </div>
+
       <div id="p2Container" class="p2-container">
         <div class="p2-title">OPPONENT</div>
         <canvas id="p2Canvas" width="100" height="200"></canvas>
       </div>
     </div>
+
     <div id="rematchArea">
       <button id="btnRematch">再戦する</button>
       <div id="rematchStatus">両者が再戦を選ぶと始まります</div>
     </div>
+
     <div class="controls">
       <button id="btnL">←</button>
       <button id="btnR">→</button>
@@ -154,6 +177,7 @@
     </div>
   </div>
 
+  <!-- 設定モーダル -->
   <div id="settingsModal" class="modal hidden">
     <div class="panel">
       <h3>設定・ルール</h3>
@@ -203,6 +227,7 @@
     </div>
   </div>
 
+  <!-- 作者用テンプレート管理（隠しメニュー） -->
   <div id="adminModal" class="modal hidden">
     <div class="panel" style="max-height:85vh; overflow:auto;">
       <h3>作者メニュー / テンプレ管理</h3>
@@ -213,7 +238,9 @@
       <label for="templateName">テンプレ名</label>
       <input id="templateName" type="text" placeholder="例：新しい積み方" style="width:100%;box-sizing:border-box;margin:6px 0 10px">
       <label for="templatePattern">盤面パターン（1行10文字、使用文字 I J L O S T Z .）</label>
-      <textarea id="templatePattern" rows="7" placeholder="..........&#10;....T.....&#10;..TTT....." style="width:100%;box-sizing:border-box;margin:6px 0 10px;font-family:monospace"></textarea>
+      <textarea id="templatePattern" rows="7" placeholder="..........
+....T.....
+..TTT....." style="width:100%;box-sizing:border-box;margin:6px 0 10px;font-family:monospace"></textarea>
       <label style="display:flex;align-items:center;gap:8px;margin:8px 0"><input id="templateMirror" type="checkbox" checked> 左右反転パターンも自動生成</label>
       <div style="display:flex;gap:8px;margin-top:12px">
         <button id="btnAddTemplate" style="flex:1">テンプレ追加</button>
@@ -226,6 +253,7 @@
 
 <script>
 const COLS = 10, ROWS = 20, BLOCK_SIZE = 20;
+
 const SHAPES = {
   I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
   J: [[1,0,0],[1,1,1],[0,0,0]],
@@ -235,35 +263,43 @@ const SHAPES = {
   T: [[0,1,0],[1,1,1],[0,0,0]],
   Z: [[1,1,0],[0,1,1],[0,0,0]]
 };
-const COLORS = { I:'#00f0f0', J:'#0000f0', L:'#f0a000', O:'#f0f000', S:'#00f000', T:'#a000f0', Z:'#f00000', X:'#888888' };
+const COLORS = { I: '#00f0f0', J: '#0000f0', L: '#f0a000', O: '#f0f000', S: '#00f000', T: '#a000f0', Z: '#f00000', X: '#888888' };
+
 const KICK_STD = {
-  '0-1':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]], '1-0':[[0,0],[1,0],[1,-1],[0,2],[1,2]],
-  '1-2':[[0,0],[1,0],[1,-1],[0,2],[1,2]], '2-1':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
-  '2-3':[[0,0],[1,0],[1,1],[0,-2],[1,-2]], '3-2':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
-  '3-0':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]], '0-3':[[0,0],[1,0],[1,1],[0,-2],[1,-2]]
+  '0-1': [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]], '1-0': [[0,0],[1,0],[1,-1],[0,2],[1,2]],
+  '1-2': [[0,0],[1,0],[1,-1],[0,2],[1,2]],    '2-1': [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+  '2-3': [[0,0],[1,0],[1,1],[0,-2],[1,-2]],    '3-2': [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+  '3-0': [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]], '0-3': [[0,0],[1,0],[1,1],[0,-2],[1,-2]]
 };
 const KICK_I = {
-  '0-1':[[0,0],[-2,0],[1,0],[-2,-1],[1,2]], '1-0':[[0,0],[2,0],[-1,0],[2,1],[-1,-2]],
-  '1-2':[[0,0],[-1,0],[2,0],[-1,2],[2,-1]], '2-1':[[0,0],[1,0],[-2,0],[1,-2],[-2,1]],
-  '2-3':[[0,0],[2,0],[-1,0],[2,1],[-1,-2]], '3-2':[[0,0],[-2,0],[1,0],[-2,-1],[1,2]],
-  '3-0':[[0,0],[1,0],[-2,0],[1,-2],[-2,1]], '0-3':[[0,0],[-1,0],[2,0],[-1,2],[2,-1]]
+  '0-1': [[0,0],[-2,0],[1,0],[-2,-1],[1,2]],  '1-0': [[0,0],[2,0],[-1,0],[2,1],[-1,-2]],
+  '1-2': [[0,0],[-1,0],[2,0],[-1,2],[2,-1]],  '2-1': [[0,0],[1,0],[-2,0],[1,-2],[-2,1]],
+  '2-3': [[0,0],[2,0],[-1,0],[2,1],[-1,-2]],  '3-2': [[0,0],[-2,0],[1,0],[-2,-1],[1,2]],
+  '3-0': [[0,0],[1,0],[-2,0],[1,-2],[-2,1]],  '0-3': [[0,0],[-1,0],[2,0],[-1,2],[-2,-1]]
 };
 
 let board = [], cur = null, holdPiece = null, canHold = true;
 let bag = [], nextQ = [];
 let ren = -1, b2b = false, pendingGarbage = 0, pendingHoles = [];
 let isEnded = false, isVsMode = false;
+
 let lastDropTime = 0, GRAVITY_DELAY = 1000;
 const LOCK_DELAY = 500, MAX_LOCK_RESETS = 15;
-let groundedAt = 0, lockMoves = 0;
+let groundedAt = 0;
 let keyTimers = {};
+let lockMoves = 0;
+
 let config = { das: 150, arr: 30, sd: 20 };
 let vsRule = { nextMode: 'common', holeChange: 0.3, seed: 12345, posInterval: 33 };
 let peer = null, conn = null, isHost = false, lastSendPosT = 0;
 let rematchRequested = false, remoteRematchRequested = false;
-let adminMode = false, aiGuideEnabled = false, aiSuggestion = null, aiCacheKey = '', aiCacheResult = null;
-let autoBuildRunning = false, autoBuildToken = 0;
-
+let adminMode = false;
+let aiGuideEnabled = false;
+let aiSuggestion = null;
+let aiCacheKey = '';
+let aiCacheResult = null;
+let autoBuildRunning = false;
+let autoBuildToken = 0;
 const DEFAULT_TEMPLATE_DATA = [
   { name: '山岳積み2号', priority: 30, pattern: ['JJOO......','JSOO..L..I','JSS...LLLI','ISS.ZZLLLI','ISS..ZZTLI','IJS.ZZTTOO','IJJJ.ZZTOO'] },
   { name: '山岳積み2号・派生', priority: 30, pattern: ['......ZZ..','.......ZZ.','I..J..LLOO','IJJJ...LOO','IJJJSS.LZI','IJTSS..ZZI','OOTTSS.ZLI','OOTSS.LLLI'] },
@@ -294,6 +330,7 @@ const nextCtx = document.getElementById('nextCanvas').getContext('2d');
 const p2Ctx = document.getElementById('p2Canvas').getContext('2d');
 
 function seededRandom(s) {
+  // Keep the generator state unsigned; signed bitwise results can produce negative shuffle indices.
   let m_w = (123456789 + s) >>> 0;
   let m_z = (987654321 - s) >>> 0;
   return function() {
@@ -310,12 +347,15 @@ function toast(msg) {
   t.textContent = msg; t.style.opacity = 1;
   setTimeout(() => t.style.opacity = 0, 2000);
 }
+
 function switchScreen(screenId) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
 }
 
-// ---- 通信 ----
+// ==========================================
+// ロビー・通信処理
+// ==========================================
 document.getElementById('btnCreateRoom').onclick = () => {
   const code = Math.floor(10000 + Math.random() * 90000).toString();
   peer = new Peer('wtvs-' + code);
@@ -330,6 +370,7 @@ document.getElementById('btnCreateRoom').onclick = () => {
   });
   peer.on('error', err => toast('通信エラー: ' + err.type));
 };
+
 document.getElementById('btnJoinRoom').onclick = () => {
   const code = document.getElementById('roomInput').value.trim();
   if (code.length !== 5) return toast('5桁のコードを入力してください');
@@ -340,25 +381,37 @@ document.getElementById('btnJoinRoom').onclick = () => {
   });
   peer.on('error', () => toast('部屋が見つかりませんでした'));
 };
+
 function setupConn() {
   conn.on('open', () => {
     document.getElementById('netStatus').textContent = '接続完了！';
     if (isHost) startVsGame();
   });
   conn.on('data', data => {
-    if (data.type === 'RULE') { vsRule = data.rule; startVsGame(); }
+    if (data.type === 'RULE') {
+      vsRule = data.rule;
+      startVsGame();
+    }
     if (data.type === 'POS') drawP2(data.board, data.cur);
     if (data.type === 'LOCK') drawP2(data.board, null);
     if (data.type === 'ATTACK') receiveAttack(data.holes);
-    if (data.type === 'GAMEOVER') { isEnded = true; showRematch('WIN! 相手を倒しました！'); }
-    if (data.type === 'REMATCH') { remoteRematchRequested = true; updateRematchStatus(); tryStartRematch(); }
-    if (data.type === 'REMATCH_START') { vsRule = data.rule; resetForRematch(); }
+    if (data.type === 'GAMEOVER') {
+      isEnded = true;
+      showRematch('WIN! 相手を倒しました！');
+    }
+    if (data.type === 'REMATCH') {
+      remoteRematchRequested = true;
+      updateRematchStatus();
+      tryStartRematch();
+    }
+    if (data.type === 'REMATCH_START') {
+      vsRule = data.rule;
+      resetForRematch();
+    }
   });
-  conn.on('close', () => {
-    isEnded = true; toast('相手が切断しました');
-    document.getElementById('netStatus').textContent = '切断されました';
-  });
+  conn.on('close', () => { isEnded = true; toast('相手が切断しました'); document.getElementById('netStatus').textContent = '切断されました'; });
 }
+
 function startVsGame() {
   if (isVsMode && document.getElementById('gameScreen').classList.contains('active')) return;
   isVsMode = true;
@@ -374,17 +427,21 @@ function startVsGame() {
   switchScreen('gameScreen');
   initGame();
 }
+
 function sendNet(data) { if (isVsMode && conn && conn.open) conn.send(data); }
+
 function showRematch(message) {
   document.getElementById('rematchArea').classList.add('active');
   document.getElementById('rematchStatus').textContent = message || '再戦するには両者がボタンを押してください';
 }
+
 function updateRematchStatus() {
   const status = document.getElementById('rematchStatus');
   status.textContent = rematchRequested
     ? (remoteRematchRequested ? '再戦します…' : '相手の再戦待ち…')
     : (remoteRematchRequested ? '相手が再戦を希望しています。ボタンを押してください' : '両者が再戦を選ぶと始まります');
 }
+
 document.getElementById('btnRematch').onclick = () => {
   if (!isVsMode || !isEnded || rematchRequested) return;
   rematchRequested = true;
@@ -392,18 +449,25 @@ document.getElementById('btnRematch').onclick = () => {
   updateRematchStatus();
   tryStartRematch();
 };
+
 function tryStartRematch() {
   if (!isHost || !rematchRequested || !remoteRematchRequested) return;
   vsRule.seed = Math.floor(Math.random() * 1000000);
-  sendNet({ type: 'REMATCH_START', rule: { ...vsRule } });
+  const rule = { ...vsRule };
+  sendNet({ type: 'REMATCH_START', rule });
   resetForRematch();
 }
+
 function resetForRematch() {
-  rematchRequested = false; remoteRematchRequested = false;
+  rematchRequested = false;
+  remoteRematchRequested = false;
   document.getElementById('rematchArea').classList.remove('active');
   document.getElementById('rematchStatus').textContent = '';
-  initGame(); toast('再戦スタート！'); sendPosNow();
+  initGame();
+  toast('再戦スタート！');
+  sendPosNow();
 }
+
 document.getElementById('btnBackToLobby').onclick = () => {
   if (autoBuildRunning) stopAutoBuild('自動積み停止');
   isEnded = true;
@@ -412,18 +476,15 @@ document.getElementById('btnBackToLobby').onclick = () => {
   document.getElementById('netStatus').textContent = 'オフライン待機中';
 };
 
-// ---- コア ----
-function getSpawnX(type) {
-  // ガイドライン: I/O 中央寄り、他も10幅では x=3 が一般的
-  return 3;
-}
-
+// ==========================================
+// ゲームループ・コアロジック
+// ==========================================
 function gameLoop(timestamp) {
   if (!lastDropTime) lastDropTime = timestamp;
   if (document.getElementById('gameScreen').classList.contains('active') && !isEnded && cur) {
     if (timestamp - lastDropTime >= GRAVITY_DELAY) {
-      move(0, 1);
-      lastDropTime = timestamp;
+      if (move(0, 1)) lastDropTime = timestamp;
+      else lastDropTime = timestamp;
     }
     if (cur && checkCollision(cur.x, cur.y + 1, cur.type, cur.r)) {
       if (!groundedAt) groundedAt = timestamp;
@@ -441,6 +502,7 @@ function getShapeMatrix(type, rot) {
   for (let i = 0; i < rot; i++) m = m[0].map((_, c) => m.map(row => row[c]).reverse());
   return m;
 }
+
 function refillBag() {
   const pieces = ['I','J','L','O','S','T','Z'];
   for (let i = pieces.length - 1; i > 0; i--) {
@@ -449,6 +511,7 @@ function refillBag() {
   }
   bag.push(...pieces);
 }
+
 function getQueueTargetType() {
   if (!adminMode || !document.getElementById('ensureTemplatePieces')?.checked || !selectedTemplateOverlay) return null;
   const [name, side] = selectedTemplateOverlay.split('|');
@@ -464,6 +527,7 @@ function getQueueTargetType() {
     }
     if (missing > 0) remaining[type] = missing;
   }
+  // Prioritize a piece type still needed by the selected template.
   const available = [...nextQ, ...bag];
   for (const type of available) if (remaining[type] > 0) return type;
   return null;
@@ -472,7 +536,11 @@ function prioritizeTemplatePiece() {
   const type = getQueueTargetType();
   if (!type) return;
   const idx = nextQ.indexOf(type);
-  if (idx > 0) { nextQ.splice(idx, 1); nextQ.unshift(type); return; }
+  if (idx > 0) {
+    nextQ.splice(idx, 1);
+    nextQ.unshift(type);
+    return;
+  }
   if (idx === 0) return;
   const bagIdx = bag.indexOf(type);
   if (bagIdx >= 0) {
@@ -488,23 +556,23 @@ function spawnPiece() {
     nextQ.push(bag.shift());
   }
   prioritizeTemplatePiece();
-  const type = nextQ.shift();
-  cur = {
-    type, x: getSpawnX(type), y: 0, r: 0,
-    lastRot: false, lastKickIndex: -1, lowestY: 0
-  };
+  cur = { type: nextQ.shift(), x: 3, y: 0, r: 0, lastRot: false, lastKickIndex: -1 };
   canHold = true; lockMoves = 0; groundedAt = 0;
+
   if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
     isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER');
-  } else sendPosNow();
+  } else {
+    sendPosNow();
+  }
   drawNext();
 }
+
 function checkCollision(x, y, type, r) {
   const m = getShapeMatrix(type, r);
   for (let row = 0; row < m.length; row++) {
     for (let col = 0; col < m[row].length; col++) {
       if (m[row][col]) {
-        const nx = x + col, ny = y + row;
+        let nx = x + col, ny = y + row;
         if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
         if (ny >= 0 && board[ny][nx]) return true;
       }
@@ -517,30 +585,19 @@ function move(dx, dy) {
   if (isEnded || !cur) return false;
   const wasGrounded = checkCollision(cur.x, cur.y + 1, cur.type, cur.r);
   if (!checkCollision(cur.x + dx, cur.y + dy, cur.type, cur.r)) {
-    cur.x += dx; cur.y += dy;
-    cur.lastRot = false; cur.lastKickIndex = -1;
-
+    cur.x += dx; cur.y += dy; cur.lastRot = false; cur.lastKickIndex = -1;
     if (dy > 0) {
-      // 新しい最下層 → ロック回数リセット（公式）
-      if (cur.y > (cur.lowestY ?? 0)) {
-        cur.lowestY = cur.y;
-        lockMoves = 0;
-      }
       lastDropTime = performance.now();
       groundedAt = 0;
-    } else if (dx !== 0 && wasGrounded) {
-      if (lockMoves < MAX_LOCK_RESETS) {
-        lockMoves++;
-        groundedAt = 0;
-        lastDropTime = performance.now();
-      } else {
-        groundedAt = performance.now() - LOCK_DELAY;
-      }
+    } else if (wasGrounded && lockMoves < MAX_LOCK_RESETS) {
+      lockMoves++;
+      groundedAt = 0;
+      lastDropTime = performance.now();
     }
     sendPosThrottled();
     return true;
   }
-  return false; // ソフトドロップ接地時は即固定しない
+  return false;
 }
 
 function rotate(dir) {
@@ -549,27 +606,15 @@ function rotate(dir) {
   const newR = (cur.r + dir + 4) % 4;
   const key = `${cur.r}-${newR}`;
   const kicks = (cur.type === 'I') ? KICK_I[key] : KICK_STD[key];
+
   for (let i = 0; i < kicks.length; i++) {
     const [kx, ky] = kicks[i];
     if (!checkCollision(cur.x + kx, cur.y - ky, cur.type, newR)) {
-      cur.x += kx; cur.y -= ky; cur.r = newR;
-      cur.lastRot = true; cur.lastKickIndex = i;
-
-      if (cur.y > (cur.lowestY ?? 0)) {
-        cur.lowestY = cur.y;
-        lockMoves = 0;
-      }
-
-      const nowGrounded = checkCollision(cur.x, cur.y + 1, cur.type, cur.r);
-      // 回転は成功時カウント（Iの浮き対策含む）
-      if (wasGrounded || nowGrounded) {
-        if (lockMoves < MAX_LOCK_RESETS) {
-          lockMoves++;
-          groundedAt = 0;
-          lastDropTime = performance.now();
-        } else if (nowGrounded) {
-          groundedAt = performance.now() - LOCK_DELAY;
-        }
+      cur.x += kx; cur.y -= ky; cur.r = newR; cur.lastRot = true; cur.lastKickIndex = i;
+      if (wasGrounded && lockMoves < MAX_LOCK_RESETS) {
+        lockMoves++;
+        groundedAt = 0;
+        lastDropTime = performance.now();
       }
       sendPosThrottled();
       return;
@@ -579,10 +624,7 @@ function rotate(dir) {
 
 function hardDrop() {
   if (isEnded || !cur) return;
-  while (!checkCollision(cur.x, cur.y + 1, cur.type, cur.r)) {
-    cur.y++;
-    if (cur.y > (cur.lowestY ?? 0)) { cur.lowestY = cur.y; lockMoves = 0; }
-  }
+  while (!checkCollision(cur.x, cur.y + 1, cur.type, cur.r)) cur.y++;
   groundedAt = 0;
   lockPiece();
 }
@@ -644,14 +686,13 @@ function lockPiece() {
 
   if (cleared > 0) {
     ren++;
-    // ぷよテト2対テトリス寄り REN
-    const renBonusTable = [0,1,1,1,2,2,3,3,4,4,4,4,4,5];
+    const renBonusTable = [0,1,1,2,2,3,3,4,4,4,4,4,4,5];
     const renBonus = renBonusTable[Math.min(ren, renBonusTable.length - 1)] || 0;
     const baseAttack = spin === 'full'
-      ? [0,2,4,6][cleared] || 0
+      ? [0,2,4,6,0][cleared]
       : spin === 'mini'
-        ? (cleared === 1 ? 0 : 0)
-        : [0,0,1,2,4][cleared] || 0;
+        ? (cleared === 1 ? 0 : cleared === 2 ? 1 : 0)
+        : [0,0,1,2,4,0][cleared] || 0;
     const difficultClear = cleared === 4 || spin !== null;
     let attack = baseAttack + renBonus;
     if (difficultClear && previousB2B) attack += 1;
@@ -662,6 +703,7 @@ function lockPiece() {
   } else {
     ren = -1;
     if (spin) showClearEvent(0, spin, false, false);
+    // A no-line placement does not break the B2B chain in this ruleset.
   }
 
   applyGarbageOnLock();
@@ -685,6 +727,7 @@ function generateHoles(power, rate) {
   }
   return holes;
 }
+
 function sendAttack(power) {
   if (power <= 0) return;
   if (pendingGarbage > 0) {
@@ -694,6 +737,7 @@ function sendAttack(power) {
   }
   if (power > 0) sendNet({ type: 'ATTACK', holes: generateHoles(power, vsRule.holeChange) });
 }
+
 function receiveAttack(holes) {
   if (!Array.isArray(holes) || isEnded) return;
   const safeHoles = holes.filter(h => Number.isInteger(h) && h >= 0 && h < COLS);
@@ -701,10 +745,12 @@ function receiveAttack(holes) {
   pendingHoles.push(...safeHoles);
   updateGbBar();
 }
+
 function applyGarbageOnLock() {
   if (pendingGarbage <= 0 || isEnded) return;
   let toppedOut = false;
   const holesToApply = pendingGarbage;
+  // Apply from last to first so the first received hole ends up on the bottom row.
   for (let i = holesToApply - 1; i >= 0; i--) {
     const hole = pendingHoles[i] ?? Math.floor(Math.random() * COLS);
     const removed = board.shift();
@@ -714,9 +760,12 @@ function applyGarbageOnLock() {
   }
   pendingGarbage = 0; pendingHoles = []; updateGbBar();
   if (toppedOut) {
-    isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER');
+    isEnded = true;
+    sendNet({ type: 'GAMEOVER' });
+    showRematch('GAME OVER');
   }
 }
+
 function updateGbBar() { drawGarbagePreview(); }
 
 function doHold() {
@@ -726,10 +775,7 @@ function doHold() {
     holdPiece = outgoing;
     spawnPiece();
   } else {
-    cur = {
-      type: holdPiece, x: getSpawnX(holdPiece), y: 0, r: 0,
-      lastRot: false, lastKickIndex: -1, lowestY: 0
-    };
+    cur = { type: holdPiece, x: 3, y: 0, r: 0, lastRot: false, lastKickIndex: -1 };
     holdPiece = outgoing;
     groundedAt = 0; lockMoves = 0;
     if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
@@ -745,17 +791,22 @@ function sendPosNow() {
   sendNet({ type: 'POS', board: board.map(row => row.slice()), cur: { x: cur.x, y: cur.y, r: cur.r, type: cur.type } });
   lastSendPosT = Date.now();
 }
+
 function sendPosThrottled() {
   const now = Date.now();
   const interval = Number(vsRule.posInterval) || 33;
   if (now - lastSendPosT >= interval) sendPosNow();
 }
 
+// ==========================================
+// 操作・DAS/ARR制御
+// ==========================================
 function updateConfig() {
   config.das = parseInt(document.getElementById('cfgDas').value, 10) || 150;
   config.arr = parseInt(document.getElementById('cfgArr').value, 10) || 30;
   config.sd = parseInt(document.getElementById('cfgSd').value, 10) || 20;
 }
+
 function handlePressStart(actionKey, actionFn, speedInterval) {
   if (keyTimers[actionKey]) return;
   updateConfig(); actionFn();
@@ -765,6 +816,7 @@ function handlePressStart(actionKey, actionFn, speedInterval) {
   }, config.das);
   keyTimers[actionKey] = { das: dasTimer, arr: null };
 }
+
 function handlePressEnd(actionKey) {
   if (keyTimers[actionKey]) {
     clearTimeout(keyTimers[actionKey].das);
@@ -773,7 +825,9 @@ function handlePressEnd(actionKey) {
   }
 }
 
-// ---- テンプレ / AI ----
+// ==========================================
+// 描画関連
+// ==========================================
 function getTemplateVariants() {
   const variants = [];
   for (const t of templateData) {
@@ -783,6 +837,7 @@ function getTemplateVariants() {
   }
   return variants;
 }
+
 let selectedTemplateOverlay = '';
 function refreshTemplateOverlayOptions() {
   const select = document.getElementById('templateOverlaySelect');
@@ -836,15 +891,7 @@ try { selectedTemplateOverlay = localStorage.getItem('p2pTetrisTemplateOverlayV1
 refreshTemplateOverlayOptions();
 
 function cloneBoard(src) { return src.map(row => row.slice()); }
-function checkCollisionOnBoard(b, x, y, type, rot) {
-  const m = getShapeMatrix(type, rot);
-  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) if (m[r][c]) {
-    const xx = x + c, yy = y + r;
-    if (xx < 0 || xx >= COLS || yy >= ROWS) return true;
-    if (yy >= 0 && b[yy][xx]) return true;
-  }
-  return false;
-}
+
 function simulateLanding(srcBoard, type, x, rot) {
   const sim = cloneBoard(srcBoard);
   const m = getShapeMatrix(type, rot);
@@ -864,216 +911,189 @@ function simulateLanding(srcBoard, type, x, rot) {
   return { board: sim, x, y, rot, type, cleared };
 }
 
-/**
- * 現在の盤面に type を、テンプレ通りに置ける位置を探す。
- * - ハードドロップで届く置き方
- * - ソフトドロップ → 横移動 → 落下（横入れ）
- * テンプレの指定4マスと完全一致するものだけ採用。下の段を優先。
- */
-function findExactGhostPlacement(type) {
-  const variants = getTemplateVariants();
-
-  function cellsOf(x, y, rot) {
-    const m = getShapeMatrix(type, rot);
-    const cells = [];
-    for (let r = 0; r < m.length; r++) {
-      for (let c = 0; c < m[r].length; c++) {
-        if (!m[r][c]) continue;
-        cells.push([x + c, y + r]);
-      }
-    }
-    return cells;
+function checkCollisionOnBoard(b, x, y, type, rot) {
+  const m = getShapeMatrix(type, rot);
+  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) if (m[r][c]) {
+    const xx = x + c, yy = y + r;
+    if (xx < 0 || xx >= COLS || yy >= ROWS) return true;
+    if (yy >= 0 && b[yy][xx]) return true;
   }
+  return false;
+}
 
-  function fitsBoard(x, y, rot) {
-    return !checkCollision(x, y, type, rot);
+function scoreAgainstTemplate(candidate, variant) {
+  const rows = variant.pattern;
+  if (rows.some(row => typeof row !== 'string' || row.length !== COLS || /[^IJLOSTZ.]/.test(row))) return null;
+  const start = ROWS - rows.length;
+  let exact = 0, wrong = 0, occupiedTarget = 0, extra = 0;
+  for (let pr = 0; pr < rows.length; pr++) for (let c = 0; c < COLS; c++) {
+    const target = rows[pr][c];
+    const actual = candidate.board[start + pr][c];
+    if (target !== '.') {
+      occupiedTarget++;
+      if (actual === target) exact++;
+      else if (actual !== null) wrong++;
+    } else if (actual !== null) extra++;
   }
+  if (!occupiedTarget) return null;
+  // Only the matching mino type counts as correct; wrong types are penalized.
+  const similarity = (exact * 5 - wrong * 4 - extra * 2) / occupiedTarget;
+  // Progress in early setup matters, but don't force a template if nothing matches.
+  const score = similarity * 100 + variant.priority * 0.12 + candidate.cleared * 5;
+  if (exact < 1 || similarity < 0.02) return null;
+  return { score, exact, wrong, template: variant.name, cleared: candidate.cleared };
+}
 
-  // 置いた結果がテンプレと矛盾しないか（指定マス以外にブロックを出さない）
-  function matchesTemplateExactly(landing, rows, top) {
-    const m = getShapeMatrix(type, landing.rot);
-    const filled = [];
-    for (let r = 0; r < m.length; r++) {
-      for (let c = 0; c < m[r].length; c++) {
-        if (!m[r][c]) continue;
-        const yy = landing.y + r;
-        const xx = landing.x + c;
-        if (yy < top || yy >= ROWS || xx < 0 || xx >= COLS) return null;
-        const pr = yy - top;
-        if (rows[pr][xx] !== type) return null;
-        if (board[yy][xx]) return null; // 既存に重ねない
-        filled.push([pr, xx, yy]);
-      }
-    }
-    if (filled.length !== 4) return null;
+function countTemplatePieces(pattern) {
+  const counts = { I:0, J:0, L:0, O:0, S:0, T:0, Z:0 };
+  for (const row of pattern) for (const ch of row) if (counts[ch] !== undefined) counts[ch]++;
+  for (const type of Object.keys(counts)) counts[type] = Math.ceil(counts[type] / 4);
+  return counts;
+}
 
-    // テンプレ範囲内で、置いた後に「. の場所が埋まる」「違う種類になる」を禁止
-    // simulateLanding 済み board を使う
-    for (let r = 0; r < rows.length; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const actual = landing.board[top + r][c];
-        const target = rows[r][c];
-        if (actual && target === '.') return null;
-        if (actual && target !== '.' && actual !== target) return null;
-      }
-    }
-    const bottomY = Math.max(...filled.map(v => v[2]));
-    return bottomY;
+function templateLooksReachable(variant, currentType) {
+  // Use all pieces already generated by the 7-bag queue, not only the visible NEXT slots.
+  const available = { I:0, J:0, L:0, O:0, S:0, T:0, Z:0 };
+  available[currentType]++;
+  for (const type of nextQ) available[type]++;
+  for (const type of bag) available[type]++;
+  const required = countTemplatePieces(variant.pattern);
+  // A rough feasibility filter: don't select a template if its piece types are clearly unavailable.
+  // Counts are approximate because the pattern's connected cells may not all form tetrominoes cleanly.
+  return Object.keys(required).every(type => required[type] <= available[type] + 2);
+}
+
+function placementFitsTemplate(candidate, variant) {
+  const rows = variant.pattern;
+  const start = ROWS - rows.length;
+  const m = getShapeMatrix(candidate.type, candidate.rot);
+  let cells = 0;
+  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) {
+    if (!m[r][c]) continue;
+    const yy = candidate.y + r, xx = candidate.x + c;
+    const pr = yy - start;
+    if (yy < 0 || pr < 0 || pr >= rows.length || xx < 0 || xx >= COLS) return false;
+    if (rows[pr][xx] !== candidate.type) return false;
+    cells++;
   }
-
-  // ある (x,rot) について、高さ yFrom から横にスライドして最終 x に行けるか
-  // 簡略: 同じ高さで1マスずつ移動可能か
-  function canSlideAtHeight(y, fromX, toX, rot) {
-    if (fromX === toX) return fitsBoard(toX, y, rot);
-    const step = toX > fromX ? 1 : -1;
-    for (let x = fromX; x !== toX + step; x += step) {
-      if (!fitsBoard(x, y, rot)) return false;
-    }
-    return true;
+  if (cells !== 4) return false;
+  // Existing blocks must match the exact template mino type and stay inside its shape.
+  for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) {
+    const actual = candidate.board[start + r][c];
+    if (actual !== null && actual !== rows[r][c]) return false;
   }
+  return true;
+}
 
-  // 最終位置 (tx, rot) に重力落下したときの結果
-  function gravityLand(tx, rot) {
-    return simulateLanding(board, type, tx, rot);
+function rawTemplateScore(candidate, variant) {
+  const rows = variant.pattern;
+  if (rows.some(row => typeof row !== 'string' || row.length !== COLS || /[^IJLOSTZ.]/.test(row))) return -Infinity;
+  const start = ROWS - rows.length;
+  let exact = 0, wrong = 0, extra = 0, targetCount = 0;
+  for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) {
+    const target = rows[r][c], actual = candidate.board[start + r][c];
+    if (target !== '.') {
+      targetCount++;
+      if (actual === target) exact++;
+      else if (actual !== null) wrong++;
+    } else if (actual !== null) extra++;
   }
-
-  const allCandidates = [];
-
-  for (const variant of variants) {
-    const rows = variant.pattern;
-    if (!rows?.length) continue;
-    if (rows.some(row => typeof row !== 'string' || row.length !== COLS || /[^IJLOSTZ.]/.test(row))) continue;
-    const top = ROWS - rows.length;
-
-    for (let rot = 0; rot < 4; rot++) {
-      for (let tx = -3; tx < COLS; tx++) {
-        // --- A) ハードドロップ直置き ---
-        const hard = gravityLand(tx, rot);
-        if (hard && hard.cleared === 0) {
-          const bottomY = matchesTemplateExactly(hard, rows, top);
-          if (bottomY != null) {
-            allCandidates.push({
-              ...hard,
-              x: tx,
-              rot,
-              type,
-              template: variant.name,
-              variant,
-              bottomY,
-              needTuck: false,
-              tuckY: null
-            });
-          }
-        }
-
-        // --- B) 横入れ: 途中の高さで横スライドしてから落とす ---
-        // スポーン付近から最終落下点の少し上までを探索
-        const probe = gravityLand(tx, rot);
-        const maxY = probe ? probe.y : ROWS - 1;
-
-        for (let y = 0; y <= maxY; y++) {
-          // この高さに「一旦いる」必要があるので、真上から落ちてこられるか
-          // 簡略: (tx, y) が空白で、かつ y より上は最終列 tx で通れる、は重いので
-          // 「その高さで何かの x にいて、そこから tx にスライドできる」を見る
-          for (let sx = -3; sx < COLS; sx++) {
-            if (!fitsBoard(sx, y, rot)) continue;
-            // sx の真上から y まで落とせるか（途中に床がない = 上は空）
-            let canDropTo = true;
-            for (let uy = 0; uy < y; uy++) {
-              if (!fitsBoard(sx, uy, rot)) { canDropTo = false; break; }
-            }
-            if (!canDropTo) continue;
-            if (!canSlideAtHeight(y, sx, tx, rot)) continue;
-
-            // スライド後 (tx,y) からさらに落とす
-            let fy = y;
-            while (!checkCollision(tx, fy + 1, type, rot)) fy++;
-            // 仮ボードに置いてテンプレ判定
-            const sim = cloneBoard(board);
-            const m = getShapeMatrix(type, rot);
-            let placeOk = true;
-            for (let r = 0; r < m.length; r++) {
-              for (let c = 0; c < m[r].length; c++) {
-                if (!m[r][c]) continue;
-                const yy = fy + r, xx = tx + c;
-                if (yy < 0 || yy >= ROWS || xx < 0 || xx >= COLS || sim[yy][xx]) {
-                  placeOk = false; break;
-                }
-                sim[yy][xx] = type;
-              }
-              if (!placeOk) break;
-            }
-            if (!placeOk) continue;
-
-            let cleared = 0;
-            for (let r = ROWS - 1; r >= 0; r--) {
-              if (sim[r].every(v => v !== null)) {
-                sim.splice(r, 1);
-                sim.unshift(Array(COLS).fill(null));
-                cleared++; r++;
-              }
-            }
-            if (cleared > 0) continue; // 組む途中のライン消しは除外
-
-            const landing = { board: sim, x: tx, y: fy, rot, type, cleared: 0 };
-            const bottomY = matchesTemplateExactly(landing, rows, top);
-            if (bottomY == null) continue;
-
-            // ハードで届くなら横入れ扱いしない
-            const needTuck = !(hard && hard.y === fy && hard.x === tx);
-            allCandidates.push({
-              ...landing,
-              x: tx,
-              rot,
-              type,
-              template: variant.name,
-              variant,
-              bottomY,
-              needTuck,
-              tuckY: needTuck ? y : null,
-              tuckFromX: needTuck ? sx : null
-            });
-          }
-        }
-      }
-    }
-  }
-
-  if (!allCandidates.length) return null;
-
-  // 下の段優先。同じならハードドロップを優先（簡単）
-  allCandidates.sort((a, b) => {
-    if (b.bottomY !== a.bottomY) return b.bottomY - a.bottomY;
-    if (a.needTuck !== b.needTuck) return a.needTuck ? 1 : -1;
-    return 0;
-  });
-
-  return allCandidates[0];
+  if (!targetCount) return -Infinity;
+  // Reward exact mino-type matches and penalize wrong types or blocks outside the target.
+  const heightPenalty = candidate.board.findIndex(row => row.some(Boolean));
+  const height = heightPenalty < 0 ? 0 : ROWS - heightPenalty;
+  return (exact * 6) - (wrong * 8) - (extra * 4) + candidate.cleared * 8 - height * 0.08 - Math.abs(candidate.x - 3) * 0.01;
 }
 
 function findAiSuggestion() {
   if (!aiGuideEnabled || !adminMode || !cur || isEnded) return null;
-  const plan = findExactGhostPlacement(cur.type);
-  if (plan) return { ...plan, useHold: false };
+  const key = JSON.stringify([board.map(row => row.join('')), cur.type, holdPiece, nextQ, bag, canHold, templateData.map(t => [t.name,t.priority,t.enabled,t.mirror,t.pattern])]);
+  if (key === aiCacheKey) return aiCacheResult;
+  aiCacheKey = key;
+  const variants = getTemplateVariants();
+  if (!variants.length) { aiCacheResult = null; return null; }
+
+  const pieceOptions = [{ type: cur.type, useHold: false }];
   if (canHold) {
-    const held = holdPiece || nextQ[0];
-    if (held) {
-      const hp = findExactGhostPlacement(held);
-      if (hp) return { ...hp, useHold: true };
+    const heldType = holdPiece || nextQ[0];
+    if (heldType && heldType !== cur.type) pieceOptions.push({ type: heldType, useHold: true });
+  }
+
+  // First enumerate legal current placements. Keep only the most promising states,
+  // then search several upcoming pieces so a move cannot casually seal a target pocket.
+  const firstCandidates = [];
+  for (const option of pieceOptions) {
+    for (let rot = 0; rot < 4; rot++) for (let x = -3; x < COLS; x++) {
+      const candidate = simulateLanding(board, option.type, x, rot);
+      if (!candidate) continue;
+      for (const variant of variants) {
+        if (!templateLooksReachable(variant, option.type)) continue;
+        if (!placementFitsTemplate(candidate, variant)) continue;
+        const base = rawTemplateScore(candidate, variant);
+        if (!Number.isFinite(base)) continue;
+        firstCandidates.push({ ...candidate, template: variant.name, priority: variant.priority,
+          useHold: option.useHold, base, variant });
+      }
     }
   }
-  return null;
+  firstCandidates.sort((a, b) => b.base - a.base);
+  const finalists = firstCandidates.slice(0, 14);
+  let best = null;
+
+  for (const first of finalists) {
+    const upcoming = [...(first.useHold && !holdPiece ? nextQ.slice(1) : nextQ), ...bag].slice(0, 3);
+    // Beam search: test whether the next three generated pieces can continue
+    // toward the same template, using real piece order and legal gravity landings.
+    let beam = [{ board: first.board, score: first.base, path: [] }];
+    for (const type of upcoming) {
+      const expanded = [];
+      for (const state of beam) {
+        for (let rot = 0; rot < 4; rot++) for (let x = -3; x < COLS; x++) {
+          const next = simulateLanding(state.board, type, x, rot);
+          if (!next) continue;
+          if (!placementFitsTemplate({ ...next, type }, first.variant)) continue;
+          const score = rawTemplateScore(next, first.variant);
+          if (!Number.isFinite(score)) continue;
+          expanded.push({ board: next.board, score, path: state.path.concat({ type, x, y: next.y, rot }) });
+        }
+      }
+      expanded.sort((a, b) => b.score - a.score);
+      beam = expanded.slice(0, 6);
+      if (!beam.length) break;
+    }
+    const future = beam.length ? beam[0].score : first.base - 20;
+    // Give future feasibility substantial weight, while keeping the displayed move legal now.
+    const total = first.base * 0.35 + future * 0.65 - (first.useHold ? 0.5 : 0);
+    if (!best || total > best.total) best = { ...first, score: total, total };
+  }
+
+  // Never glow unless at least one real placement matches some enabled template.
+  if (best) {
+    const matched = scoreAgainstTemplate(best, best.variant);
+    if (!matched) best = null;
+    else best = { ...best, ...matched, score: best.total };
+  }
+  aiCacheResult = best;
+  return aiCacheResult;
 }
 
 function drawAiSuggestion() {
   const status = document.getElementById('aiGuideStatus');
-  if (!aiGuideEnabled || !adminMode || !cur || isEnded) { status.textContent = ''; return; }
+  if (!aiGuideEnabled || !adminMode || !cur || isEnded) {
+    status.textContent = '';
+    return;
+  }
   aiSuggestion = findAiSuggestion();
-  if (!aiSuggestion) { status.textContent = 'AI：一致するテンプレなし'; return; }
-  status.textContent = `${aiSuggestion.useHold ? 'HOLD → ' + aiSuggestion.type + ' / ' : ''}${aiSuggestion.template} · 次の配置`;
+  if (!aiSuggestion) {
+    status.textContent = 'AI：一致するテンプレなし';
+    return;
+  }
+  status.textContent = `${aiSuggestion.useHold ? 'HOLD → ' + aiSuggestion.type + ' / ' : ''}${aiSuggestion.template}${aiSuggestion.fallback ? ' · フォールバック' : ''} · 次の配置`; 
   const m = getShapeMatrix(aiSuggestion.type, aiSuggestion.rot);
   ctx.save();
-  ctx.strokeStyle = '#a6e3a1'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = '#a6e3a1';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 3]);
   ctx.fillStyle = 'rgba(166, 227, 161, 0.22)';
   m.forEach((row, r) => row.forEach((val, c) => {
     if (!val) return;
@@ -1091,23 +1111,29 @@ function render() {
     if (val) { ctx.fillStyle = COLORS[val]; ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1); }
   }));
   drawTemplateOverlay();
+
   if (!cur || isEnded) return;
   let gy = cur.y;
   while (!checkCollision(cur.x, gy + 1, cur.type, cur.r)) gy++;
   const m = getShapeMatrix(cur.type, cur.r);
+  
   ctx.fillStyle = 'rgba(255,255,255,0.25)';
   m.forEach((row, r) => row.forEach((val, c) => {
     if (val) ctx.fillRect((cur.x + c) * BLOCK_SIZE, (gy + r) * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
   }));
+
   ctx.fillStyle = COLORS[cur.type];
   m.forEach((row, r) => row.forEach((val, c) => {
     if (val) ctx.fillRect((cur.x + c) * BLOCK_SIZE, (cur.y + r) * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
   }));
   drawAiSuggestion();
 }
+
+
 function drawGarbagePreview() {
   const w = 20, h = 20;
   garbagePreviewCtx.clearRect(0, 0, w, 400);
+  // Each outlined grey cell represents one queued garbage line; they stack from the bottom.
   const count = Math.min(pendingGarbage, ROWS);
   for (let i = 0; i < count; i++) {
     const y = 400 - (i + 1) * h;
@@ -1118,12 +1144,14 @@ function drawGarbagePreview() {
     garbagePreviewCtx.strokeRect(0.5, y + 0.5, w - 1, h - 1);
   }
 }
+
 function drawHold() {
   holdCtx.clearRect(0, 0, 50, 50);
   if (!holdPiece) return;
   const m = SHAPES[holdPiece]; holdCtx.fillStyle = COLORS[holdPiece];
   m.forEach((row, r) => row.forEach((val, c) => { if (val) holdCtx.fillRect(c * 10 + 5, r * 10 + 5, 9, 9); }));
 }
+
 function drawNext() {
   nextCtx.clearRect(0, 0, 50, 250);
   nextQ.slice(0, 5).forEach((type, idx) => {
@@ -1131,6 +1159,7 @@ function drawNext() {
     m.forEach((row, r) => row.forEach((val, c) => { if (val) nextCtx.fillRect(c * 9 + 8, idx * 50 + r * 9 + 8, 8, 8); }));
   });
 }
+
 function drawP2(bBoard, p2Cur) {
   p2Ctx.clearRect(0, 0, 100, 200);
   if (bBoard) bBoard.forEach((row, r) => row.forEach((val, c) => {
@@ -1141,18 +1170,24 @@ function drawP2(bBoard, p2Cur) {
     m.forEach((row, r) => row.forEach((val, c) => { if (val) p2Ctx.fillRect((p2Cur.x + c) * 10, (p2Cur.y + r) * 10, 9, 9); }));
   }
 }
+
 function initGame() {
   board = Array.from({length: ROWS}, () => Array(COLS).fill(null));
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
   isEnded = false; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
   drawHold(); drawNext(); drawGarbagePreview();
-  rnd = (vsRule.nextMode === 'common') ? seededRandom(vsRule.seed) : Math.random;
+
+  if (vsRule.nextMode === 'common') rnd = seededRandom(vsRule.seed);
+  else rnd = Math.random;
+
   spawnPiece(); drawHold();
   lastDropTime = performance.now();
 }
 
-// ---- 設定 / 作者 ----
+// ==========================================
+// イベント設定
+// ==========================================
 document.getElementById('btnOpenSettings').onclick = () => {
   const posSelect = document.getElementById('cfgPosInterval');
   const posNote = document.getElementById('posIntervalNote');
@@ -1178,7 +1213,7 @@ function tryOpenAdminMode() {
   document.getElementById('settingsModal').classList.add('hidden');
   renderTemplateList();
   document.getElementById('adminModal').classList.remove('hidden');
-  toast('作者メニューを開きました');
+  if (typeof showToast === 'function') showToast('作者メニューを開きました');
 }
 document.getElementById('cfgArr').addEventListener('change', tryOpenAdminMode);
 document.getElementById('cfgSd').addEventListener('change', tryOpenAdminMode);
@@ -1193,27 +1228,35 @@ document.getElementById('cfgAiGuide').checked = aiGuideEnabled;
 function renderTemplateList() {
   const list = document.getElementById('templateList');
   list.innerHTML = '';
-  templateData.forEach((t) => {
+  templateData.forEach((t, i) => {
     const row = document.createElement('div');
     row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;gap:10px;align-items:center;min-width:0;';
     const info = document.createElement('div');
     info.style.cssText = 'flex:1 1 auto;min-width:0;overflow-wrap:anywhere;';
+    const count = Array.isArray(t.pattern) ? t.pattern.length : 0;
     const title = document.createElement('div');
-    title.style.cssText = 'font-size:.95rem;font-weight:700;'; title.textContent = t.name;
+    title.style.cssText = 'font-size:.95rem;font-weight:700;line-height:1.35;overflow-wrap:anywhere;';
+    title.textContent = t.name;
     const meta = document.createElement('div');
     meta.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;';
-    const chip = (text) => { const el = document.createElement('span'); el.textContent = text; el.style.cssText = 'font-size:.72rem;color:var(--sub);border:1px solid var(--border);border-radius:5px;padding:2px 6px;'; return el; };
-    meta.append(chip(`${(t.pattern||[]).length}行`), chip(`優先度 ${Number(t.priority)||0}`));
+    const chip = (text) => { const el = document.createElement('span'); el.textContent = text; el.style.cssText = 'display:inline-block;font-size:.72rem;color:var(--sub);border:1px solid var(--border);border-radius:5px;padding:2px 6px;white-space:nowrap;'; return el; };
+    meta.append(chip(`${count}行`), chip(`優先度 ${Number(t.priority)||0}`));
     if (t.mirror) meta.append(chip('左右反転あり'));
     info.append(title, meta);
     const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex;gap:5px;';
+    actions.style.cssText = 'display:flex;flex:0 0 auto;gap:5px;align-items:center;';
     const toggle = document.createElement('button'); toggle.className = 'alt'; toggle.textContent = t.enabled === false ? '無効' : '有効';
-    toggle.style.cssText = 'padding:6px 8px;';
+    toggle.style.cssText = 'padding:6px 8px;min-width:0;white-space:nowrap;';
     toggle.onclick = () => { t.enabled = t.enabled === false; saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions(); render(); };
-    actions.append(toggle);
+    const mirror = document.createElement('button'); mirror.className = 'alt'; mirror.textContent = '反転';
+    mirror.style.cssText = 'padding:6px 8px;min-width:0;white-space:nowrap;';
+    mirror.onclick = () => { const preview = mirrorTemplateRows(t.pattern || []); alert(t.name + '（左右反転）\n\n' + preview.join('\n')); };
+    actions.append(toggle, mirror);
     row.append(info, actions); list.appendChild(row);
   });
+}
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 document.getElementById('btnAddTemplate').onclick = () => {
   const name = document.getElementById('templateName').value.trim();
@@ -1230,13 +1273,150 @@ document.getElementById('btnAddTemplate').onclick = () => {
 document.getElementById('btnCloseAdmin').onclick = () => document.getElementById('adminModal').classList.add('hidden');
 
 function stopAutoBuild(message = '自動積み停止') {
-  autoBuildRunning = false; autoBuildToken++;
+  autoBuildRunning = false;
+  autoBuildToken++;
   document.getElementById('btnAutoBuild').disabled = false;
   document.getElementById('btnAutoStop').disabled = true;
-  if (adminMode && message) document.getElementById('aiGuideStatus').textContent = message;
+  const status = document.getElementById('aiGuideStatus');
+  if (adminMode && message) status.textContent = message;
 }
 function waitAuto(ms, token) {
   return new Promise(resolve => setTimeout(() => resolve(autoBuildRunning && token === autoBuildToken), ms));
+}
+function activeTemplateComplete(variant) {
+  if (!variant || !variant.pattern) return false;
+  const start = ROWS - variant.pattern.length;
+  for (let r = 0; r < variant.pattern.length; r++) for (let c = 0; c < COLS; c++) {
+    if (variant.pattern[r][c] !== '.' && board[start + r]?.[c] !== variant.pattern[r][c]) return false;
+    if (variant.pattern[r][c] === '.' && board[start + r]?.[c]) return false;
+  }
+  return true;
+}
+function findExactGhostPlacement(type) {
+  const variants = getTemplateVariants();
+  const all = [];
+
+  function matchesTemplateExactly(landing, rows, top) {
+    const m = getShapeMatrix(landing.type, landing.rot);
+    const ys = [];
+    for (let r = 0; r < m.length; r++) {
+      for (let c = 0; c < m[r].length; c++) {
+        if (!m[r][c]) continue;
+        const yy = landing.y + r, xx = landing.x + c;
+        if (yy < top || yy >= ROWS || xx < 0 || xx >= COLS) return null;
+        if (rows[yy - top][xx] !== landing.type) return null;
+        if (board[yy][xx]) return null;
+        ys.push(yy);
+      }
+    }
+    if (ys.length !== 4) return null;
+    for (let r = 0; r < rows.length; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const a = landing.board[top + r][c], t = rows[r][c];
+        if (a && t === '.') return null;
+        if (a && t !== '.' && a !== t) return null;
+      }
+    }
+    return Math.max(...ys);
+  }
+
+  function tryPlaceOnBoard(x, y, rot) {
+    if (checkCollision(x, y, type, rot)) return null;
+    const sim = board.map(row => row.slice());
+    const m = getShapeMatrix(type, rot);
+    for (let r = 0; r < m.length; r++) {
+      for (let c = 0; c < m[r].length; c++) {
+        if (!m[r][c]) continue;
+        const yy = y + r, xx = x + c;
+        if (yy < 0 || yy >= ROWS || xx < 0 || xx >= COLS || sim[yy][xx]) return null;
+        sim[yy][xx] = type;
+      }
+    }
+    for (let r = 0; r < ROWS; r++) {
+      if (sim[r].every(v => v !== null)) return null;
+    }
+    return { board: sim, x, y, rot, type, cleared: 0 };
+  }
+
+  function tryKick(x, y, fromR, dir) {
+    const newR = (fromR + dir + 4) % 4;
+    const key = `${fromR}-${newR}`;
+    const kicks = type === 'I' ? KICK_I[key] : KICK_STD[key];
+    if (!kicks) return null;
+    for (let i = 0; i < kicks.length; i++) {
+      const [kx, ky] = kicks[i];
+      const nx = x + kx, ny = y - ky;
+      if (!checkCollision(nx, ny, type, newR)) {
+        return { x: nx, y: ny, rot: newR, kickIndex: i };
+      }
+    }
+    return null;
+  }
+
+  for (const variant of variants) {
+    const rows = variant.pattern;
+    if (!rows?.length) continue;
+    if (rows.some(row => row.length !== COLS || /[^IJLOSTZ.]/.test(row))) continue;
+    const top = ROWS - rows.length;
+    let foundHard = false;
+
+    // A) ハードドロップ
+    for (let rot = 0; rot < 4; rot++) {
+      for (let tx = -3; tx < COLS; tx++) {
+        const hard = simulateLanding(board, type, tx, rot);
+        if (!hard || hard.cleared > 0) continue;
+        const bottomY = matchesTemplateExactly(hard, rows, top);
+        if (bottomY == null) continue;
+        all.push({
+          ...hard, x: tx, rot, type,
+          template: variant.name, variant, bottomY,
+          needTuck: false, needSpin: false,
+          tuckY: null, tuckFromX: null, spinFrom: null
+        });
+        foundHard = true;
+      }
+    }
+    if (foundHard) continue;
+
+    // B) 回転入れ（ハード不可のときだけ）
+    const yMin = Math.max(0, top - 1);
+    for (let fromR = 0; fromR < 4; fromR++) {
+      for (let x = -3; x < COLS; x++) {
+        for (let y = yMin; y < ROWS; y++) {
+          if (checkCollision(x, y, type, fromR)) continue;
+          let canDrop = true;
+          for (let uy = 0; uy < y; uy++) {
+            if (checkCollision(x, uy, type, fromR)) { canDrop = false; break; }
+          }
+          if (!canDrop) continue;
+
+          for (const dir of [1, -1]) {
+            const kicked = tryKick(x, y, fromR, dir);
+            if (!kicked) continue;
+            const landing = tryPlaceOnBoard(kicked.x, kicked.y, kicked.rot);
+            if (!landing) continue;
+            const bottomY = matchesTemplateExactly(landing, rows, top);
+            if (bottomY == null) continue;
+            all.push({
+              ...landing, x: kicked.x, y: kicked.y, rot: kicked.rot, type,
+              template: variant.name, variant, bottomY,
+              needTuck: false, needSpin: true,
+              tuckY: null, tuckFromX: null,
+              spinFrom: { x, y, rot: fromR, dir }
+            });
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (!all.length) return null;
+  all.sort((a, b) => {
+    if (b.bottomY !== a.bottomY) return b.bottomY - a.bottomY;
+    return (a.needSpin ? 1 : 0) - (b.needSpin ? 1 : 0);
+  });
+  return all[0];
 }
 async function startAutoBuild() {
   if (!adminMode || autoBuildRunning || isEnded) return;
@@ -1245,47 +1425,91 @@ async function startAutoBuild() {
   document.getElementById('btnAutoBuild').disabled = true;
   document.getElementById('btnAutoStop').disabled = false;
   let safety = 0;
-  document.getElementById('aiGuideStatus').textContent = '自動積み中…';
+  const status = document.getElementById('aiGuideStatus');
+  status.textContent = 'ゴースト位置とテンプレを照合中…';
   while (autoBuildRunning && token === autoBuildToken && !isEnded && safety++ < 80) {
     if (!cur) { if (!(await waitAuto(80, token))) break; continue; }
     let plan = findExactGhostPlacement(cur.type);
     let useHold = false;
     if (!plan && canHold) {
       const heldType = holdPiece || nextQ[0];
-      if (heldType) { plan = findExactGhostPlacement(heldType); useHold = !!plan; }
+      if (heldType) {
+        plan = findExactGhostPlacement(heldType);
+        useHold = !!plan;
+      }
     }
-    if (!plan) { stopAutoBuild('自動積み停止：一致する配置なし'); return; }
+    if (!plan) {
+      stopAutoBuild('自動積み停止：現在ミノ・HOLDともにテンプレと一致するゴースト位置なし');
+      return;
+    }
     if (useHold) {
       doHold();
       if (!(await waitAuto(100, token))) break;
-      if (!cur || cur.type !== plan.type) { stopAutoBuild('HOLD後不一致'); return; }
+      if (!cur || cur.type !== plan.type) { stopAutoBuild('自動積み停止：HOLD後のミノ不一致'); return; }
     }
-    let rotations = 0;
-    while (cur && cur.r !== plan.rot && rotations++ < 4) {
-      const before = cur.r; rotate(1);
-      if (cur.r === before) { stopAutoBuild('回転不可'); return; }
-      if (!(await waitAuto(45, token))) return;
+    // ---- ここから置き換え ----
+    const beforeCur = cur;
+    if (plan.needSpin && plan.spinFrom) {
+      // 1) スピン前の向きに合わせる
+      let rotN = 0;
+      while (cur && cur.r !== plan.spinFrom.rot && rotN++ < 4) {
+        const before = cur.r;
+        rotate(1);
+        if (cur.r === before) { stopAutoBuild('回転不可'); return; }
+        if (!(await waitAuto(20, token))) return;
+      }
+      // 2) スピン前の x へ
+      let m = 0;
+      while (cur && cur.x !== plan.spinFrom.x && m++ < COLS + 2) {
+        if (!move(plan.spinFrom.x > cur.x ? 1 : -1, 0)) break;
+        if (!(await waitAuto(15, token))) return;
+      }
+      // 3) スピン前の高さまで落とす
+      while (cur && cur.y < plan.spinFrom.y) {
+        if (!move(0, 1)) break;
+        if (!(await waitAuto(10, token))) return;
+      }
+      // 4) キック回転
+      rotate(plan.spinFrom.dir);
+      if (!(await waitAuto(20, token))) return;
+      // 5) 固定
+      hardDrop();
+    } else {
+      // 普通：向き合わせ → 横移動 → ハードドロップ
+      let rotN = 0;
+      while (cur && cur.r !== plan.rot && rotN++ < 4) {
+        const before = cur.r;
+        rotate(1);
+        if (cur.r === before) { stopAutoBuild('回転不可'); return; }
+        if (!(await waitAuto(20, token))) return;
+      }
+      let m = 0;
+      while (cur && cur.x !== plan.x && m++ < COLS + 2) {
+        if (!move(plan.x > cur.x ? 1 : -1, 0)) { stopAutoBuild('横移動不可'); return; }
+        if (!(await waitAuto(15, token))) return;
+      }
+      let gy = cur.y;
+      while (!checkCollision(cur.x, gy + 1, cur.type, cur.r)) gy++;
+      if (!cur || cur.x !== plan.x || cur.r !== plan.rot || gy !== plan.y) {
+        stopAutoBuild('ゴースト不一致');
+        return;
+      }
+      hardDrop();
     }
-    let moves = 0;
-    while (cur && cur.x !== plan.x && moves++ < COLS + 2) {
-      if (!move(plan.x > cur.x ? 1 : -1, 0)) { stopAutoBuild('横移動不可'); return; }
-      if (!(await waitAuto(35, token))) return;
-    }
-    let gy = cur.y;
-    while (!checkCollision(cur.x, gy + 1, cur.type, cur.r)) gy++;
-    if (!cur || cur.type !== plan.type || cur.x !== plan.x || cur.r !== plan.rot || gy !== plan.y) {
-      stopAutoBuild('ゴースト不一致'); return;
-    }
-    hardDrop();
+    // ---- ここまで置き換え ----
     if (!(await waitAuto(140, token))) break;
+    if (cur === beforeCur) { stopAutoBuild('自動積み停止：固定を確認できません'); return; }
+    const variant = getTemplateVariants().find(v => v.name === plan.template);
+    if (variant && activeTemplateComplete(variant)) { stopAutoBuild('テンプレ完成：自動積み停止'); return; }
   }
-  if (autoBuildRunning && safety >= 80) stopAutoBuild('手数上限');
+  if (autoBuildRunning && safety >= 80) stopAutoBuild('自動積み停止：手数上限');
   else if (autoBuildRunning) stopAutoBuild('自動積み停止');
 }
 document.getElementById('btnAutoBuild').addEventListener('click', startAutoBuild);
 document.getElementById('btnAutoStop').addEventListener('click', () => stopAutoBuild('手動停止'));
 
-// ---- 入力 ----
+
+
 document.addEventListener('keydown', (e) => {
   if (e.repeat || !document.getElementById('gameScreen').classList.contains('active')) return;
   if (e.key === 'ArrowLeft')  handlePressStart('left', () => move(-1, 0), config.arr);
@@ -1301,6 +1525,7 @@ document.addEventListener('keyup', (e) => {
   if (e.key === 'ArrowRight') handlePressEnd('right');
   if (e.key === 'ArrowDown')  handlePressEnd('down');
 });
+
 function bindTouchButton(id, key, fn, interval) {
   const btn = document.getElementById(id);
   if (!btn) return;
@@ -1314,9 +1539,11 @@ function bindTapButton(id, fn) {
   if (!btn) return;
   btn.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
 }
+
 bindTouchButton('btnL', 'left', () => move(-1, 0), () => config.arr);
 bindTouchButton('btnR', 'right', () => move(1, 0), () => config.arr);
 bindTouchButton('btnSoft', 'down', () => move(0, 1), () => config.sd);
+
 bindTapButton('btnHard', hardDrop);
 bindTapButton('btnRotL', () => rotate(-1));
 bindTapButton('btnRotR', () => rotate(1));
