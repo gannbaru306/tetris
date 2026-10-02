@@ -864,56 +864,191 @@ function simulateLanding(srcBoard, type, x, rot) {
   return { board: sim, x, y, rot, type, cleared };
 }
 
+/**
+ * 現在の盤面に type を、テンプレ通りに置ける位置を探す。
+ * - ハードドロップで届く置き方
+ * - ソフトドロップ → 横移動 → 落下（横入れ）
+ * テンプレの指定4マスと完全一致するものだけ採用。下の段を優先。
+ */
 function findExactGhostPlacement(type) {
   const variants = getTemplateVariants();
+
+  function cellsOf(x, y, rot) {
+    const m = getShapeMatrix(type, rot);
+    const cells = [];
+    for (let r = 0; r < m.length; r++) {
+      for (let c = 0; c < m[r].length; c++) {
+        if (!m[r][c]) continue;
+        cells.push([x + c, y + r]);
+      }
+    }
+    return cells;
+  }
+
+  function fitsBoard(x, y, rot) {
+    return !checkCollision(x, y, type, rot);
+  }
+
+  // 置いた結果がテンプレと矛盾しないか（指定マス以外にブロックを出さない）
+  function matchesTemplateExactly(landing, rows, top) {
+    const m = getShapeMatrix(type, landing.rot);
+    const filled = [];
+    for (let r = 0; r < m.length; r++) {
+      for (let c = 0; c < m[r].length; c++) {
+        if (!m[r][c]) continue;
+        const yy = landing.y + r;
+        const xx = landing.x + c;
+        if (yy < top || yy >= ROWS || xx < 0 || xx >= COLS) return null;
+        const pr = yy - top;
+        if (rows[pr][xx] !== type) return null;
+        if (board[yy][xx]) return null; // 既存に重ねない
+        filled.push([pr, xx, yy]);
+      }
+    }
+    if (filled.length !== 4) return null;
+
+    // テンプレ範囲内で、置いた後に「. の場所が埋まる」「違う種類になる」を禁止
+    // simulateLanding 済み board を使う
+    for (let r = 0; r < rows.length; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const actual = landing.board[top + r][c];
+        const target = rows[r][c];
+        if (actual && target === '.') return null;
+        if (actual && target !== '.' && actual !== target) return null;
+      }
+    }
+    const bottomY = Math.max(...filled.map(v => v[2]));
+    return bottomY;
+  }
+
+  // ある (x,rot) について、高さ yFrom から横にスライドして最終 x に行けるか
+  // 簡略: 同じ高さで1マスずつ移動可能か
+  function canSlideAtHeight(y, fromX, toX, rot) {
+    if (fromX === toX) return fitsBoard(toX, y, rot);
+    const step = toX > fromX ? 1 : -1;
+    for (let x = fromX; x !== toX + step; x += step) {
+      if (!fitsBoard(x, y, rot)) return false;
+    }
+    return true;
+  }
+
+  // 最終位置 (tx, rot) に重力落下したときの結果
+  function gravityLand(tx, rot) {
+    return simulateLanding(board, type, tx, rot);
+  }
+
+  const allCandidates = [];
+
   for (const variant of variants) {
     const rows = variant.pattern;
     if (!rows?.length) continue;
     if (rows.some(row => typeof row !== 'string' || row.length !== COLS || /[^IJLOSTZ.]/.test(row))) continue;
     const top = ROWS - rows.length;
-    const candidates = [];
 
     for (let rot = 0; rot < 4; rot++) {
-      for (let x = -3; x < COLS; x++) {
-        const landing = simulateLanding(board, type, x, rot);
-        if (!landing || landing.cleared > 0) continue;
-        const m = getShapeMatrix(type, rot);
-        const filled = [];
-        let ok = true;
-        for (let r = 0; r < m.length; r++) {
-          for (let c = 0; c < m[r].length; c++) {
-            if (!m[r][c]) continue;
-            const yy = landing.y + r, xx = x + c;
-            if (yy < top || yy >= ROWS || xx < 0 || xx >= COLS) { ok = false; break; }
-            const pr = yy - top;
-            if (rows[pr][xx] !== type) { ok = false; break; }
-            if (board[yy][xx]) { ok = false; break; }
-            filled.push([pr, xx, yy]);
+      for (let tx = -3; tx < COLS; tx++) {
+        // --- A) ハードドロップ直置き ---
+        const hard = gravityLand(tx, rot);
+        if (hard && hard.cleared === 0) {
+          const bottomY = matchesTemplateExactly(hard, rows, top);
+          if (bottomY != null) {
+            allCandidates.push({
+              ...hard,
+              x: tx,
+              rot,
+              type,
+              template: variant.name,
+              variant,
+              bottomY,
+              needTuck: false,
+              tuckY: null
+            });
           }
-          if (!ok) break;
         }
-        if (!ok || filled.length !== 4) continue;
 
-        let clean = true;
-        for (let r = 0; r < rows.length; r++) {
-          for (let c = 0; c < COLS; c++) {
-            const actual = landing.board[top + r][c];
-            const target = rows[r][c];
-            if (actual && target === '.') { clean = false; break; }
-            if (actual && target !== '.' && actual !== target) { clean = false; break; }
+        // --- B) 横入れ: 途中の高さで横スライドしてから落とす ---
+        // スポーン付近から最終落下点の少し上までを探索
+        const probe = gravityLand(tx, rot);
+        const maxY = probe ? probe.y : ROWS - 1;
+
+        for (let y = 0; y <= maxY; y++) {
+          // この高さに「一旦いる」必要があるので、真上から落ちてこられるか
+          // 簡略: (tx, y) が空白で、かつ y より上は最終列 tx で通れる、は重いので
+          // 「その高さで何かの x にいて、そこから tx にスライドできる」を見る
+          for (let sx = -3; sx < COLS; sx++) {
+            if (!fitsBoard(sx, y, rot)) continue;
+            // sx の真上から y まで落とせるか（途中に床がない = 上は空）
+            let canDropTo = true;
+            for (let uy = 0; uy < y; uy++) {
+              if (!fitsBoard(sx, uy, rot)) { canDropTo = false; break; }
+            }
+            if (!canDropTo) continue;
+            if (!canSlideAtHeight(y, sx, tx, rot)) continue;
+
+            // スライド後 (tx,y) からさらに落とす
+            let fy = y;
+            while (!checkCollision(tx, fy + 1, type, rot)) fy++;
+            // 仮ボードに置いてテンプレ判定
+            const sim = cloneBoard(board);
+            const m = getShapeMatrix(type, rot);
+            let placeOk = true;
+            for (let r = 0; r < m.length; r++) {
+              for (let c = 0; c < m[r].length; c++) {
+                if (!m[r][c]) continue;
+                const yy = fy + r, xx = tx + c;
+                if (yy < 0 || yy >= ROWS || xx < 0 || xx >= COLS || sim[yy][xx]) {
+                  placeOk = false; break;
+                }
+                sim[yy][xx] = type;
+              }
+              if (!placeOk) break;
+            }
+            if (!placeOk) continue;
+
+            let cleared = 0;
+            for (let r = ROWS - 1; r >= 0; r--) {
+              if (sim[r].every(v => v !== null)) {
+                sim.splice(r, 1);
+                sim.unshift(Array(COLS).fill(null));
+                cleared++; r++;
+              }
+            }
+            if (cleared > 0) continue; // 組む途中のライン消しは除外
+
+            const landing = { board: sim, x: tx, y: fy, rot, type, cleared: 0 };
+            const bottomY = matchesTemplateExactly(landing, rows, top);
+            if (bottomY == null) continue;
+
+            // ハードで届くなら横入れ扱いしない
+            const needTuck = !(hard && hard.y === fy && hard.x === tx);
+            allCandidates.push({
+              ...landing,
+              x: tx,
+              rot,
+              type,
+              template: variant.name,
+              variant,
+              bottomY,
+              needTuck,
+              tuckY: needTuck ? y : null,
+              tuckFromX: needTuck ? sx : null
+            });
           }
-          if (!clean) break;
         }
-        if (!clean) continue;
-
-        const bottomY = Math.max(...filled.map(v => v[2]));
-        candidates.push({ ...landing, x, rot, type, template: variant.name, variant, bottomY });
       }
     }
-    candidates.sort((a, b) => b.bottomY - a.bottomY);
-    if (candidates.length) return candidates[0];
   }
-  return null;
+
+  if (!allCandidates.length) return null;
+
+  // 下の段優先。同じならハードドロップを優先（簡単）
+  allCandidates.sort((a, b) => {
+    if (b.bottomY !== a.bottomY) return b.bottomY - a.bottomY;
+    if (a.needTuck !== b.needTuck) return a.needTuck ? 1 : -1;
+    return 0;
+  });
+
+  return allCandidates[0];
 }
 
 function findAiSuggestion() {
