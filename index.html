@@ -308,7 +308,7 @@ const COLS = 10, ROWS = 20, BLOCK_SIZE = 20;
 // Set this to the deployed Cloudflare Worker URL before publishing.
 const API_BASE = 'https://rough-sun-dbc8.ym-gnbr-abc.workers.dev';
 const AUTH_KEY = 'p2pTetrisAuthV1';
-let account = null, authToken = '', runStartedAt = 0, replayStartPerf = 0, replaySnapshots = [], replayEvents = [], replayLastFrameAt = 0, currentReplay = null, replayTimer = null, replayIndex = 0, replayPlaying = false, replayLastWall = 0, replayClockMs = 0;
+let account = null, authToken = '', runStartedAt = 0, replayStartPerf = 0, replayEvents = [], currentReplay = null, replayTimer = null, replayIndex = 0, replayPlaying = false, replayLastWall = 0, replayClockMs = 0;
 
 const SHAPES = {
   I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
@@ -414,22 +414,21 @@ async function unpackReplay(str) {
   if (str.startsWith('TTP0:')) return JSON.parse(new TextDecoder().decode(bytes));
   throw new Error('未対応のリプレイ形式です。');
 }
-function replayBoardCompact() { return board.map(row => row.map(v => v || '.').join('')); }
-function recordReplayEvent(action, data={}) {
-  if (isVsMode || !runStartedAt || isEnded) return;
-  replayEvents.push({ t: Math.max(0, Math.round(performance.now() - replayStartPerf)), a: action, ...data });
-}
-function recordReplayFrame(timestamp) {
+function recordReplayPosition() {
   if (isVsMode || !runStartedAt || isEnded || !cur) return;
-  const elapsed = Math.max(0, Math.round(timestamp - replayStartPerf));
-  if (elapsed - replayLastFrameAt < 33 && replaySnapshots.length) return;
-  replayLastFrameAt = elapsed;
-  replaySnapshots.push({ t: elapsed, b: replayBoardCompact(), c: {type:cur.type,x:cur.x,y:cur.y,r:cur.r}, h:holdPiece, n:nextQ.slice(0,5), ch:canHold, ren, b2b });
+  const t = Math.max(0, Math.round(performance.now() - replayStartPerf));
+  const last = replayEvents[replayEvents.length - 1];
+  if (last && last.length === 5 && last[1] === cur.type && last[2] === cur.x && last[3] === cur.y && last[4] === cur.r) return;
+  replayEvents.push([t, cur.type, cur.x, cur.y, cur.r]);
+}
+function recordReplayLock() {
+  if (isVsMode || !runStartedAt || isEnded || !cur) return;
+  replayEvents.push([Math.max(0, Math.round(performance.now() - replayStartPerf)), 'L']);
 }
 async function finishSoloRun() {
-  if (isVsMode || !account || !runStartedAt || replaySnapshots.length === 0) return;
+  if (isVsMode || !account || !runStartedAt || replayEvents.length === 0) return;
   const durationMs = Math.max(0, Math.round(performance.now() - replayStartPerf));
-  const run = { version:2, durationMs, fps:30, frames:replaySnapshots, events:replayEvents };
+  const run = { version:3, durationMs, events:replayEvents };
   runStartedAt = 0;
   try {
     const replayData = await packReplay(run);
@@ -657,7 +656,6 @@ function gameLoop(timestamp) {
       groundedAt = 0;
     }
   }
-  recordReplayFrame(timestamp);
   render();
   requestAnimationFrame(gameLoop);
 }
@@ -724,6 +722,7 @@ function spawnPiece() {
   prioritizeTemplatePiece();
   cur = { type: nextQ.shift(), x: 3, y: 0, r: 0, lastRot: false, lastKickIndex: -1 };
   canHold = true; lockMoves = 0; groundedAt = 0;
+  recordReplayPosition();
 
   if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
     isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishSoloRun();
@@ -760,6 +759,7 @@ function move(dx, dy) {
       groundedAt = 0;
       lastDropTime = performance.now();
     }
+    recordReplayPosition();
     sendPosThrottled();
     return true;
   }
@@ -783,6 +783,7 @@ function rotate(dir) {
         groundedAt = 0;
         lastDropTime = performance.now();
       }
+      recordReplayPosition();
       sendPosThrottled();
       return;
     }
@@ -876,7 +877,7 @@ function lockPiece() {
 
   applyGarbageOnLock();
   if (isVsMode) sendNet({ type: 'LOCK', board: board.map(row => row.slice()) });
-  recordReplaySnapshot();
+  recordReplayLock();
   if (isEnded) return;
   spawnPiece();
   lastDropTime = performance.now();
@@ -1348,7 +1349,7 @@ function initGame() {
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
   isEnded = false; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
-  if (!isVsMode && account) { runStartedAt = Date.now(); replayStartPerf = performance.now(); replaySnapshots = []; replayEvents = []; replayLastFrameAt = -1000; } else { runStartedAt = 0; replaySnapshots = []; replayEvents = []; replayLastFrameAt = 0; }
+  if (!isVsMode && account) { runStartedAt = Date.now(); replayStartPerf = performance.now(); replayEvents = []; } else { runStartedAt = 0; replayEvents = []; }
   drawHold(); drawNext(); drawGarbagePreview();
 
   rngCallCount = 0;
@@ -1826,62 +1827,72 @@ async function refreshCloudReplays() {
     }
   } catch(e){root.textContent=e.message;}
 }
-function replayDecodeBoard(frame) {
-  if (frame.b) return frame.b.map(row => [...row].map(ch => ch === '.' ? null : ch));
-  if (frame.board) return frame.board;
-  return Array.from({length:ROWS},()=>Array(COLS).fill(null));
+function buildReplayState(targetMs) {
+  const rb = Array.from({length:ROWS},()=>Array(COLS).fill(null));
+  let piece = null, hold = null, next = [], eventIndex = 0;
+  const events = currentReplay?.events || [];
+  const lock = () => {
+    if (!piece) return;
+    const m = getShapeMatrix(piece.type, piece.r || 0);
+    m.forEach((row,r)=>row.forEach((v,c)=>{
+      const x=piece.x+c,y=piece.y+r;
+      if(v && y>=0 && y<ROWS && x>=0 && x<COLS) rb[y][x]=piece.type;
+    }));
+    for(let r=ROWS-1;r>=0;r--) if(rb[r].every(v=>v!==null)){rb.splice(r,1);rb.unshift(Array(COLS).fill(null));r++;}
+    piece=null;
+  };
+  while(eventIndex<events.length && events[eventIndex][0]<=targetMs){
+    const e=events[eventIndex++];
+    if(e.length===2 && e[1]==='L') lock();
+    else if(e.length===5 && typeof e[1]==='string') piece={type:e[1],x:e[2],y:e[3],r:e[4]};
+  }
+  return {board:rb,piece,index:eventIndex,time:targetMs};
 }
 function drawReplayFrame() {
-  if (!currentReplay?.frames?.length) return;
-  replayIndex = Math.max(0,Math.min(replayIndex,currentReplay.frames.length-1));
-  const f=currentReplay.frames[replayIndex], c=document.getElementById('replayCanvas'), x=c.getContext('2d');
+  if (!currentReplay?.events?.length) return;
+  const duration=currentReplay.durationMs||currentReplay.events[currentReplay.events.length-1][0]||1;
+  replayClockMs=Math.max(0,Math.min(duration,replayClockMs));
+  const state=buildReplayState(replayClockMs), c=document.getElementById('replayCanvas'), x=c.getContext('2d');
   x.clearRect(0,0,c.width,c.height);x.fillStyle='#111';x.fillRect(0,0,c.width,c.height);
-  const rb=replayDecodeBoard(f);
-  rb.forEach((row,r)=>row.forEach((v,col)=>{if(v){x.fillStyle=COLORS[v]||'#888';x.fillRect(col*20,r*20,19,19)}}));
-  const piece=f.c||f.cur;
+  state.board.forEach((row,r)=>row.forEach((v,col)=>{if(v){x.fillStyle=COLORS[v]||'#888';x.fillRect(col*20,r*20,19,19)}}));
+  const piece=state.piece;
   if(piece?.type){const m=getShapeMatrix(piece.type,piece.r||0);x.fillStyle=COLORS[piece.type]||'#888';m.forEach((row,r)=>row.forEach((v,col)=>{if(v){const px=(piece.x+col)*20,py=(piece.y+r)*20;if(py>=0)x.fillRect(px,py,19,19)}}));}
-  const hc=document.getElementById('replayHoldCanvas').getContext('2d');hc.clearRect(0,0,50,50);if(f.h||f.holdPiece){const m=SHAPES[f.h||f.holdPiece];hc.fillStyle=COLORS[f.h||f.holdPiece];m.forEach((row,r)=>row.forEach((v,col)=>{if(v)hc.fillRect(col*10+5,r*10+5,9,9)}));}
-  const nc=document.getElementById('replayNextCanvas').getContext('2d');nc.clearRect(0,0,50,250);(f.n||f.nextQ||[]).slice(0,5).forEach((type,idx)=>{const m=SHAPES[type];if(!m)return;nc.fillStyle=COLORS[type];m.forEach((row,r)=>row.forEach((v,col)=>{if(v)nc.fillRect(col*9+8,idx*50+r*9+8,8,8)}));});
-  const duration=currentReplay.durationMs||currentReplay.frames[currentReplay.frames.length-1].t||1;
-  document.getElementById('replaySeek').value=String(Math.round((f.t/duration)*1000));
-  document.getElementById('replayStatus').textContent=`${(f.t/1000).toFixed(2)}秒 / ${(duration/1000).toFixed(2)}秒 · ${replayIndex+1}/${currentReplay.frames.length}フレーム · 操作履歴 ${(currentReplay.events||[]).length}件`;
+  document.getElementById('replayHoldCanvas').getContext('2d').clearRect(0,0,50,50);
+  document.getElementById('replayNextCanvas').getContext('2d').clearRect(0,0,50,250);
+  document.getElementById('replaySeek').value=String(Math.round((replayClockMs/duration)*1000));
+  document.getElementById('replayStatus').textContent=`${(replayClockMs/1000).toFixed(2)}秒 / ${(duration/1000).toFixed(2)}秒 · イベント ${state.index}/${currentReplay.events.length}`;
+  replayIndex=state.index;
 }
 async function loadReplayText(text) {
   stopReplayPlayback();
   const parsed=await unpackReplay(text.trim());
-  if(parsed.version===2 && Array.isArray(parsed.frames) && parsed.frames.length){currentReplay=parsed;}
-  else if(parsed.version===1 && Array.isArray(parsed.snapshots)){currentReplay={version:1,durationMs:parsed.durationMs||0,frames:parsed.snapshots.map(f=>({t:f.t,b:f.board.map(row=>row.map(v=>v||'.').join('')),c:null,h:null,n:[]})),events:[]};}
+  if(parsed.version===3 && Array.isArray(parsed.events) && parsed.events.length){currentReplay=parsed;}
   else throw new Error('対応していないリプレイ形式です。');
-  replayIndex=0;document.getElementById('replayPlayer').style.display='flex';drawReplayFrame();
+  replayIndex=0;replayClockMs=0;document.getElementById('replayPlayer').style.display='flex';drawReplayFrame();
 }
 function stopReplayPlayback(){replayPlaying=false;if(replayTimer){clearInterval(replayTimer);replayTimer=null;}}
 function replayTick(){
-  if(!replayPlaying||!currentReplay?.frames?.length)return;
+  if(!replayPlaying||!currentReplay?.events?.length)return;
   const speed=Number(document.getElementById('replaySpeed').value)||1;
-  const now=performance.now();const elapsed=(now-replayLastWall)*speed;replayLastWall=now;
-  const duration=currentReplay.durationMs||currentReplay.frames[currentReplay.frames.length-1].t;
-  replayClockMs=Math.min(duration,replayClockMs+elapsed);
-  let i=replayIndex;while(i+1<currentReplay.frames.length&&currentReplay.frames[i+1].t<=replayClockMs)i++;
-  replayIndex=i;drawReplayFrame();
-  if(replayClockMs>=duration||i>=currentReplay.frames.length-1)stopReplayPlayback();
+  const now=performance.now();replayClockMs+=(now-replayLastWall)*speed;replayLastWall=now;
+  const duration=currentReplay.durationMs||currentReplay.events[currentReplay.events.length-1][0];
+  replayClockMs=Math.min(duration,replayClockMs);drawReplayFrame();
+  if(replayClockMs>=duration)stopReplayPlayback();
 }
 document.getElementById('btnRefreshPlayers').onclick=refreshCloudPlayers;
 document.getElementById('btnRefreshReplays').onclick=refreshCloudReplays;
 document.getElementById('btnReplayLoad').onclick=()=>loadReplayText(document.getElementById('replayPaste').value).catch(e=>alert('読み込み失敗: '+e.message));
 document.getElementById('btnReplayPlay').onclick=()=>{
   if(replayPlaying){stopReplayPlayback();return;}
-  if(!currentReplay?.frames?.length)return;
-  if(replayIndex>=currentReplay.frames.length-1)replayIndex=0;
-  replayClockMs=currentReplay.frames[replayIndex]?.t||0;
+  if(!currentReplay?.events?.length)return;
+  if(replayClockMs >= (currentReplay.durationMs||0)) replayClockMs=0;
   replayPlaying=true;replayLastWall=performance.now();replayTimer=setInterval(replayTick,16);
 };
 document.getElementById('btnReplayStart').onclick=()=>{stopReplayPlayback();replayIndex=0;replayClockMs=0;drawReplayFrame();};
 document.getElementById('replaySeek').addEventListener('input',e=>{
-  stopReplayPlayback();if(!currentReplay?.frames?.length)return;
-  const duration=currentReplay.durationMs||currentReplay.frames[currentReplay.frames.length-1].t;
-  const target=duration*(Number(e.target.value)/1000);let lo=0,hi=currentReplay.frames.length-1;
-  while(lo<hi){const mid=(lo+hi+1)>>1;if(currentReplay.frames[mid].t<=target)lo=mid;else hi=mid-1;}
-  replayIndex=lo;replayClockMs=target;drawReplayFrame();
+  stopReplayPlayback();if(!currentReplay?.events?.length)return;
+  const duration=currentReplay.durationMs||currentReplay.events[currentReplay.events.length-1][0];
+  replayClockMs=duration*(Number(e.target.value)/1000);drawReplayFrame();
 });
 
 requestAnimationFrame(gameLoop);
