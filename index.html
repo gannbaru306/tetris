@@ -1746,6 +1746,58 @@ function applyAutoAction(action) {
   return false;
 }
 
+// Execution path toward the target using single-row drops. Moves and rotations get
+// pricier the lower the piece is, so sliding/rotating happens up high and the piece only
+// descends (by gravity or soft drop) once nothing else is left, except for tucks and spins.
+function autoExecPath(b, type, start, target) {
+  const key = s => s.rot * 1000 + (s.y + 10) * 30 + (s.x + 10);
+  const goal = key(target);
+  const dist = new Map(), prev = new Map();
+  const heap = [];
+  const push = (d, s) => {
+    heap.push([d, s]);
+    let i = heap.length - 1;
+    while (i > 0) { const pi = (i - 1) >> 1; if (heap[pi][0] <= heap[i][0]) break; [heap[pi], heap[i]] = [heap[i], heap[pi]]; i = pi; }
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1, r = l + 1; let m = i;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]]; i = m;
+      }
+    }
+    return top;
+  };
+  if (checkCollisionOnBoard(b, start.x, start.y, type, start.rot)) return null;
+  dist.set(key(start), 0); push(0, start);
+  while (heap.length) {
+    const [d, s] = pop();
+    const k = key(s);
+    if (d > dist.get(k)) continue;
+    if (k === goal) {
+      const path = [];
+      let cur2 = k;
+      while (prev.has(cur2)) { const [pk, a] = prev.get(cur2); path.push(a); cur2 = pk; }
+      return path.reverse();
+    }
+    for (const action of ['L', 'R', 'CW', 'CCW', 'D']) {
+      const n = autoStep(b, type, s, action);
+      if (!n) continue;
+      const cost = action === 'D' ? 1 : 1 + 0.05 * (s.y + 3);
+      const nk = key(n), nd = d + cost;
+      if (dist.has(nk) && dist.get(nk) <= nd) continue;
+      dist.set(nk, nd); prev.set(nk, [k, action]); push(nd, n);
+    }
+  }
+  return null;
+}
+
 // Steer the live piece (gravity and lock delay stay active) to the planned pose,
 // re-pathing from wherever gravity has moved it. Returns 'placed' | 'locked' | 'fail' | 'stopped'.
 async function driveToTarget(step, token) {
@@ -1754,15 +1806,14 @@ async function driveToTarget(step, token) {
     if (!autoBuildRunning || token !== autoBuildToken) return 'stopped';
     if (isEnded) return 'fail';
     if (cur !== piece) return 'locked';
-    const reach = autoReachable(board, cur.type, { x: cur.x, y: cur.y, rot: cur.r });
-    if (!reach.has(reach.keyOf(step))) return 'fail';
-    const path = autoPath(reach, step);
-    // Already at the target, or a straight drop reaches it: hard drop.
-    if (!path.length || (path.length === 1 && path[0] === 'SD')) { hardDrop(); return 'placed'; }
+    const path = autoExecPath(board, cur.type, { x: cur.x, y: cur.y, rot: cur.r }, step);
+    if (!path) return 'fail';
+    // Only straight drops remain: hard drop.
+    if (path.every(a => a === 'D')) { hardDrop(); return 'placed'; }
     const action = path[0];
     applyAutoAction(action);
-    // Soft drop advances one row per tick; moves/rotations use the operation speed.
-    const delay = (action === 'SD' || action === 'D') ? autoDelay(Math.max(20, config.sd)) : autoDelay(45);
+    // Soft drop is a held key, so it keeps the configured speed; only discrete inputs slow down.
+    const delay = action === 'D' ? Math.max(16, config.sd) : autoDelay(45);
     if (!(await waitAuto(delay, token))) return 'stopped';
   }
   return 'fail';
