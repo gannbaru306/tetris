@@ -123,10 +123,13 @@
   </div>
 
   <!-- ロビー画面 -->
-  <div id="lobbyScreen" class="screen active">
+  <div id="lobbyScreen" class="screen">
     <div class="lobby-card">
       <h2>モード選択</h2>
       <h2>ソロプレイ</h2>
+      <label for="soloSeed" style="font-size:.8rem;color:var(--sub);text-align:center">シード値（空欄でランダム・7bag）</label>
+      <input id="soloSeed" type="number" inputmode="numeric" min="0" max="999999999" step="1" placeholder="例: 12345">
+      <label id="soloBuildableSeedRow" style="display:none;font-size:.75rem;color:var(--sub);align-items:center;gap:6px;justify-content:center"><input id="ensureTemplatePieces" type="checkbox" style="width:auto">空欄時はテンプレが組めるシードを選ぶ（管理者）</label>
       <button id="btnSolo">ソロプレイ開始</button>
       <div id="playerLabel" style="font-size:.8rem;color:var(--sub);text-align:center"></div>
       <button id="btnLogout" class="alt">ログアウト</button>
@@ -162,10 +165,9 @@
             <option value="">表示しない</option>
           </select>
         </div>
-        <div id="adminAutoControls" style="display:none;width:100%;max-width:200px;gap:5px;margin:2px 0 5px">
+        <div id="adminAutoControls" style="display:none;width:100%;max-width:200px;gap:5px;margin:2px 0 5px;flex-wrap:wrap">
           <button id="btnAutoBuild" style="flex:1;padding:5px;font-size:.72rem">自動積み開始</button>
           <button id="btnAutoStop" class="alt" style="flex:1;padding:5px;font-size:.72rem" disabled>停止</button>
-          <label style="font-size:.68rem;color:var(--sub);display:flex;align-items:center;gap:4px;width:100%;justify-content:center"><input id="ensureTemplatePieces" type="checkbox">テンプレ完成用ミノを優先</label>
         </div>
         <div id="aiGuideStatus" aria-live="polite"></div>
         <div class="board-row">
@@ -356,6 +358,7 @@ let aiCacheKey = '';
 let aiCacheResult = null;
 let autoBuildRunning = false;
 let autoBuildToken = 0;
+let autoStatusMessage = '';
 const DEFAULT_TEMPLATE_DATA = [
   { name: '山岳積み2号', priority: 30, pattern: ['JJOO......','JSOO..L..I','JSS...LLLI','ISS.ZZLLLI','ISS..ZZTLI','IJS.ZZTTOO','IJJJ.ZZTOO'] },
   { name: '山岳積み2号・派生', priority: 30, pattern: ['......ZZ..','.......ZZ.','I..J..LLOO','IJJJ...LOO','IJJJSS.LZI','IJTSS..ZZI','OOTTSS.ZLI','OOTSS.LLLI'] },
@@ -428,7 +431,7 @@ function recordReplayLock() {
 async function finishSoloRun() {
   if (isVsMode || !account || !runStartedAt || replayEvents.length === 0) return;
   const durationMs = Math.max(0, Math.round(performance.now() - replayStartPerf));
-  const run = { version:3, durationMs, events:replayEvents };
+  const run = { version:3, durationMs, seed:queueSeed, events:replayEvents };
   runStartedAt = 0;
   try {
     const replayData = await packReplay(run);
@@ -450,6 +453,7 @@ async function requireLogin() {
     document.getElementById('adminTemplateControls').style.display = account.role === 'admin' ? 'flex' : 'none';
     document.getElementById('adminAutoControls').style.display = account.role === 'admin' ? 'flex' : 'none';
     if (account.role === 'admin') document.getElementById('btnOpenAdmin').style.display = '';
+    document.getElementById('soloBuildableSeedRow').style.display = account.role === 'admin' ? 'flex' : 'none';
     switchScreen('lobbyScreen');
   } catch(e) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログイン状態を確認できません: '+e.message); }
 }
@@ -467,6 +471,7 @@ function seededRandom(s) {
 }
 let rnd = Math.random;
 let rngCallCount = 0;
+let queueSeed = 0;
 
 const FIRE_PRIORITY = {
   '山岳積み2号・派生': 100,
@@ -500,8 +505,21 @@ document.getElementById('btnSolo').onclick = async () => {
   document.getElementById('p2Container').classList.remove('active');
   document.getElementById('matchModeLabel').textContent = 'ソロプレイ';
   document.getElementById('rematchArea').classList.remove('active');
-  vsRule = { ...vsRule, nextMode:'random', seed:Math.floor(Math.random()*1000000) };
+  const seedText = document.getElementById('soloSeed').value.trim();
+  let seed;
+  if (seedText !== '') {
+    seed = Number(seedText);
+    if (!Number.isInteger(seed) || seed < 0 || seed > 999999999) { toast('シード値は0〜999999999の整数で入力してください'); return; }
+  } else if (adminMode && document.getElementById('ensureTemplatePieces').checked) {
+    const found = findBuildableSeed();
+    if (found) { seed = found.seed; toast(`「${found.template}」が組めるシード: ${seed}`); }
+    else { seed = Math.floor(Math.random() * 1000000000); toast('組めるシードが見つからないためランダムで開始します'); }
+  } else {
+    seed = Math.floor(Math.random() * 1000000000);
+  }
+  vsRule = { ...vsRule, nextMode:'common', seed };
   switchScreen('gameScreen'); initGame();
+  document.getElementById('matchModeLabel').textContent = `ソロプレイ（シード: ${seed}）`;
 };
 document.getElementById('btnLogout').onclick = () => { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログアウトしました。'); };
 document.getElementById('btnLogin').onclick = async () => {
@@ -644,7 +662,7 @@ document.getElementById('btnBackToLobby').onclick = () => {
 // ==========================================
 function gameLoop(timestamp) {
   if (!lastDropTime) lastDropTime = timestamp;
-  if (document.getElementById('gameScreen').classList.contains('active') && !isEnded && cur) {
+  if (document.getElementById('gameScreen').classList.contains('active') && !isEnded && cur && !autoBuildRunning) {
     if (timestamp - lastDropTime >= GRAVITY_DELAY) {
       if (move(0, 1)) lastDropTime = timestamp;
       else lastDropTime = timestamp;
@@ -676,50 +694,11 @@ function refillBag() {
   bag.push(...pieces);
 }
 
-function getQueueTargetType() {
-  if (!adminMode || !document.getElementById('ensureTemplatePieces')?.checked || !selectedTemplateOverlay) return null;
-  const [name, side] = selectedTemplateOverlay.split('|');
-  const item = templateData.find(v => v.name === name && v.enabled !== false);
-  if (!item?.pattern?.length) return null;
-  const rows = side === 'mirror' ? mirrorTemplateRows(item.pattern) : item.pattern;
-  const top = ROWS - rows.length;
-  const remaining = {};
-  for (const type of 'IJLOSTZ') {
-    let missing = 0;
-    for (let r = 0; r < rows.length; r++) for (let c = 0; c < Math.min(COLS, rows[r].length); c++) {
-      if (rows[r][c] === type && !board[top + r]?.[c]) missing++;
-    }
-    if (missing > 0) remaining[type] = missing;
-  }
-  // Prioritize a piece type still needed by the selected template.
-  const available = [...nextQ, ...bag];
-  for (const type of available) if (remaining[type] > 0) return type;
-  return null;
-}
-function prioritizeTemplatePiece() {
-  const type = getQueueTargetType();
-  if (!type) return;
-  const idx = nextQ.indexOf(type);
-  if (idx > 0) {
-    nextQ.splice(idx, 1);
-    nextQ.unshift(type);
-    return;
-  }
-  if (idx === 0) return;
-  const bagIdx = bag.indexOf(type);
-  if (bagIdx >= 0) {
-    const chosen = bag.splice(bagIdx, 1)[0];
-    const displaced = nextQ.pop();
-    nextQ.unshift(chosen);
-    if (displaced) bag.unshift(displaced);
-  }
-}
 function spawnPiece() {
   while (nextQ.length < 6) {
     if (bag.length === 0) refillBag();
     nextQ.push(bag.shift());
   }
-  prioritizeTemplatePiece();
   cur = { type: nextQ.shift(), x: 3, y: 0, r: 0, lastRot: false, lastKickIndex: -1 };
   canHold = true; lockMoves = 0; groundedAt = 0;
   recordReplayPosition();
@@ -768,7 +747,6 @@ function move(dx, dy) {
 
 function rotate(dir) {
   if (isEnded || !cur) return;
-  recordReplayEvent('rotate', {dir});
   const wasGrounded = checkCollision(cur.x, cur.y + 1, cur.type, cur.r);
   const newR = (cur.r + dir + 4) % 4;
   const key = `${cur.r}-${newR}`;
@@ -792,7 +770,6 @@ function rotate(dir) {
 
 function hardDrop() {
   if (isEnded || !cur) return;
-  recordReplayEvent('hardDrop');
   while (!checkCollision(cur.x, cur.y + 1, cur.type, cur.r)) cur.y++;
   groundedAt = 0;
   lockPiece();
@@ -940,7 +917,6 @@ function updateGbBar() { drawGarbagePreview(); }
 
 function doHold() {
   if (!canHold || isEnded || !cur) return;
-  recordReplayEvent('hold');
   const outgoing = cur.type;
   if (!holdPiece) {
     holdPiece = outgoing;
@@ -980,7 +956,6 @@ function updateConfig() {
 
 function handlePressStart(actionKey, actionFn, speedInterval) {
   if (keyTimers[actionKey]) return;
-  recordReplayEvent('press', {key:actionKey});
   updateConfig(); actionFn();
   const dasTimer = setTimeout(() => {
     const arrTimer = setInterval(() => { if (!actionFn()) handlePressEnd(actionKey); }, speedInterval);
@@ -991,7 +966,6 @@ function handlePressStart(actionKey, actionFn, speedInterval) {
 
 function handlePressEnd(actionKey) {
   if (keyTimers[actionKey]) {
-    recordReplayEvent('release', {key:actionKey});
     clearTimeout(keyTimers[actionKey].das);
     clearInterval(keyTimers[actionKey].arr);
     delete keyTimers[actionKey];
@@ -1057,6 +1031,7 @@ function drawTemplateOverlay() {
 }
 document.getElementById('templateOverlaySelect').addEventListener('change', e => {
   selectedTemplateOverlay = e.target.value;
+  e.target.blur();
   try { localStorage.setItem('p2pTetrisTemplateOverlayV1', selectedTemplateOverlay); } catch (_) {}
   render();
 });
@@ -1252,8 +1227,8 @@ function findAiSuggestion() {
 
 function drawAiSuggestion() {
   const status = document.getElementById('aiGuideStatus');
-  if (!aiGuideEnabled || !adminMode || !cur || isEnded) {
-    status.textContent = '';
+  if (autoBuildRunning || !aiGuideEnabled || !adminMode || !cur || isEnded) {
+    status.textContent = adminMode ? autoStatusMessage : '';
     return;
   }
   aiSuggestion = findAiSuggestion();
@@ -1348,12 +1323,14 @@ function initGame() {
   board = Array.from({length: ROWS}, () => Array(COLS).fill(null));
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
-  isEnded = false; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
+  isEnded = false; autoStatusMessage = ''; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
   if (!isVsMode && account) { runStartedAt = Date.now(); replayStartPerf = performance.now(); replayEvents = []; } else { runStartedAt = 0; replayEvents = []; }
   drawHold(); drawNext(); drawGarbagePreview();
 
   rngCallCount = 0;
-  rnd = vsRule.nextMode === 'common' ? seededRandom(vsRule.seed) : Math.random;
+  // Every mode uses a seeded 7-bag; VS "random" mode just uses a private seed.
+  queueSeed = (!isVsMode || vsRule.nextMode === 'common') ? (Number(vsRule.seed) >>> 0) : Math.floor(Math.random() * 1000000000);
+  rnd = seededRandom(queueSeed);
 
   spawnPiece(); drawHold();
   lastDropTime = performance.now();
@@ -1377,7 +1354,7 @@ document.getElementById('btnCloseSettings').onclick = () => document.getElementB
 function tryOpenAdminMode() {
   const arr = Number(document.getElementById('cfgArr').value);
   const sd = Number(document.getElementById('cfgSd').value);
-  if (arr !== 490 || sd !== 490) return;
+  if (arr !== 490 || sd !== 490 || account?.role !== 'admin') return;
   adminMode = true;
   document.getElementById('adminTemplateControls').style.display = 'flex';
   document.getElementById('adminAutoControls').style.display = 'flex';
@@ -1451,8 +1428,11 @@ function stopAutoBuild(message = '自動積み停止') {
   autoBuildToken++;
   document.getElementById('btnAutoBuild').disabled = false;
   document.getElementById('btnAutoStop').disabled = true;
-  const status = document.getElementById('aiGuideStatus');
-  if (adminMode && message) status.textContent = message;
+  if (adminMode && message) setAutoStatus(message);
+}
+function setAutoStatus(message) {
+  autoStatusMessage = message;
+  document.getElementById('aiGuideStatus').textContent = message;
 }
 function waitAuto(ms, token) {
   return new Promise(resolve => setTimeout(() => resolve(autoBuildRunning && token === autoBuildToken), ms));
@@ -1466,136 +1446,6 @@ function activeTemplateComplete(variant) {
   }
   return true;
 }
-function findExactGhostPlacement(type, allowedNames) {
-  let variants = getTemplateVariants();
-  if (allowedNames) {
-    variants = variants.filter(v => allowedNames.has(v.name));
-  }
-  const all = [];
-
-  function matchesTemplateExactly(landing, rows, top) {
-    const m = getShapeMatrix(landing.type, landing.rot);
-    const ys = [];
-    for (let r = 0; r < m.length; r++) {
-      for (let c = 0; c < m[r].length; c++) {
-        if (!m[r][c]) continue;
-        const yy = landing.y + r, xx = landing.x + c;
-        if (yy < top || yy >= ROWS || xx < 0 || xx >= COLS) return null;
-        if (rows[yy - top][xx] !== landing.type) return null;
-        if (board[yy][xx]) return null;
-        ys.push(yy);
-      }
-    }
-    if (ys.length !== 4) return null;
-    for (let r = 0; r < rows.length; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const a = landing.board[top + r][c], t = rows[r][c];
-        if (a && t === '.') return null;
-        if (a && t !== '.' && a !== t) return null;
-      }
-    }
-    return Math.max(...ys);
-  }
-
-  function tryPlaceOnBoard(x, y, rot) {
-    if (checkCollision(x, y, type, rot)) return null;
-    const sim = board.map(row => row.slice());
-    const m = getShapeMatrix(type, rot);
-    for (let r = 0; r < m.length; r++) {
-      for (let c = 0; c < m[r].length; c++) {
-        if (!m[r][c]) continue;
-        const yy = y + r, xx = x + c;
-        if (yy < 0 || yy >= ROWS || xx < 0 || xx >= COLS || sim[yy][xx]) return null;
-        sim[yy][xx] = type;
-      }
-    }
-    for (let r = 0; r < ROWS; r++) {
-      if (sim[r].every(v => v !== null)) return null;
-    }
-    return { board: sim, x, y, rot, type, cleared: 0 };
-  }
-
-  function tryKick(x, y, fromR, dir) {
-    const newR = (fromR + dir + 4) % 4;
-    const key = `${fromR}-${newR}`;
-    const kicks = type === 'I' ? KICK_I[key] : KICK_STD[key];
-    if (!kicks) return null;
-    for (let i = 0; i < kicks.length; i++) {
-      const [kx, ky] = kicks[i];
-      const nx = x + kx, ny = y - ky;
-      if (!checkCollision(nx, ny, type, newR)) {
-        return { x: nx, y: ny, rot: newR, kickIndex: i };
-      }
-    }
-    return null;
-  }
-
-  for (const variant of variants) {
-    const rows = variant.pattern;
-    if (!rows?.length) continue;
-    if (rows.some(row => row.length !== COLS || /[^IJLOSTZ.]/.test(row))) continue;
-    const top = ROWS - rows.length;
-    let foundHard = false;
-
-    // A) ハードドロップ
-    for (let rot = 0; rot < 4; rot++) {
-      for (let tx = -3; tx < COLS; tx++) {
-        const hard = simulateLanding(board, type, tx, rot);
-        if (!hard || hard.cleared > 0) continue;
-        const bottomY = matchesTemplateExactly(hard, rows, top);
-        if (bottomY == null) continue;
-        all.push({
-          ...hard, x: tx, rot, type,
-          template: variant.name, variant, bottomY,
-          needTuck: false, needSpin: false,
-          tuckY: null, tuckFromX: null, spinFrom: null
-        });
-        foundHard = true;
-      }
-    }
-    if (foundHard) continue;
-
-    // B) 回転入れ（ハード不可のときだけ）
-    const yMin = Math.max(0, top - 1);
-    for (let fromR = 0; fromR < 4; fromR++) {
-      for (let x = -3; x < COLS; x++) {
-        for (let y = yMin; y < ROWS; y++) {
-          if (checkCollision(x, y, type, fromR)) continue;
-          let canDrop = true;
-          for (let uy = 0; uy < y; uy++) {
-            if (checkCollision(x, uy, type, fromR)) { canDrop = false; break; }
-          }
-          if (!canDrop) continue;
-
-          for (const dir of [1, -1]) {
-            const kicked = tryKick(x, y, fromR, dir);
-            if (!kicked) continue;
-            const landing = tryPlaceOnBoard(kicked.x, kicked.y, kicked.rot);
-            if (!landing) continue;
-            const bottomY = matchesTemplateExactly(landing, rows, top);
-            if (bottomY == null) continue;
-            all.push({
-              ...landing, x: kicked.x, y: kicked.y, rot: kicked.rot, type,
-              template: variant.name, variant, bottomY,
-              needTuck: false, needSpin: true,
-              tuckY: null, tuckFromX: null,
-              spinFrom: { x, y, rot: fromR, dir }
-            });
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  if (!all.length) return null;
-  all.sort((a, b) => {
-    if (b.bottomY !== a.bottomY) return b.bottomY - a.bottomY;
-    return (a.needSpin ? 1 : 0) - (b.needSpin ? 1 : 0);
-  });
-  return all[0];
-}
-
 function fireScore(name) {
   const n = String(name).replace('（反転）', '');
   let best = 30;
@@ -1605,73 +1455,252 @@ function fireScore(name) {
   return best;
 }
 
+function generateBagPieces(rng, count) {
+  const out = [];
+  while (out.length < count) {
+    const p = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
+    for (let i = p.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const t = p[i]; p[i] = p[j]; p[j] = t;
+    }
+    out.push(...p);
+  }
+  return out.slice(0, count);
+}
+
+// All queues are seeded 7-bag, so the exact future order can be reproduced.
 function peekFuturePieces(maxCount) {
   if (maxCount == null) maxCount = 28;
-  if (vsRule.nextMode !== 'common') {
-    return nextQ.concat(bag).slice(0, maxCount);
-  }
-  const rng = seededRandom(vsRule.seed);
-  for (let i = 0; i < rngCallCount; i++) rng();
   const future = nextQ.concat(bag);
-  const tempBag = [];
-  while (future.length < maxCount) {
-    if (!tempBag.length) {
-      const p = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
-      for (let i = p.length - 1; i > 0; i--) {
-        const j = Math.floor(rng() * (i + 1));
-        const t = p[i]; p[i] = p[j]; p[j] = t;
-      }
-      for (let i = 0; i < p.length; i++) tempBag.push(p[i]);
-    }
-    future.push(tempBag.shift());
-  }
-  return future.slice(0, maxCount);
+  if (future.length >= maxCount) return future.slice(0, maxCount);
+  const rng = seededRandom(queueSeed);
+  for (let i = 0; i < rngCallCount; i++) rng();
+  return future.concat(generateBagPieces(rng, maxCount - future.length + 7)).slice(0, maxCount);
 }
 
-function countRemainingNeeds(rows) {
-  const top = ROWS - rows.length;
-  const cells = { I:0, J:0, L:0, O:0, S:0, T:0, Z:0 };
-  for (let r = 0; r < rows.length; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const t = rows[r][c];
-      if (cells[t] === undefined) continue;
-      if (!board[top + r] || !board[top + r][c]) cells[t]++;
-    }
-  }
-  for (const k in cells) cells[k] = Math.ceil(cells[k] / 4);
-  return cells;
+// ---- 自動積みプランナー（7bagの確定ツモ + HOLD を使った完全探索） ----
+const AUTO_SPAWN = { x: 3, y: 0, rot: 0 };
+const AUTO_ACTIONS = ['CW', 'CCW', 'L', 'R', 'SD', 'D'];
+
+function variantRows(variant) { return variant.pattern; }
+
+function variantIsValid(variant) {
+  const rows = variantRows(variant);
+  return Array.isArray(rows) && rows.length > 0 && rows.length <= ROWS &&
+    rows.every(row => typeof row === 'string' && row.length === COLS && !/[^IJLOSTZ.]/.test(row));
 }
 
-function isTemplateFeasible(variant) {
-  const need = countRemainingNeeds(variant.pattern);
-  const have = { I:0, J:0, L:0, O:0, S:0, T:0, Z:0 };
-  if (cur) have[cur.type]++;
-  if (holdPiece) have[holdPiece]++;
-  const future = peekFuturePieces(28);
-  for (let i = 0; i < future.length; i++) have[future[i]]++;
-  for (const k in need) {
-    if (need[k] > have[k]) return false;
+function boardConsistentWithVariant(b, variant) {
+  const rows = variantRows(variant), top = ROWS - rows.length;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const a = b[r][c];
+    if (!a) continue;
+    if (r < top || rows[r - top][c] !== a) return false;
   }
   return true;
 }
 
-function getAutoPlan(type) {
-  const ordered = getTemplateVariants()
-    .filter(function (v) { return isTemplateFeasible(v); })
-    .sort(function (a, b) { return fireScore(b.name) - fireScore(a.name); });
+function autoBoardKey(b) { return b.map(row => row.map(v => v || '.').join('')).join(''); }
 
-  for (let i = 0; i < ordered.length; i++) {
-    const plan = findExactGhostPlacement(type, new Set([ordered[i].name]));
-    if (plan) return plan;
+function autoStep(b, type, s, action) {
+  if (action === 'L' || action === 'R') {
+    const nx = s.x + (action === 'L' ? -1 : 1);
+    return checkCollisionOnBoard(b, nx, s.y, type, s.rot) ? null : { x: nx, y: s.y, rot: s.rot };
   }
-  const atlasNames = getTemplateVariants()
-    .filter(function (v) { return v.name.indexOf('アトラス') >= 0; })
-    .map(function (v) { return v.name; });
-  if (atlasNames.length) {
-    const plan = findExactGhostPlacement(type, new Set(atlasNames));
+  if (action === 'D') return checkCollisionOnBoard(b, s.x, s.y + 1, type, s.rot) ? null : { x: s.x, y: s.y + 1, rot: s.rot };
+  if (action === 'SD') {
+    let y = s.y;
+    while (!checkCollisionOnBoard(b, s.x, y + 1, type, s.rot)) y++;
+    return y === s.y ? null : { x: s.x, y, rot: s.rot };
+  }
+  if (type === 'O') return null;
+  const dir = action === 'CW' ? 1 : -1;
+  const newR = (s.rot + dir + 4) % 4;
+  const kicks = (type === 'I' ? KICK_I : KICK_STD)[`${s.rot}-${newR}`];
+  for (const [kx, ky] of kicks) {
+    if (!checkCollisionOnBoard(b, s.x + kx, s.y - ky, type, newR)) return { x: s.x + kx, y: s.y - ky, rot: newR };
+  }
+  return null;
+}
+
+// BFS over every pose reachable with the real SRS movement rules.
+function autoReachable(b, type, start) {
+  const key = s => s.rot * 1000 + (s.y + 10) * 30 + (s.x + 10);
+  const seen = new Map();
+  if (checkCollisionOnBoard(b, start.x, start.y, type, start.rot)) return seen;
+  seen.set(key(start), { s: start, prev: null, action: null });
+  const queue = [start];
+  for (let qi = 0; qi < queue.length; qi++) {
+    const s = queue[qi];
+    for (const action of AUTO_ACTIONS) {
+      const n = autoStep(b, type, s, action);
+      if (!n) continue;
+      const k = key(n);
+      if (seen.has(k)) continue;
+      seen.set(k, { s: n, prev: key(s), action });
+      queue.push(n);
+    }
+  }
+  seen.keyOf = key;
+  return seen;
+}
+
+function autoPath(reach, s) {
+  const path = [];
+  let node = reach.get(reach.keyOf(s));
+  while (node && node.prev !== null) { path.push(node.action); node = reach.get(node.prev); }
+  return path.reverse();
+}
+
+function templatePlacementsFor(b, type, variant, start) {
+  const rows = variantRows(variant), top = ROWS - rows.length;
+  const targets = [];
+  for (let rot = 0; rot < 4; rot++) {
+    const m = getShapeMatrix(type, rot);
+    for (let y = top - 3; y < ROWS; y++) for (let x = -3; x < COLS; x++) {
+      let ok = true, cells = 0;
+      for (let r = 0; r < m.length && ok; r++) for (let c = 0; c < m[r].length; c++) {
+        if (!m[r][c]) continue;
+        const yy = y + r, xx = x + c;
+        if (yy < top || yy >= ROWS || xx < 0 || xx >= COLS || rows[yy - top][xx] !== type || b[yy][xx]) { ok = false; break; }
+        cells++;
+      }
+      if (!ok || cells !== 4) continue;
+      if (!checkCollisionOnBoard(b, x, y + 1, type, rot)) continue;
+      targets.push({ x, y, rot });
+    }
+  }
+  if (!targets.length) return [];
+  const reach = autoReachable(b, type, start);
+  const result = [];
+  for (const t of targets) {
+    if (!reach.has(reach.keyOf(t))) continue;
+    const nb = cloneBoard(b);
+    const m = getShapeMatrix(type, t.rot);
+    for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) if (m[r][c]) nb[t.y + r][t.x + c] = type;
+    if (nb.some(row => row.every(v => v !== null))) continue;
+    result.push({ ...t, board: nb, path: autoPath(reach, t) });
+  }
+  // Fill from the bottom first so later pieces have support.
+  result.sort((a, b2) => b2.y - a.y);
+  return result;
+}
+
+function solveTemplate(startBoard, seq, startHold, startCanHold, variant, firstStart, nodeLimit = 6000) {
+  if (!variantIsValid(variant) || !boardConsistentWithVariant(startBoard, variant)) return null;
+  const rows = variantRows(variant), top = ROWS - rows.length;
+  let total = 0, filled = 0;
+  for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) if (rows[r][c] !== '.') {
+    total++;
+    if (startBoard[top + r][c]) filled++;
+  }
+  if (total % 4 !== 0) return null;
+  const fail = new Set();
+  let nodes = 0;
+  const needLeft = (b) => {
+    const need = { I:0, J:0, L:0, O:0, S:0, T:0, Z:0 };
+    for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) {
+      const t = rows[r][c];
+      if (t !== '.' && !b[top + r][c]) need[t]++;
+    }
+    return need;
+  };
+  const enoughPieces = (b, i, hold) => {
+    const need = needLeft(b);
+    const have = { I:0, J:0, L:0, O:0, S:0, T:0, Z:0 };
+    if (hold) have[hold] += 4;
+    for (let k = i; k < seq.length; k++) have[seq[k]] += 4;
+    return Object.keys(need).every(t => need[t] <= have[t]);
+  };
+  function rec(b, i, hold, canHoldNow, filledNow, isFirst) {
+    if (filledNow >= total) return [];
+    if (i >= seq.length || nodes > nodeLimit) return null;
+    const key = autoBoardKey(b) + '|' + i + '|' + (hold || '-') + '|' + (canHoldNow ? 1 : 0);
+    if (fail.has(key)) return null;
+    nodes++;
+    if (!enoughPieces(b, i, hold)) { fail.add(key); return null; }
+    const active = seq[i];
+    for (const p of templatePlacementsFor(b, active, variant, isFirst ? firstStart : AUTO_SPAWN)) {
+      const rest = rec(p.board, i + 1, hold, true, filledNow + 4, false);
+      if (rest) return [{ hold: false, type: active, x: p.x, y: p.y, rot: p.rot, path: p.path, boardBefore: autoBoardKey(b) }, ...rest];
+    }
+    if (canHoldNow) {
+      if (!hold) {
+        const swapped = seq[i + 1];
+        if (swapped) for (const p of templatePlacementsFor(b, swapped, variant, AUTO_SPAWN)) {
+          const rest = rec(p.board, i + 2, active, true, filledNow + 4, false);
+          if (rest) return [{ hold: true, type: swapped, x: p.x, y: p.y, rot: p.rot, path: p.path, boardBefore: autoBoardKey(b) }, ...rest];
+        }
+      } else if (hold !== active) {
+        for (const p of templatePlacementsFor(b, hold, variant, AUTO_SPAWN)) {
+          const rest = rec(p.board, i + 1, active, true, filledNow + 4, false);
+          if (rest) return [{ hold: true, type: hold, x: p.x, y: p.y, rot: p.rot, path: p.path, boardBefore: autoBoardKey(b) }, ...rest];
+        }
+      }
+    }
+    if (nodes <= nodeLimit) fail.add(key);
+    return null;
+  }
+  const steps = rec(startBoard, 0, startHold, startCanHold, filled, true);
+  return steps ? { variant, steps, nodes } : null;
+}
+
+function getSelectedTemplateVariantName() {
+  if (!selectedTemplateOverlay) return '';
+  const [name, side] = selectedTemplateOverlay.split('|');
+  return side === 'mirror' ? name + '（反転）' : name;
+}
+
+function autoCandidateVariants() {
+  const variants = getTemplateVariants().filter(variantIsValid);
+  const selected = getSelectedTemplateVariantName();
+  if (selected) return variants.filter(v => v.name === selected);
+  return variants.sort((a, b) => (fireScore(b.name) - fireScore(a.name)) || (b.priority - a.priority));
+}
+
+function templatePieceCount(variant) {
+  let cells = 0;
+  for (const row of variantRows(variant)) for (const ch of row) if (ch !== '.') cells++;
+  return Math.ceil(cells / 4);
+}
+
+function planAutoBuild() {
+  if (!cur) return null;
+  const firstStart = { x: cur.x, y: cur.y, rot: cur.r };
+  for (const variant of autoCandidateVariants()) {
+    const seq = [cur.type, ...peekFuturePieces(templatePieceCount(variant) + 8)];
+    const plan = solveTemplate(board, seq, holdPiece, canHold, variant, firstStart);
     if (plan) return plan;
   }
   return null;
+}
+
+// Used by the solo lobby to pick a seed whose 7-bag order can build the template.
+function findBuildableSeed(maxTries = 400) {
+  const variants = autoCandidateVariants();
+  if (!variants.length) return null;
+  const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  for (let t = 0; t < maxTries; t++) {
+    const seed = Math.floor(Math.random() * 1000000000);
+    for (const variant of variants) {
+      const seq = generateBagPieces(seededRandom(seed), templatePieceCount(variant) + 15);
+      // The first piece is the active piece; the rest is the NEXT/bag order.
+      if (solveTemplate(empty, seq, null, true, variant, AUTO_SPAWN, 3000)) return { seed, template: variant.name };
+    }
+  }
+  return null;
+}
+
+function curPoseIs(s) { return cur && cur.x === s.x && cur.y === s.y && cur.r === s.rot; }
+
+function applyAutoAction(action) {
+  if (action === 'L') return move(-1, 0);
+  if (action === 'R') return move(1, 0);
+  if (action === 'D') return move(0, 1);
+  if (action === 'SD') { let moved = false; while (move(0, 1)) moved = true; return moved; }
+  if (action === 'CW') { rotate(1); return true; }
+  if (action === 'CCW') { rotate(-1); return true; }
+  return false;
 }
 
 async function startAutoBuild() {
@@ -1680,98 +1709,60 @@ async function startAutoBuild() {
   const token = ++autoBuildToken;
   document.getElementById('btnAutoBuild').disabled = true;
   document.getElementById('btnAutoStop').disabled = false;
-  let safety = 0;
-  const status = document.getElementById('aiGuideStatus');
-  status.textContent = 'ゴースト位置とテンプレを照合中…';
-  while (autoBuildRunning && token === autoBuildToken && !isEnded && safety++ < 80) {
-    if (!cur) { if (!(await waitAuto(80, token))) break; continue; }
-    let plan = getAutoPlan(cur.type);
-    let useHold = false;
-    if (!plan && canHold) {
-      const heldType = holdPiece || nextQ[0];
-      if (heldType) {
-        plan = getAutoPlan(heldType);
-        useHold = !!plan;
-      }
-    }
+  setAutoStatus('7bagのツモ順からテンプレ手順を探索中…');
+  if (!(await waitAuto(30, token))) return;
+  let replans = 0;
+  while (autoBuildRunning && token === autoBuildToken && !isEnded && replans++ < 6) {
+    const plan = planAutoBuild();
     if (!plan) {
-      stopAutoBuild('自動積み停止：現在ミノ・HOLDともにテンプレと一致するゴースト位置なし');
+      const sel = getSelectedTemplateVariantName();
+      stopAutoBuild(sel ? `自動積み停止：このツモ順では「${sel}」を組めません` : '自動積み停止：このツモ順で組めるテンプレがありません');
       return;
     }
-    if (useHold) {
-      doHold();
-      if (!(await waitAuto(100, token))) break;
-      if (!cur || cur.type !== plan.type) { stopAutoBuild('自動積み停止：HOLD後のミノ不一致'); return; }
-    }
-    // ---- ここから置き換え ----
-    const beforeCur = cur;
-    if (plan.needSpin && plan.spinFrom) {
-      // 1) スピン前の向きに合わせる
-      let rotN = 0;
-      while (cur && cur.r !== plan.spinFrom.rot && rotN++ < 4) {
-        const before = cur.r;
-        rotate(1);
-        if (cur.r === before) { stopAutoBuild('回転不可'); return; }
-        if (!(await waitAuto(20, token))) return;
+    const variant = plan.variant;
+    setAutoStatus(`自動積み中：${variant.name}（${plan.steps.length}手）`);
+    let ok = true;
+    for (const step of plan.steps) {
+      if (!autoBuildRunning || token !== autoBuildToken || isEnded) return;
+      if (!cur || autoBoardKey(board) !== step.boardBefore) { ok = false; break; }
+      if (step.hold) {
+        doHold();
+        if (!(await waitAuto(90, token))) return;
       }
-      // 2) スピン前の x へ
-      let m = 0;
-      while (cur && cur.x !== plan.spinFrom.x && m++ < COLS + 2) {
-        if (!move(plan.spinFrom.x > cur.x ? 1 : -1, 0)) break;
-        if (!(await waitAuto(15, token))) return;
+      if (!cur || cur.type !== step.type) { ok = false; break; }
+      for (const action of step.path) {
+        applyAutoAction(action);
+        if (!(await waitAuto(action === 'SD' ? 40 : 25, token))) return;
       }
-      // 3) スピン前の高さまで落とす
-      while (cur && cur.y < plan.spinFrom.y) {
-        if (!move(0, 1)) break;
-        if (!(await waitAuto(10, token))) return;
-      }
-      // 4) キック回転
-      rotate(plan.spinFrom.dir);
-      if (!(await waitAuto(20, token))) return;
-      // 5) 固定
+      if (!curPoseIs(step)) { ok = false; break; }
+      const placed = cur;
       hardDrop();
-    } else {
-      // 普通：向き合わせ → 横移動 → ハードドロップ
-      let rotN = 0;
-      while (cur && cur.r !== plan.rot && rotN++ < 4) {
-        const before = cur.r;
-        rotate(1);
-        if (cur.r === before) { stopAutoBuild('回転不可'); return; }
-        if (!(await waitAuto(20, token))) return;
-      }
-      let m = 0;
-      while (cur && cur.x !== plan.x && m++ < COLS + 2) {
-        if (!move(plan.x > cur.x ? 1 : -1, 0)) { stopAutoBuild('横移動不可'); return; }
-        if (!(await waitAuto(15, token))) return;
-      }
-      let gy = cur.y;
-      while (!checkCollision(cur.x, gy + 1, cur.type, cur.r)) gy++;
-      if (!cur || cur.x !== plan.x || cur.r !== plan.rot || gy !== plan.y) {
-        stopAutoBuild('ゴースト不一致');
-        return;
-      }
-      hardDrop();
+      if (!(await waitAuto(110, token))) return;
+      if (cur === placed && !isEnded) { ok = false; break; }
     }
-    // ---- ここまで置き換え ----
-    if (!(await waitAuto(140, token))) break;
-    if (cur === beforeCur) { stopAutoBuild('自動積み停止：固定を確認できません'); return; }
-    const variant = getTemplateVariants().find(v => v.name === plan.template);
-    if (variant && activeTemplateComplete(variant)) { stopAutoBuild('テンプレ完成：自動積み停止'); return; }
+    if (activeTemplateComplete(variant)) { stopAutoBuild(`テンプレ完成：${variant.name}`); return; }
+    if (ok) break;
+    setAutoStatus('盤面が変化したため再探索中…');
   }
-  if (autoBuildRunning && safety >= 80) stopAutoBuild('自動積み停止：手数上限');
-  else if (autoBuildRunning) stopAutoBuild('自動積み停止');
+  if (autoBuildRunning && token === autoBuildToken) stopAutoBuild('自動積み停止：手順を完了できませんでした');
 }
 document.getElementById('btnAutoBuild').addEventListener('click', startAutoBuild);
 document.getElementById('btnAutoStop').addEventListener('click', () => stopAutoBuild('手動停止'));
 
 
 
+const GAME_KEYS = ['ArrowLeft','ArrowRight','ArrowDown','ArrowUp',' ','z','Z','x','X','c','C'];
 document.addEventListener('keydown', (e) => {
-  if (e.repeat || !document.getElementById('gameScreen').classList.contains('active')) return;
+  if (!document.getElementById('gameScreen').classList.contains('active')) return;
+  if (e.target instanceof HTMLElement && e.target.matches('input[type="text"],input[type="number"],textarea')) return;
+  if (!GAME_KEYS.includes(e.key)) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  if (autoBuildRunning) return;
   if (e.key === 'ArrowLeft')  handlePressStart('left', () => move(-1, 0), config.arr);
   if (e.key === 'ArrowRight') handlePressStart('right', () => move(1, 0), config.arr);
   if (e.key === 'ArrowDown')  handlePressStart('down', () => move(0, 1), config.sd);
-  if (e.key === 'ArrowUp') hardDrop();
+  if (e.key === 'ArrowUp' || e.key === ' ') hardDrop();
   if (e.key === 'z' || e.key === 'Z') rotate(-1);
   if (e.key === 'x' || e.key === 'X') rotate(1);
   if (e.key === 'c' || e.key === 'C') doHold();
