@@ -92,6 +92,20 @@
       background: #11111b; border: 1px solid var(--border); color: #fff; padding: 4px; border-radius: 4px;
     }
 
+    #adminScreen { max-width: 680px; }
+    .admin-head { width:100%; display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+    .admin-head h2 { margin:0; font-size:1.05rem; color:var(--accent); }
+    .admin-tabs { width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:10px; }
+    .admin-tab { padding:8px; font-size:.9rem; background:#45475a; color:#fff; }
+    .admin-tab.active { background:var(--accent); color:#11111b; }
+    .admin-section { display:none; width:100%; flex-direction:column; gap:8px; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px; }
+    .admin-section.active { display:flex; }
+    .admin-row { border:1px solid var(--border); border-radius:8px; padding:8px; display:flex; flex-direction:column; gap:6px; overflow-wrap:anywhere; }
+    .admin-row .actions { display:flex; flex-wrap:wrap; gap:5px; }
+    .admin-row .actions button { width:auto; padding:5px 9px; font-size:.78rem; }
+    .admin-sub { display:none; flex-direction:column; gap:5px; margin-top:4px; padding-left:8px; border-left:2px solid var(--border); }
+    .admin-sub.open { display:flex; }
+    .muted { font-size:.8rem; color:var(--sub); }
     #toast {
       position: fixed; top: 15px; background: #a6e3a1; color: #11111b;
       padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.85rem;
@@ -108,7 +122,7 @@
     <div class="lobby-card">
       <h2>プレイヤーログイン</h2>
       <label for="accountId">ID</label><input id="accountId" maxlength="24" autocomplete="username" placeholder="自分で決めたID">
-      <label for="accountPassword">4桁パスワード</label><input id="accountPassword" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="0000">
+      <label for="accountPassword">パスワード</label><input id="accountPassword" type="password" maxlength="64" autocomplete="current-password" placeholder="パスワード（管理者も同じフォーム）">
       <button id="btnLogin">ログイン</button>
       <button id="btnRegister" class="alt">新規登録・認証申請</button>
       <div id="accountStatus" role="status">ログインまたは新規登録してください。</div>
@@ -127,13 +141,11 @@
     <div class="lobby-card">
       <h2>モード選択</h2>
       <h2>ソロプレイ</h2>
-      <label for="soloSeed" style="font-size:.8rem;color:var(--sub);text-align:center">シード値（空欄でランダム・7bag）</label>
-      <input id="soloSeed" type="number" inputmode="numeric" min="0" max="999999999" step="1" placeholder="例: 12345">
-      <label id="soloBuildableSeedRow" style="display:none;font-size:.75rem;color:var(--sub);align-items:center;gap:6px;justify-content:center"><input id="ensureTemplatePieces" type="checkbox" style="width:auto">空欄時はテンプレが組めるシードを選ぶ（管理者）</label>
+      <label id="soloBuildableSeedRow" style="display:none;font-size:.75rem;color:var(--sub);align-items:center;gap:6px;justify-content:center"><input id="ensureTemplatePieces" type="checkbox" style="width:auto">テンプレが組めるツモ順で開始（管理者）</label>
       <button id="btnSolo">ソロプレイ開始</button>
       <div id="playerLabel" style="font-size:.8rem;color:var(--sub);text-align:center"></div>
       <button id="btnLogout" class="alt">ログアウト</button>
-      <button id="btnOpenAdmin" class="alt" style="display:none" onclick="document.getElementById('adminModal').classList.remove('hidden')">管理者メニュー</button>
+      <button id="btnOpenAdmin" class="alt" style="display:none">管理者メニュー</button>
       <h2>Wi-Fi対戦 (オンライン)</h2>
       <button id="btnCreateRoom" class="alt">部屋を作る (ホスト)</button>
       <div style="display:flex; gap:6px;">
@@ -168,6 +180,7 @@
         <div id="adminAutoControls" style="display:none;width:100%;max-width:200px;gap:5px;margin:2px 0 5px;flex-wrap:wrap">
           <button id="btnAutoBuild" style="flex:1;padding:5px;font-size:.72rem">自動積み開始</button>
           <button id="btnAutoStop" class="alt" style="flex:1;padding:5px;font-size:.72rem" disabled>停止</button>
+          <label for="autoSpeed" style="font-size:.68rem;color:var(--sub);display:flex;align-items:center;gap:4px;width:100%;justify-content:center">操作速度<input id="autoSpeed" type="range" min="0.2" max="1" step="0.1" value="1" style="flex:1;width:auto"><span id="autoSpeedLabel">1.0倍</span></label>
         </div>
         <div id="aiGuideStatus" aria-live="polite"></div>
         <div class="board-row">
@@ -253,54 +266,66 @@
     </div>
   </div>
 
-  <!-- 作者用テンプレート管理（隠しメニュー） -->
-  <div id="adminModal" class="modal hidden">
-    <div class="panel" style="max-height:85vh; overflow:auto;">
-      <h3>作者メニュー / テンプレ管理</h3>
-      <p style="font-size:.85rem;color:var(--sub)">このメニューはローカルのブラウザ内だけで動作します。追加したテンプレはこの端末に保存されます。</p>
-      <label style="display:flex;align-items:center;gap:8px;margin:8px 0"><input id="cfgAiGuide" type="checkbox"> 次の1手AIガイドを表示</label>
-      <div id="templateList" style="display:flex;flex-direction:column;gap:8px;margin:12px 0"></div>
-      <hr style="border:0;border-top:1px solid var(--border);margin:12px 0">
-      <h4>クラウド管理（管理者のみ）</h4>
+  <!-- 管理者画面 -->
+  <div id="adminScreen" class="screen">
+    <div class="admin-head">
+      <button id="btnAdminBack" class="alt" style="width:110px;padding:6px;font-size:.8rem">ロビーへ戻る</button>
+      <h2>管理者メニュー</h2>
+    </div>
+    <div class="admin-tabs" role="tablist">
+      <button class="admin-tab active" data-tab="Players" role="tab">プレイヤー</button>
+      <button class="admin-tab" data-tab="Replays" role="tab">リプレイ</button>
+      <button class="admin-tab" data-tab="Templates" role="tab">テンプレ</button>
+    </div>
+
+    <section id="adminTabPlayers" class="admin-section active">
       <button id="btnRefreshPlayers" class="alt">プレイヤー一覧を更新</button>
-      <div id="cloudPlayers" style="display:flex;flex-direction:column;gap:6px;margin:8px 0"></div>
-      <button id="btnRefreshReplays" class="alt">リプレイ一覧を更新</button>
-      <div id="cloudReplays" style="display:flex;flex-direction:column;gap:6px;margin:8px 0"></div>
-      <div id="replayPlayer" style="display:none;flex-direction:column;gap:6px">
-        <label for="replayPaste">リプレイデータを貼り付け</label>
-        <textarea id="replayPaste" rows="3" placeholder="TTP2:..." style="width:100%;box-sizing:border-box;font-family:monospace"></textarea>
-        <button id="btnReplayLoad" class="alt">貼り付けたデータを読み込む</button>
-        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
-          <canvas id="replayCanvas" width="200" height="400" style="background:#111;border:1px solid var(--border)"></canvas>
-          <div style="display:flex;flex-direction:column;gap:4px">
-            <canvas id="replayHoldCanvas" width="50" height="50" style="background:#111"></canvas>
-            <span style="font-size:.75rem">HOLD</span>
-            <canvas id="replayNextCanvas" width="50" height="250" style="background:#111"></canvas>
-            <span style="font-size:.75rem">NEXT</span>
-          </div>
-        </div>
-        <div id="replayStatus"></div>
-        <input id="replaySeek" type="range" min="0" max="1000" value="0" step="1" style="width:100%">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          <button id="btnReplayPlay">再生 / 一時停止</button>
-          <button id="btnReplayStart" class="alt">先頭</button>
-          <label for="replaySpeed">速度</label>
-          <select id="replaySpeed"><option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="2">2倍</option><option value="4">4倍</option></select>
-        </div>
-      </div>
-      <hr style="border:0;border-top:1px solid var(--border);margin:12px 0">
+      <p class="muted" style="margin:0">IDを削除するとそのプレイヤーのリプレイも削除されます。削除したIDは再登録でき、再登録後は再度承認が必要です。</p>
+      <div id="cloudPlayers" style="display:flex;flex-direction:column;gap:6px"></div>
+    </section>
+
+    <section id="adminTabReplays" class="admin-section">
+      <button id="btnRefreshReplays" class="alt">リプレイ一覧を更新（新しい順）</button>
+      <div id="cloudReplays" style="display:flex;flex-direction:column;gap:6px"></div>
+      <label for="replayPaste">リプレイデータを貼り付け</label>
+      <textarea id="replayPaste" rows="3" placeholder="TTP1:..." style="width:100%;box-sizing:border-box;font-family:monospace"></textarea>
+      <button id="btnReplayLoad" class="alt">貼り付けたデータを読み込む</button>
+    </section>
+
+    <section id="adminTabTemplates" class="admin-section">
+      <label style="display:flex;align-items:center;gap:8px"><input id="cfgAiGuide" type="checkbox" style="width:auto"> 次の1手AIガイドを表示</label>
+      <div id="templateList" style="display:flex;flex-direction:column;gap:8px"></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <label for="templateName">テンプレ名</label>
-      <input id="templateName" type="text" placeholder="例：新しい積み方" style="width:100%;box-sizing:border-box;margin:6px 0 10px">
+      <input id="templateName" type="text" placeholder="例：新しい積み方" style="width:100%;box-sizing:border-box">
       <label for="templatePattern">盤面パターン（1行10文字、使用文字 I J L O S T Z .）</label>
       <textarea id="templatePattern" rows="7" placeholder="..........
 ....T.....
-..TTT....." style="width:100%;box-sizing:border-box;margin:6px 0 10px;font-family:monospace"></textarea>
-      <label style="display:flex;align-items:center;gap:8px;margin:8px 0"><input id="templateMirror" type="checkbox" checked> 左右反転パターンも自動生成</label>
-      <div style="display:flex;gap:8px;margin-top:12px">
-        <button id="btnAddTemplate" style="flex:1">テンプレ追加</button>
-        <button id="btnCloseAdmin" class="alt" style="flex:1">閉じる</button>
+..TTT....." style="width:100%;box-sizing:border-box;font-family:monospace"></textarea>
+      <label style="display:flex;align-items:center;gap:8px"><input id="templateMirror" type="checkbox" checked style="width:auto"> 左右反転パターンも自動生成</label>
+      <div style="display:flex;gap:8px"><button id="btnAddTemplate" style="flex:1 1 auto;width:auto;min-width:0">テンプレ追加</button><button id="btnCancelTemplateEdit" class="alt" style="display:none;flex:0 0 auto;width:auto;white-space:nowrap">編集をやめる</button></div>
+    </section>
+
+    <section id="replayPlayer" class="admin-section" style="margin-top:10px">
+      <div id="replayTitle" style="font-weight:700"></div>
+      <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+        <canvas id="replayCanvas" width="200" height="400" style="background:#111;border:1px solid var(--border)"></canvas>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <canvas id="replayHoldCanvas" width="50" height="50" style="background:#111"></canvas>
+          <span style="font-size:.75rem">HOLD</span>
+          <canvas id="replayNextCanvas" width="50" height="250" style="background:#111"></canvas>
+          <span style="font-size:.75rem">NEXT</span>
+        </div>
       </div>
-    </div>
+      <div id="replayStatus"></div>
+      <input id="replaySeek" type="range" min="0" max="1000" value="0" step="1" style="width:100%">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <button id="btnReplayPlay" style="width:auto">再生 / 一時停止</button>
+        <button id="btnReplayStart" class="alt" style="width:auto">先頭</button>
+        <label for="replaySpeed">速度</label>
+        <select id="replaySpeed"><option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="2">2倍</option><option value="4">4倍</option></select>
+      </div>
+    </section>
   </div>
 
   <div id="toast"></div>
@@ -505,21 +530,16 @@ document.getElementById('btnSolo').onclick = async () => {
   document.getElementById('p2Container').classList.remove('active');
   document.getElementById('matchModeLabel').textContent = 'ソロプレイ';
   document.getElementById('rematchArea').classList.remove('active');
-  const seedText = document.getElementById('soloSeed').value.trim();
   let seed;
-  if (seedText !== '') {
-    seed = Number(seedText);
-    if (!Number.isInteger(seed) || seed < 0 || seed > 999999999) { toast('シード値は0〜999999999の整数で入力してください'); return; }
-  } else if (adminMode && document.getElementById('ensureTemplatePieces').checked) {
+  if (adminMode && document.getElementById('ensureTemplatePieces').checked) {
     const found = findBuildableSeed();
-    if (found) { seed = found.seed; toast(`「${found.template}」が組めるシード: ${seed}`); }
+    if (found) { seed = found.seed; toast(`「${found.template}」が組めるツモ順で開始します`); }
     else { seed = Math.floor(Math.random() * 1000000000); toast('組めるシードが見つからないためランダムで開始します'); }
   } else {
     seed = Math.floor(Math.random() * 1000000000);
   }
   vsRule = { ...vsRule, nextMode:'common', seed };
   switchScreen('gameScreen'); initGame();
-  document.getElementById('matchModeLabel').textContent = `ソロプレイ（シード: ${seed}）`;
 };
 document.getElementById('btnLogout').onclick = () => { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログアウトしました。'); };
 document.getElementById('btnLogin').onclick = async () => {
@@ -662,7 +682,7 @@ document.getElementById('btnBackToLobby').onclick = () => {
 // ==========================================
 function gameLoop(timestamp) {
   if (!lastDropTime) lastDropTime = timestamp;
-  if (document.getElementById('gameScreen').classList.contains('active') && !isEnded && cur && !autoBuildRunning) {
+  if (document.getElementById('gameScreen').classList.contains('active') && !isEnded && cur) {
     if (timestamp - lastDropTime >= GRAVITY_DELAY) {
       if (move(0, 1)) lastDropTime = timestamp;
       else lastDropTime = timestamp;
@@ -1351,23 +1371,6 @@ document.getElementById('btnOpenSettings').onclick = () => {
 };
 document.getElementById('btnCloseSettings').onclick = () => document.getElementById('settingsModal').classList.add('hidden');
 
-function tryOpenAdminMode() {
-  const arr = Number(document.getElementById('cfgArr').value);
-  const sd = Number(document.getElementById('cfgSd').value);
-  if (arr !== 490 || sd !== 490 || account?.role !== 'admin') return;
-  adminMode = true;
-  document.getElementById('adminTemplateControls').style.display = 'flex';
-  document.getElementById('adminAutoControls').style.display = 'flex';
-  document.getElementById('cfgArr').value = '30';
-  document.getElementById('cfgSd').value = '20';
-  config.arr = 30; config.sd = 20;
-  document.getElementById('settingsModal').classList.add('hidden');
-  renderTemplateList();
-  document.getElementById('adminModal').classList.remove('hidden');
-  if (typeof showToast === 'function') showToast('作者メニューを開きました');
-}
-document.getElementById('cfgArr').addEventListener('change', tryOpenAdminMode);
-document.getElementById('cfgSd').addEventListener('change', tryOpenAdminMode);
 document.getElementById('cfgAiGuide').addEventListener('change', (e) => {
   aiGuideEnabled = e.target.checked;
   try { localStorage.setItem('p2pTetrisAiGuideV1', aiGuideEnabled ? '1' : '0'); } catch (_) {}
@@ -1402,13 +1405,45 @@ function renderTemplateList() {
     const mirror = document.createElement('button'); mirror.className = 'alt'; mirror.textContent = '反転';
     mirror.style.cssText = 'padding:6px 8px;min-width:0;white-space:nowrap;';
     mirror.onclick = () => { const preview = mirrorTemplateRows(t.pattern || []); alert(t.name + '（左右反転）\n\n' + preview.join('\n')); };
-    actions.append(toggle, mirror);
+    const edit = document.createElement('button'); edit.className = 'alt'; edit.textContent = '編集';
+    edit.style.cssText = 'padding:6px 8px;min-width:0;white-space:nowrap;';
+    edit.onclick = () => startTemplateEdit(i);
+    const del = document.createElement('button'); del.className = 'danger'; del.textContent = '削除';
+    del.style.cssText = 'padding:6px 8px;min-width:0;white-space:nowrap;';
+    del.onclick = () => {
+      if (!confirm(`テンプレ「${t.name}」を削除しますか？`)) return;
+      templateData.splice(i, 1);
+      if (editingTemplateIndex === i) resetTemplateForm(); else if (editingTemplateIndex > i) editingTemplateIndex--;
+      saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions(); render();
+    };
+    if (editingTemplateIndex === i) row.style.borderColor = 'var(--accent)';
+    actions.append(toggle, mirror, edit, del);
     row.append(info, actions); list.appendChild(row);
   });
 }
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
+let editingTemplateIndex = -1;
+function resetTemplateForm() {
+  editingTemplateIndex = -1;
+  document.getElementById('templateName').value = ''; document.getElementById('templatePattern').value = '';
+  document.getElementById('templateMirror').checked = true;
+  document.getElementById('btnAddTemplate').textContent = 'テンプレ追加';
+  document.getElementById('btnCancelTemplateEdit').style.display = 'none';
+}
+function startTemplateEdit(i) {
+  const t = templateData[i]; if (!t) return;
+  editingTemplateIndex = i;
+  document.getElementById('templateName').value = t.name;
+  document.getElementById('templatePattern').value = (t.pattern || []).join('\n');
+  document.getElementById('templateMirror').checked = t.mirror !== false;
+  document.getElementById('btnAddTemplate').textContent = 'テンプレ更新';
+  document.getElementById('btnCancelTemplateEdit').style.display = '';
+  renderTemplateList();
+  document.getElementById('templatePattern').focus();
+}
+document.getElementById('btnCancelTemplateEdit').onclick = () => { resetTemplateForm(); renderTemplateList(); };
 document.getElementById('btnAddTemplate').onclick = () => {
   const name = document.getElementById('templateName').value.trim();
   const raw = document.getElementById('templatePattern').value.trim();
@@ -1417,11 +1452,16 @@ document.getElementById('btnAddTemplate').onclick = () => {
   if (rows.some(r => r.length !== 10 || /[^IJLOSTZ.]/.test(r))) {
     alert('各行を10文字にし、I J L O S T Z . だけを使ってください。'); return;
   }
-  templateData.push({ name, priority: 10, pattern: rows, enabled: true, mirror: document.getElementById('templateMirror').checked });
-  saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions();
-  document.getElementById('templateName').value = ''; document.getElementById('templatePattern').value = '';
+  const mirror = document.getElementById('templateMirror').checked;
+  if (editingTemplateIndex >= 0 && templateData[editingTemplateIndex]) {
+    Object.assign(templateData[editingTemplateIndex], { name, pattern: rows, mirror });
+    toast(`テンプレ「${name}」を更新しました`);
+  } else {
+    templateData.push({ name, priority: 10, pattern: rows, enabled: true, mirror });
+  }
+  resetTemplateForm();
+  saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions(); render();
 };
-document.getElementById('btnCloseAdmin').onclick = () => document.getElementById('adminModal').classList.add('hidden');
 
 function stopAutoBuild(message = '自動積み停止') {
   autoBuildRunning = false;
@@ -1622,19 +1662,19 @@ function solveTemplate(startBoard, seq, startHold, startCanHold, variant, firstS
     const active = seq[i];
     for (const p of templatePlacementsFor(b, active, variant, isFirst ? firstStart : AUTO_SPAWN)) {
       const rest = rec(p.board, i + 1, hold, true, filledNow + 4, false);
-      if (rest) return [{ hold: false, type: active, x: p.x, y: p.y, rot: p.rot, path: p.path, boardBefore: autoBoardKey(b) }, ...rest];
+      if (rest) return [{ hold: false, type: active, x: p.x, y: p.y, rot: p.rot, path: p.path, boardBefore: autoBoardKey(b), boardAfter: autoBoardKey(p.board) }, ...rest];
     }
     if (canHoldNow) {
       if (!hold) {
         const swapped = seq[i + 1];
         if (swapped) for (const p of templatePlacementsFor(b, swapped, variant, AUTO_SPAWN)) {
           const rest = rec(p.board, i + 2, active, true, filledNow + 4, false);
-          if (rest) return [{ hold: true, type: swapped, x: p.x, y: p.y, rot: p.rot, path: p.path, boardBefore: autoBoardKey(b) }, ...rest];
+          if (rest) return [{ hold: true, type: swapped, x: p.x, y: p.y, rot: p.rot, path: p.path, boardBefore: autoBoardKey(b), boardAfter: autoBoardKey(p.board) }, ...rest];
         }
       } else if (hold !== active) {
         for (const p of templatePlacementsFor(b, hold, variant, AUTO_SPAWN)) {
           const rest = rec(p.board, i + 1, active, true, filledNow + 4, false);
-          if (rest) return [{ hold: true, type: hold, x: p.x, y: p.y, rot: p.rot, path: p.path, boardBefore: autoBoardKey(b) }, ...rest];
+          if (rest) return [{ hold: true, type: hold, x: p.x, y: p.y, rot: p.rot, path: p.path, boardBefore: autoBoardKey(b), boardAfter: autoBoardKey(p.board) }, ...rest];
         }
       }
     }
@@ -1693,14 +1733,39 @@ function findBuildableSeed(maxTries = 400) {
 
 function curPoseIs(s) { return cur && cur.x === s.x && cur.y === s.y && cur.r === s.rot; }
 
+let autoSpeed = 1;
+try { autoSpeed = Math.min(1, Math.max(0.2, Number(localStorage.getItem('p2pTetrisAutoSpeedV1')) || 1)); } catch (_) {}
+function autoDelay(baseMs) { return Math.round(baseMs / autoSpeed); }
+
 function applyAutoAction(action) {
   if (action === 'L') return move(-1, 0);
   if (action === 'R') return move(1, 0);
-  if (action === 'D') return move(0, 1);
-  if (action === 'SD') { let moved = false; while (move(0, 1)) moved = true; return moved; }
+  if (action === 'D' || action === 'SD') return move(0, 1);
   if (action === 'CW') { rotate(1); return true; }
   if (action === 'CCW') { rotate(-1); return true; }
   return false;
+}
+
+// Steer the live piece (gravity and lock delay stay active) to the planned pose,
+// re-pathing from wherever gravity has moved it. Returns 'placed' | 'locked' | 'fail' | 'stopped'.
+async function driveToTarget(step, token) {
+  const piece = cur;
+  for (let guard = 0; guard < 300; guard++) {
+    if (!autoBuildRunning || token !== autoBuildToken) return 'stopped';
+    if (isEnded) return 'fail';
+    if (cur !== piece) return 'locked';
+    const reach = autoReachable(board, cur.type, { x: cur.x, y: cur.y, rot: cur.r });
+    if (!reach.has(reach.keyOf(step))) return 'fail';
+    const path = autoPath(reach, step);
+    // Already at the target, or a straight drop reaches it: hard drop.
+    if (!path.length || (path.length === 1 && path[0] === 'SD')) { hardDrop(); return 'placed'; }
+    const action = path[0];
+    applyAutoAction(action);
+    // Soft drop advances one row per tick; moves/rotations use the operation speed.
+    const delay = (action === 'SD' || action === 'D') ? autoDelay(Math.max(20, config.sd)) : autoDelay(45);
+    if (!(await waitAuto(delay, token))) return 'stopped';
+  }
+  return 'fail';
 }
 
 async function startAutoBuild() {
@@ -1712,7 +1777,7 @@ async function startAutoBuild() {
   setAutoStatus('7bagのツモ順からテンプレ手順を探索中…');
   if (!(await waitAuto(30, token))) return;
   let replans = 0;
-  while (autoBuildRunning && token === autoBuildToken && !isEnded && replans++ < 6) {
+  while (autoBuildRunning && token === autoBuildToken && !isEnded && replans++ < 8) {
     const plan = planAutoBuild();
     if (!plan) {
       const sel = getSelectedTemplateVariantName();
@@ -1720,32 +1785,40 @@ async function startAutoBuild() {
       return;
     }
     const variant = plan.variant;
-    setAutoStatus(`自動積み中：${variant.name}（${plan.steps.length}手）`);
     let ok = true;
-    for (const step of plan.steps) {
+    for (let i = 0; i < plan.steps.length; i++) {
+      const step = plan.steps[i];
       if (!autoBuildRunning || token !== autoBuildToken || isEnded) return;
+      setAutoStatus(`自動積み中：${variant.name}（${i + 1}/${plan.steps.length}手）`);
       if (!cur || autoBoardKey(board) !== step.boardBefore) { ok = false; break; }
       if (step.hold) {
         doHold();
-        if (!(await waitAuto(90, token))) return;
+        if (!(await waitAuto(autoDelay(90), token))) return;
       }
       if (!cur || cur.type !== step.type) { ok = false; break; }
-      for (const action of step.path) {
-        applyAutoAction(action);
-        if (!(await waitAuto(action === 'SD' ? 40 : 25, token))) return;
-      }
-      if (!curPoseIs(step)) { ok = false; break; }
-      const placed = cur;
-      hardDrop();
-      if (!(await waitAuto(110, token))) return;
-      if (cur === placed && !isEnded) { ok = false; break; }
+      const result = await driveToTarget(step, token);
+      if (result === 'stopped') return;
+      if (result === 'fail') { ok = false; break; }
+      // Lock delay may have locked the piece at the target before the hard drop; that is fine.
+      if (autoBoardKey(board) !== step.boardAfter) { ok = false; break; }
+      if (!(await waitAuto(autoDelay(120), token))) return;
     }
     if (activeTemplateComplete(variant)) { stopAutoBuild(`テンプレ完成：${variant.name}`); return; }
     if (ok) break;
-    setAutoStatus('盤面が変化したため再探索中…');
+    setAutoStatus('ツモ・盤面がずれたため再探索中…');
   }
   if (autoBuildRunning && token === autoBuildToken) stopAutoBuild('自動積み停止：手順を完了できませんでした');
 }
+
+const autoSpeedInput = document.getElementById('autoSpeed');
+function updateAutoSpeedLabel() { document.getElementById('autoSpeedLabel').textContent = autoSpeed.toFixed(1) + '倍'; }
+autoSpeedInput.value = String(autoSpeed);
+updateAutoSpeedLabel();
+autoSpeedInput.addEventListener('input', () => {
+  autoSpeed = Math.min(1, Math.max(0.2, Number(autoSpeedInput.value) || 1));
+  updateAutoSpeedLabel();
+  try { localStorage.setItem('p2pTetrisAutoSpeedV1', String(autoSpeed)); } catch (_) {}
+});
 document.getElementById('btnAutoBuild').addEventListener('click', startAutoBuild);
 document.getElementById('btnAutoStop').addEventListener('click', () => stopAutoBuild('手動停止'));
 
@@ -1776,7 +1849,7 @@ document.addEventListener('keyup', (e) => {
 function bindTouchButton(id, key, fn, interval) {
   const btn = document.getElementById(id);
   if (!btn) return;
-  const start = (e) => { e.preventDefault(); handlePressStart(key, fn, interval()); };
+  const start = (e) => { e.preventDefault(); if (autoBuildRunning) return; handlePressStart(key, fn, interval()); };
   const end = (e) => { e.preventDefault(); handlePressEnd(key); };
   btn.addEventListener('pointerdown', start); btn.addEventListener('pointerup', end);
   btn.addEventListener('pointercancel', end); btn.addEventListener('pointerleave', end);
@@ -1784,7 +1857,7 @@ function bindTouchButton(id, key, fn, interval) {
 function bindTapButton(id, fn) {
   const btn = document.getElementById(id);
   if (!btn) return;
-  btn.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
+  btn.addEventListener('pointerdown', (e) => { e.preventDefault(); if (autoBuildRunning) return; fn(); });
 }
 
 bindTouchButton('btnL', 'left', () => move(-1, 0), () => config.arr);
@@ -1797,27 +1870,135 @@ bindTapButton('btnRotR', () => rotate(1));
 bindTapButton('btnHold', doHold);
 
 
+let adminReplayCache = [];
+
+function adminButton(label, onClick, cls) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  if (cls) b.className = cls;
+  b.onclick = onClick;
+  return b;
+}
+
+function showAdminTab(name) {
+  document.querySelectorAll('.admin-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  ['Players', 'Replays', 'Templates'].forEach(n => document.getElementById('adminTab' + n).classList.toggle('active', n === name));
+  if (name === 'Templates') { stopReplayPlayback(); document.getElementById('replayPlayer').style.display = 'none'; }
+  if (name === 'Players') refreshCloudPlayers();
+  if (name === 'Replays') refreshCloudReplays();
+  if (name === 'Templates') renderTemplateList();
+}
+document.querySelectorAll('.admin-tab').forEach(t => t.addEventListener('click', () => showAdminTab(t.dataset.tab)));
+
+function openAdminScreen() {
+  if (account?.role !== 'admin') return;
+  if (autoBuildRunning) stopAutoBuild('自動積み停止');
+  switchScreen('adminScreen');
+  showAdminTab('Players');
+}
+document.getElementById('btnOpenAdmin').onclick = openAdminScreen;
+document.getElementById('btnAdminBack').onclick = () => { stopReplayPlayback(); switchScreen('lobbyScreen'); };
+
+async function fetchAdminReplays() {
+  const d = await api('/admin/replays', undefined, 'GET');
+  adminReplayCache = (d.replays || []).slice().sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt));
+  return adminReplayCache;
+}
+
+async function playCloudReplay(r) {
+  try {
+    const x = await api('/admin/replays/' + encodeURIComponent(r.replayId), undefined, 'GET');
+    await loadReplayText(x.replayData);
+    document.getElementById('replayPaste').value = x.replayData;
+    document.getElementById('replayTitle').textContent = `${r.playerId} · ${new Date(r.endedAt).toLocaleString()}`;
+    document.getElementById('replayPlayer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteCloudReplay(r) {
+  if (!confirm(`${r.playerId} のリプレイ（${new Date(r.endedAt).toLocaleString()}）を削除しますか？`)) return false;
+  try { await api('/admin/replays/' + encodeURIComponent(r.replayId), undefined, 'DELETE'); toast('リプレイを削除しました'); return true; }
+  catch (e) { alert('削除失敗: ' + e.message); return false; }
+}
+
+function makeReplayRow(r, showPlayer, onChanged) {
+  const row = document.createElement('div');
+  row.className = 'admin-row';
+  const label = document.createElement('div');
+  label.textContent = `${showPlayer ? r.playerId + ' · ' : ''}${new Date(r.endedAt).toLocaleString()} · ${(r.byteSize / 1024).toFixed(1)}KB · ${(r.durationMs / 1000).toFixed(1)}秒`;
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  actions.append(
+    adminButton('再生', () => playCloudReplay(r)),
+    adminButton('データをコピー', async () => {
+      try { const x = await api('/admin/replays/' + encodeURIComponent(r.replayId), undefined, 'GET'); await navigator.clipboard.writeText(x.replayData); document.getElementById('replayPaste').value = x.replayData; toast('リプレイデータをコピーしました'); }
+      catch (e) { alert(e.message); }
+    }, 'alt'),
+    adminButton('削除', async () => { if (await deleteCloudReplay(r)) onChanged(); }, 'danger')
+  );
+  row.append(label, actions);
+  return row;
+}
+
 async function refreshCloudPlayers() {
-  const root=document.getElementById('cloudPlayers'); root.textContent='読み込み中…';
-  try { const d=await api('/admin/players',undefined,'GET'); root.replaceChildren();
-    for(const p of d.players||[]) { const row=document.createElement('div'); row.style.cssText='border:1px solid var(--border);padding:7px;border-radius:6px';
-      const label=document.createElement('span'); label.textContent=`${p.id} · ${p.approved?'承認済み':'承認待ち'} · ${p.allowed?'プレイ可':'プレイ禁止'} `; row.append(label);
-      const approve=document.createElement('button'); approve.textContent=p.approved?'承認済み':'承認'; approve.disabled=p.approved; approve.onclick=async()=>{await api('/admin/players/'+encodeURIComponent(p.id),{approved:true});refreshCloudPlayers();}; row.append(approve);
-      const toggle=document.createElement('button'); toggle.textContent=p.allowed?'プレイ禁止':'プレイ許可'; toggle.onclick=async()=>{await api('/admin/players/'+encodeURIComponent(p.id),{allowed:!p.allowed});refreshCloudPlayers();}; row.append(toggle);
-      const reset=document.createElement('button'); reset.textContent='PW再発行'; reset.onclick=async()=>{try{const x=await api('/admin/reset-password/'+encodeURIComponent(p.id),{});alert(`${p.id} の新パスワード: ${x.password}`);}catch(e){alert(e.message)}}; row.append(reset); root.append(row);
+  const root = document.getElementById('cloudPlayers');
+  root.textContent = '読み込み中…';
+  try {
+    const [d] = await Promise.all([api('/admin/players', undefined, 'GET'), fetchAdminReplays().catch(() => [])]);
+    root.replaceChildren();
+    const players = d.players || [];
+    if (!players.length) root.textContent = 'プレイヤーはいません';
+    for (const p of players) {
+      const replays = adminReplayCache.filter(r => r.playerId === p.id);
+      const row = document.createElement('div');
+      row.className = 'admin-row';
+      const label = document.createElement('div');
+      label.innerHTML = `<b></b> <span class="muted"></span>`;
+      label.querySelector('b').textContent = p.id;
+      label.querySelector('span').textContent = `${p.role === 'admin' ? '管理者 · ' : ''}${p.approved ? '承認済み' : '承認待ち'} · ${p.allowed ? 'プレイ可' : 'プレイ禁止'} · リプレイ${replays.length}件`;
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const sub = document.createElement('div');
+      sub.className = 'admin-sub';
+      const approve = adminButton(p.approved ? '承認済み' : '承認', async () => { try { await api('/admin/players/' + encodeURIComponent(p.id), { approved: true }); refreshCloudPlayers(); } catch (e) { alert(e.message); } });
+      approve.disabled = !!p.approved;
+      actions.append(
+        approve,
+        adminButton(p.allowed ? 'プレイ禁止' : 'プレイ許可', async () => { try { await api('/admin/players/' + encodeURIComponent(p.id), { allowed: !p.allowed }); refreshCloudPlayers(); } catch (e) { alert(e.message); } }, 'alt'),
+        adminButton('PW再発行', async () => { try { const x = await api('/admin/reset-password/' + encodeURIComponent(p.id), {}); alert(`${p.id} の新パスワード: ${x.password}`); } catch (e) { alert(e.message); } }, 'alt'),
+        adminButton(`リプレイ (${replays.length})`, () => sub.classList.toggle('open'), 'alt')
+      );
+      if (p.id !== account?.id && p.role !== 'admin') {
+        actions.append(adminButton('ID削除', async () => {
+          if (!confirm(`ID「${p.id}」を削除しますか？\nリプレイ${replays.length}件も削除されます。\n同じIDは再登録でき、再登録後は再承認が必要です。`)) return;
+          try {
+            await api('/admin/players/' + encodeURIComponent(p.id), undefined, 'DELETE');
+            toast(`ID「${p.id}」を削除しました`);
+          } catch (e) { alert('削除失敗: ' + e.message); }
+          refreshCloudPlayers();
+        }, 'danger'));
+      }
+      if (!replays.length) { const none = document.createElement('div'); none.className = 'muted'; none.textContent = 'リプレイはありません'; sub.append(none); }
+      for (const r of replays) sub.append(makeReplayRow(r, false, refreshCloudPlayers));
+      row.append(label, actions, sub);
+      root.append(row);
     }
-  } catch(e){root.textContent=e.message;}
+  } catch (e) { root.textContent = e.message; }
 }
+
 async function refreshCloudReplays() {
-  const root=document.getElementById('cloudReplays'); root.textContent='読み込み中…';
-  try { const d=await api('/admin/replays',undefined,'GET'); root.replaceChildren();
-    for(const r of d.replays||[]) { const row=document.createElement('div'); row.style.cssText='border:1px solid var(--border);padding:7px;border-radius:6px';
-      const label=document.createElement('span'); label.textContent=`${r.playerId} · ${new Date(r.endedAt).toLocaleString()} · ${(r.byteSize/1024).toFixed(1)}KB · ${(r.durationMs/1000).toFixed(1)}秒 `; row.append(label);
-      const play=document.createElement('button'); play.textContent='取得・再生'; play.onclick=async()=>{try{const x=await api('/admin/replays/'+encodeURIComponent(r.replayId),undefined,'GET');await loadReplayText(x.replayData);document.getElementById('replayPaste').value=x.replayData;document.getElementById('replayPlayer').style.display='flex';document.getElementById('replayStatus').textContent=`${r.playerId} · ${r.replayId}`;}catch(e){alert(e.message)}}; row.append(play);
-      const copy=document.createElement('button'); copy.textContent='データをコピー'; copy.onclick=async()=>{try{const x=await api('/admin/replays/'+encodeURIComponent(r.replayId),undefined,'GET');await navigator.clipboard.writeText(x.replayData);document.getElementById('replayPaste').value=x.replayData;document.getElementById('replayPlayer').style.display='flex';toast('リプレイデータをコピーしました');}catch(e){alert(e.message)}}; row.append(copy); root.append(row);
-    }
-  } catch(e){root.textContent=e.message;}
+  const root = document.getElementById('cloudReplays');
+  root.textContent = '読み込み中…';
+  try {
+    const replays = await fetchAdminReplays();
+    root.replaceChildren();
+    if (!replays.length) root.textContent = 'リプレイはありません';
+    for (const r of replays) root.append(makeReplayRow(r, true, refreshCloudReplays));
+  } catch (e) { root.textContent = e.message; }
 }
+document.getElementById('btnRefreshPlayers').onclick = refreshCloudPlayers;
+document.getElementById('btnRefreshReplays').onclick = refreshCloudReplays;
+
 function buildReplayState(targetMs) {
   const rb = Array.from({length:ROWS},()=>Array(COLS).fill(null));
   let piece = null, hold = null, next = [], eventIndex = 0;
@@ -1870,8 +2051,6 @@ function replayTick(){
   replayClockMs=Math.min(duration,replayClockMs);drawReplayFrame();
   if(replayClockMs>=duration)stopReplayPlayback();
 }
-document.getElementById('btnRefreshPlayers').onclick=refreshCloudPlayers;
-document.getElementById('btnRefreshReplays').onclick=refreshCloudReplays;
 document.getElementById('btnReplayLoad').onclick=()=>loadReplayText(document.getElementById('replayPaste').value).catch(e=>alert('読み込み失敗: '+e.message));
 document.getElementById('btnReplayPlay').onclick=()=>{
   if(replayPlaying){stopReplayPlayback();return;}
