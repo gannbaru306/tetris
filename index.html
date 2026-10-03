@@ -511,6 +511,7 @@ function recordReplayPosition() {
 }
 function recordReplayLock() {
   if (!runStartedAt || isEnded || !cur) return;
+  recordReplayPosition(); // the lock must always carry the final resting pose
   replayEvents.push([Math.max(0, Math.round(performance.now() - replayStartPerf)), 'L']);
 }
 function recordReplayGarbage(holes) {
@@ -2277,8 +2278,20 @@ document.getElementById('btnRefreshReplays').onclick = refreshCloudReplays;
 function buildReplayState(events, targetMs) {
   const rb = Array.from({length:ROWS},()=>Array(COLS).fill(null));
   let piece = null, eventIndex = 0;
+  const hits = (x, y, type, r) => {
+    const mm = getShapeMatrix(type, r || 0);
+    for (let rr = 0; rr < mm.length; rr++) for (let cc = 0; cc < mm[rr].length; cc++) {
+      if (!mm[rr][cc]) continue;
+      const nx = x + cc, ny = y + rr;
+      if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+      if (ny >= 0 && rb[ny][nx]) return true;
+    }
+    return false;
+  };
   const lock = () => {
     if (!piece) return;
+    // Locks only happen on the ground; older recordings may miss the final drop, so settle the piece first.
+    while (!hits(piece.x, piece.y + 1, piece.type, piece.r)) piece.y++;
     const m = getShapeMatrix(piece.type, piece.r || 0);
     m.forEach((row,r)=>row.forEach((v,c)=>{
       const x=piece.x+c,y=piece.y+r;
