@@ -92,7 +92,8 @@
       background: #11111b; border: 1px solid var(--border); color: #fff; padding: 4px; border-radius: 4px;
     }
 
-    #adminScreen { max-width: 680px; }
+    #adminScreen, #vsReplayScreen { max-width: 680px; }
+    .replay-board { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:.8rem; font-weight:700; }
     .admin-head { width:100%; display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
     .admin-head h2 { margin:0; font-size:1.05rem; color:var(--accent); }
     .admin-tabs { width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:10px; }
@@ -153,6 +154,7 @@
         <button id="btnJoinRoom" style="width: 120px;">参加する</button>
       </div>
       <div id="netStatus">オフライン待機中</div>
+      <button id="btnOpenVsReplays" class="alt">保存した対戦リプレイ</button>
     </div>
     <button id="btnOpenSettings" class="alt" style="margin-top: 15px;">⚙ 詳細ルール・感度設定</button>
   </div>
@@ -201,6 +203,10 @@
     </div>
 
     <div id="rematchArea">
+      <div id="replaySavePrompt" style="display:none;margin-bottom:8px">
+        <div style="font-size:.9rem;margin-bottom:6px">リプレイを保存しますか？</div>
+        <div style="display:flex;gap:8px"><button id="btnReplaySave" style="flex:1">保存する</button><button id="btnReplayDiscard" class="alt" style="flex:1">保存しない</button></div>
+      </div>
       <button id="btnRematch">再戦する</button>
       <div id="rematchStatus">両者が再戦を選ぶと始まります</div>
     </div>
@@ -285,7 +291,29 @@
     </section>
 
     <section id="adminTabReplays" class="admin-section">
-      <button id="btnRefreshReplays" class="alt">リプレイ一覧を更新（新しい順）</button>
+      <button id="btnRefreshReplays" class="alt">リプレイ一覧を更新</button>
+      <div id="replayFilters" style="display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:center;font-size:.85rem">
+        <label for="replayFilterMode">種類</label>
+        <select id="replayFilterMode"><option value="">すべて</option><option value="solo">ソロ</option><option value="vs">対戦</option></select>
+        <label for="replayFilterUser">ユーザー</label>
+        <select id="replayFilterUser"><option value="">すべて</option></select>
+        <label for="replayFilterFrom">開始</label>
+        <input id="replayFilterFrom" type="datetime-local">
+        <label for="replayFilterTo">終了</label>
+        <input id="replayFilterTo" type="datetime-local">
+        <label for="replaySort">並び替え</label>
+        <select id="replaySort">
+          <option value="newest">新しい順</option>
+          <option value="oldest">古い順</option>
+          <option value="user">ユーザー順</option>
+          <option value="longest">長い順</option>
+          <option value="shortest">短い順</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="btnReplayFilterReset" class="alt" style="width:auto">条件をクリア</button>
+        <span id="replayFilterCount" class="muted" style="font-size:.85rem"></span>
+      </div>
       <div id="cloudReplays" style="display:flex;flex-direction:column;gap:6px"></div>
       <label for="replayPaste">リプレイデータを貼り付け</label>
       <textarea id="replayPaste" rows="3" placeholder="TTP1:..." style="width:100%;box-sizing:border-box;font-family:monospace"></textarea>
@@ -308,15 +336,7 @@
 
     <section id="replayPlayer" class="admin-section" style="margin-top:10px">
       <div id="replayTitle" style="font-weight:700"></div>
-      <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
-        <canvas id="replayCanvas" width="200" height="400" style="background:#111;border:1px solid var(--border)"></canvas>
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <canvas id="replayHoldCanvas" width="50" height="50" style="background:#111"></canvas>
-          <span style="font-size:.75rem">HOLD</span>
-          <canvas id="replayNextCanvas" width="50" height="250" style="background:#111"></canvas>
-          <span style="font-size:.75rem">NEXT</span>
-        </div>
-      </div>
+      <div id="replayBoards" style="display:flex;gap:12px;align-items:flex-start;justify-content:center;flex-wrap:wrap"></div>
       <div id="replayStatus"></div>
       <input id="replaySeek" type="range" min="0" max="1000" value="0" step="1" style="width:100%">
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -325,6 +345,18 @@
         <label for="replaySpeed">速度</label>
         <select id="replaySpeed"><option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="2">2倍</option><option value="4">4倍</option></select>
       </div>
+    </section>
+  </div>
+
+  <!-- 対戦リプレイ画面（ホストのブラウザに保存） -->
+  <div id="vsReplayScreen" class="screen">
+    <div class="admin-head">
+      <button id="btnVsReplayBack" class="alt" style="width:110px;padding:6px;font-size:.8rem">ロビーへ戻る</button>
+      <h2>保存した対戦リプレイ</h2>
+    </div>
+    <section class="admin-section active">
+      <p class="muted" style="margin:0">このブラウザに保存された対戦リプレイです（最大50件、古いものから削除）。</p>
+      <div id="vsReplayList" style="display:flex;flex-direction:column;gap:6px"></div>
     </section>
   </div>
 
@@ -432,39 +464,136 @@ async function packReplay(data) {
   catch (_) { return 'TTP0:' + bytesToB64(bytes); }
 }
 function bytesToB64(bytes) { let t=''; for(let i=0;i<bytes.length;i+=8192)t+=String.fromCharCode(...bytes.subarray(i,i+8192)); return btoa(t); }
+function validateReplayEvents(events) {
+  const int = (v, a, b) => Number.isInteger(v) && v >= a && v <= b;
+  const bad = () => { throw new Error('リプレイデータが壊れています。'); };
+  if (!Array.isArray(events) || events.length > 100000) bad();
+  for (const e of events) {
+    if (!Array.isArray(e) || typeof e[0] !== 'number' || !isFinite(e[0])) bad();
+    if (e.length === 2) { if (e[1] !== 'L') bad(); }
+    else if (e.length === 3) { if (e[1] !== 'G' || !Array.isArray(e[2]) || e[2].length > 200 || !e[2].every(h => int(h, 0, COLS - 1))) bad(); }
+    else if (e.length !== 5 || typeof e[1] !== 'string' || e[1].length !== 1 || !'IJLOSTZ'.includes(e[1]) || !int(e[2], -5, 15) || !int(e[3], -5, 25) || !int(e[4], 0, 3)) bad();
+  }
+  return events.length ? events[events.length - 1][0] : 0;
+}
+function validateReplay(o) {
+  if (!o || o.version !== 3) throw new Error('対応していないリプレイ形式です。');
+  const players = o.mode === 'vs'
+    ? (Array.isArray(o.players) ? o.players : []).slice(0, 2).map(p => ({ name: String(p?.name || '?').slice(0, 40), result: p?.result || '', events: p?.events }))
+    : [{ name: '', result: '', events: o.events }];
+  if (!players.length || !players.some(p => Array.isArray(p.events) && p.events.length)) throw new Error('対応していないリプレイ形式です。');
+  const last = Math.max(...players.map(p => validateReplayEvents(p.events)));
+  return { ...o, players, durationMs: Math.max(Number(o.durationMs) || 0, last + 500) };
+}
 async function unpackReplay(str) {
-  const bytes = Uint8Array.from(atob(str.slice(5)), c=>c.charCodeAt(0));
-  if (str.startsWith('TTP1:')) {
+  str = str.trim();
+  const head = str.slice(0, 5), body = str.slice(5).replace(/\s+/g, '');
+  const bytes = Uint8Array.from(atob(body), c=>c.charCodeAt(0));
+  let json;
+  if (head === 'TTP1:') {
     if (typeof DecompressionStream === 'undefined') throw new Error('このブラウザはTTP1の再生に対応していません。');
     const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-    return JSON.parse(await new Response(stream).text());
-  }
-  if (str.startsWith('TTP0:')) return JSON.parse(new TextDecoder().decode(bytes));
-  throw new Error('未対応のリプレイ形式です。');
+    json = await new Response(stream).text();
+  } else if (head === 'TTP0:') json = new TextDecoder().decode(bytes);
+  else throw new Error('未対応のリプレイ形式です。');
+  return validateReplay(JSON.parse(json));
 }
 function recordReplayPosition() {
-  if (isVsMode || !runStartedAt || isEnded || !cur) return;
+  if (!runStartedAt || isEnded || !cur) return;
   const t = Math.max(0, Math.round(performance.now() - replayStartPerf));
   const last = replayEvents[replayEvents.length - 1];
   if (last && last.length === 5 && last[1] === cur.type && last[2] === cur.x && last[3] === cur.y && last[4] === cur.r) return;
   replayEvents.push([t, cur.type, cur.x, cur.y, cur.r]);
 }
 function recordReplayLock() {
-  if (isVsMode || !runStartedAt || isEnded || !cur) return;
+  if (!runStartedAt || isEnded || !cur) return;
   replayEvents.push([Math.max(0, Math.round(performance.now() - replayStartPerf)), 'L']);
 }
-async function finishSoloRun() {
-  if (isVsMode || !account || !runStartedAt || replayEvents.length === 0) return;
-  const durationMs = Math.max(0, Math.round(performance.now() - replayStartPerf));
-  const run = { version:3, durationMs, seed:queueSeed, events:replayEvents };
+function recordReplayGarbage(holes) {
+  if (!runStartedAt || !holes.length) return;
+  replayEvents.push([Math.max(0, Math.round(performance.now() - replayStartPerf)), 'G', holes]);
+}
+// Each side records itself. In VS the guest sends its run to the host.
+// A finished run (solo, or both sides in VS) is ALWAYS uploaded to the cloud silently, whatever the player
+// answers to the save prompt. "保存する" additionally keeps a copy in this browser; "保存しない" keeps nothing local.
+const VS_REPLAY_KEY = 'p2pTetrisVsReplaysV1', VS_REPLAY_MAX = 50, REPLAY_CLOUD_MAX_BYTES = 200 * 1024, VS_GUEST_WAIT_MS = 4000;
+let pendingReplay = null;
+function finishRun(result = 'lose') {
+  if (!account || !runStartedAt) return;
+  const run = { name: account.id, result, durationMs: Math.max(0, Math.round(performance.now() - replayStartPerf)), events: replayEvents };
   runStartedAt = 0;
+  if (isVsMode && !isHost) { sendNet({ type: 'REPLAY', round: vsRule.round, run }); return; }
+  const round = isVsMode ? vsRule.round : null;
+  let p = pendingReplay;
+  if (!p || p.round !== round || p.host) {
+    settlePendingReplay();
+    p = pendingReplay = { mode: isVsMode ? 'vs' : 'solo', round, host: null, guest: null };
+  }
+  p.mode = isVsMode ? 'vs' : 'solo';
+  p.startedAt = Date.now() - run.durationMs;
+  p.seed = queueSeed;
+  p.host = run;
+  showSavePrompt(true);
+  if (p.mode === 'solo' || p.guest) finalizeReplay(p);
+  else p.timer = setTimeout(() => finalizeReplay(p, true), VS_GUEST_WAIT_MS);
+}
+function receiveVsReplay(round, run) {
+  if (!isHost || !run || !Array.isArray(run.events) || round !== vsRule.round) return;
+  try { validateReplayEvents(run.events); } catch (_) { return; }
+  let p = pendingReplay;
+  if (!p || p.round !== round) {
+    settlePendingReplay();
+    p = pendingReplay = { mode: 'vs', round, startedAt: Date.now() - (Number(run.durationMs) || 0), host: null, guest: null };
+  }
+  p.guest = { name: String(run.name || '?').slice(0, 40), result: String(run.result || ''), durationMs: Number(run.durationMs) || 0, events: run.events };
+  if (p.host) finalizeReplay(p);
+}
+function showSavePrompt(show) { document.getElementById('replaySavePrompt').style.display = show ? '' : 'none'; }
+// Leaving a result screen (new game, rematch, lobby): make sure the run reached the cloud, then forget it.
+function settlePendingReplay() {
+  const p = pendingReplay;
+  pendingReplay = null;
+  showSavePrompt(false);
+  if (p) finalizeReplay(p, true);
+}
+document.getElementById('btnReplayDiscard').onclick = () => showSavePrompt(false);
+document.getElementById('btnReplaySave').onclick = () => {
+  const p = pendingReplay;
+  showSavePrompt(false);
+  if (!p) return;
+  p.wantSave = true;
+  if (p.packed) saveReplayLocal(p);
+};
+function loadVsReplays() {
+  try { const a = JSON.parse(localStorage.getItem(VS_REPLAY_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; }
+}
+function saveReplayLocal(p) {
+  if (p.localSaved || !p.packed) return;
+  p.localSaved = true;
+  const entry = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), savedAt: new Date(p.startedAt).toISOString(), mode: p.mode, names: p.players.map(x => x.name), results: p.players.map(x => x.result), durationMs: p.durationMs, data: p.packed };
+  let list = [entry, ...loadVsReplays()].slice(0, VS_REPLAY_MAX);
+  while (list.length) {
+    try { localStorage.setItem(VS_REPLAY_KEY, JSON.stringify(list)); return; }
+    catch (_) { if (list.length === 1) return; list = list.slice(0, -1); }
+  }
+}
+// Packs the run once, uploads it silently (one retry), and keeps a local copy if the player asked for it.
+async function finalizeReplay(p, force = false) {
+  if (!p || p.finalized || !p.host) return;
+  if (p.mode === 'vs' && !p.guest && !force && conn && conn.open) return;
+  p.finalized = true;
+  clearTimeout(p.timer);
+  p.players = [p.host, p.guest].filter(Boolean);
+  p.durationMs = Math.max(...p.players.map(x => x.durationMs || 0));
   try {
-    const replayData = await packReplay(run);
-    const bytes = new TextEncoder().encode(replayData).length;
-    if (bytes > 50 * 1024) { toast('リプレイが50KBを超えたため保存できません'); return; }
-    await api('/replays', { replayData, durationMs, byteSize:bytes, endedAt:new Date().toISOString() });
-    toast('リプレイをクラウドに保存しました');
-  } catch (e) { toast('リプレイ保存失敗: ' + e.message); }
+    p.packed = await packReplay(p.mode === 'vs' ? { version:3, mode:'vs', durationMs:p.durationMs, players:p.players } : { version:3, durationMs:p.durationMs, seed:p.seed, events:p.host.events });
+  } catch (_) { return; }
+  if (p.wantSave) saveReplayLocal(p);
+  const bytes = new TextEncoder().encode(p.packed).length;
+  if (bytes > REPLAY_CLOUD_MAX_BYTES) return;
+  const body = { replayData:p.packed, durationMs:p.durationMs, byteSize:bytes, endedAt:new Date().toISOString(), mode:p.mode, players:p.players.map(x => x.name) };
+  try { await api('/replays', body); }
+  catch (_) { await new Promise(r => setTimeout(r, 2000)); try { await api('/replays', body); } catch (_) {} }
 }
 async function requireLogin() {
   readSavedAuth();
@@ -521,8 +650,9 @@ function switchScreen(screenId) {
 // ==========================================
 // ロビー・通信処理
 // ==========================================
-document.getElementById('btnSolo').onclick = async () => {
+async function startSoloGame() {
   if (!account) return switchScreen('accountScreen');
+  settlePendingReplay();
   try { const data = await api('/me', undefined, 'GET'); if (!data.allowed) throw new Error('ソロプレイは許可されていません'); }
   catch(e) { toast(e.message); return; }
   if (peer) { peer.destroy(); peer=null; conn=null; }
@@ -540,7 +670,8 @@ document.getElementById('btnSolo').onclick = async () => {
   }
   vsRule = { ...vsRule, nextMode:'common', seed };
   switchScreen('gameScreen'); initGame();
-};
+}
+document.getElementById('btnSolo').onclick = startSoloGame;
 document.getElementById('btnLogout').onclick = () => { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログアウトしました。'); };
 document.getElementById('btnLogin').onclick = async () => {
   const id=document.getElementById('accountId').value.trim(), password=document.getElementById('accountPassword').value.trim();
@@ -597,9 +728,11 @@ function setupConn() {
     if (data.type === 'LOCK') drawP2(data.board, null);
     if (data.type === 'ATTACK') receiveAttack(data.holes);
     if (data.type === 'GAMEOVER') {
+      if (!isEnded) finishRun('win');
       isEnded = true;
       showRematch('WIN! 相手を倒しました！');
     }
+    if (data.type === 'REPLAY') receiveVsReplay(data.round, data.run);
     if (data.type === 'REMATCH') {
       remoteRematchRequested = true;
       updateRematchStatus();
@@ -610,7 +743,14 @@ function setupConn() {
       resetForRematch();
     }
   });
-  conn.on('close', () => { isEnded = true; toast('相手が切断しました'); document.getElementById('netStatus').textContent = '切断されました'; });
+  conn.on('close', () => {
+    if (!isEnded) finishRun('win');
+    if (pendingReplay) finalizeReplay(pendingReplay, true);
+    isEnded = true; toast('相手が切断しました');
+    showRematch('相手が切断しました');
+    document.getElementById('btnRematch').disabled = true;
+    document.getElementById('netStatus').textContent = '切断されました';
+  });
 }
 
 function startVsGame() {
@@ -623,6 +763,7 @@ function startVsGame() {
     vsRule.nextMode = document.getElementById('cfgNextMode').value;
     vsRule.holeChange = parseFloat(document.getElementById('cfgHoleChange').value);
     vsRule.posInterval = parseInt(document.getElementById('cfgPosInterval').value, 10) || 33;
+    vsRule.round = Math.random().toString(36).slice(2, 10);
     if (conn && conn.open) conn.send({ type: 'RULE', rule: vsRule });
   }
   switchScreen('gameScreen');
@@ -633,7 +774,10 @@ function sendNet(data) { if (isVsMode && conn && conn.open) conn.send(data); }
 
 function showRematch(message) {
   document.getElementById('rematchArea').classList.add('active');
-  document.getElementById('rematchStatus').textContent = message || '再戦するには両者がボタンを押してください';
+  const btn = document.getElementById('btnRematch');
+  btn.textContent = isVsMode ? '再戦する' : 'リトライ';
+  btn.disabled = isVsMode && !(conn && conn.open);
+  document.getElementById('rematchStatus').textContent = message || (isVsMode ? '再戦するには両者がボタンを押してください' : '');
 }
 
 function updateRematchStatus() {
@@ -644,7 +788,8 @@ function updateRematchStatus() {
 }
 
 document.getElementById('btnRematch').onclick = () => {
-  if (!isVsMode || !isEnded || rematchRequested) return;
+  if (!isVsMode) { if (isEnded) startSoloGame(); return; }
+  if (!isEnded || rematchRequested) return;
   rematchRequested = true;
   sendNet({ type: 'REMATCH' });
   updateRematchStatus();
@@ -654,12 +799,14 @@ document.getElementById('btnRematch').onclick = () => {
 function tryStartRematch() {
   if (!isHost || !rematchRequested || !remoteRematchRequested) return;
   vsRule.seed = Math.floor(Math.random() * 1000000);
+  vsRule.round = Math.random().toString(36).slice(2, 10);
   const rule = { ...vsRule };
   sendNet({ type: 'REMATCH_START', rule });
   resetForRematch();
 }
 
 function resetForRematch() {
+  settlePendingReplay();
   rematchRequested = false;
   remoteRematchRequested = false;
   document.getElementById('rematchArea').classList.remove('active');
@@ -671,6 +818,8 @@ function resetForRematch() {
 
 document.getElementById('btnBackToLobby').onclick = () => {
   if (autoBuildRunning) stopAutoBuild('自動積み停止');
+  runStartedAt = 0;
+  settlePendingReplay();
   isEnded = true;
   if (peer) peer.destroy();
   switchScreen('lobbyScreen');
@@ -724,7 +873,7 @@ function spawnPiece() {
   recordReplayPosition();
 
   if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
-    isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishSoloRun();
+    isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishRun();
   } else {
     sendPosNow();
   }
@@ -792,6 +941,7 @@ function hardDrop() {
   if (isEnded || !cur) return;
   while (!checkCollision(cur.x, cur.y + 1, cur.type, cur.r)) cur.y++;
   groundedAt = 0;
+  recordReplayPosition();
   lockPiece();
 }
 
@@ -834,8 +984,9 @@ function lockPiece() {
     if (y < 0) aboveTop = true;
     else if (y < ROWS && x >= 0 && x < COLS) board[y][x] = cur.type;
   }));
+  recordReplayLock();
   if (aboveTop) {
-    isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishSoloRun();
+    isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishRun();
     return;
   }
 
@@ -874,7 +1025,6 @@ function lockPiece() {
 
   applyGarbageOnLock();
   if (isVsMode) sendNet({ type: 'LOCK', board: board.map(row => row.slice()) });
-  recordReplayLock();
   if (isEnded) return;
   spawnPiece();
   lastDropTime = performance.now();
@@ -916,7 +1066,7 @@ function receiveAttack(holes) {
 function applyGarbageOnLock() {
   if (pendingGarbage <= 0 || isEnded) return;
   let toppedOut = false;
-  const holesToApply = pendingGarbage;
+  const holesToApply = pendingGarbage, applied = [];
   // Apply from last to first so the first received hole ends up on the bottom row.
   for (let i = holesToApply - 1; i >= 0; i--) {
     const hole = pendingHoles[i] ?? Math.floor(Math.random() * COLS);
@@ -924,12 +1074,14 @@ function applyGarbageOnLock() {
     if (removed && removed.some(cell => cell !== null)) toppedOut = true;
     const row = Array(COLS).fill('X'); row[hole] = null;
     board.push(row);
+    applied.push(hole);
   }
+  recordReplayGarbage(applied);
   pendingGarbage = 0; pendingHoles = []; updateGbBar();
   if (toppedOut) {
     isEnded = true;
     sendNet({ type: 'GAMEOVER' });
-    showRematch('GAME OVER'); finishSoloRun();
+    showRematch('GAME OVER'); finishRun();
   }
 }
 
@@ -945,8 +1097,9 @@ function doHold() {
     cur = { type: holdPiece, x: 3, y: 0, r: 0, lastRot: false, lastKickIndex: -1 };
     holdPiece = outgoing;
     groundedAt = 0; lockMoves = 0;
+    recordReplayPosition();
     if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
-      isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishSoloRun();
+      isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishRun();
     } else sendPosNow();
   }
   canHold = false;
@@ -1344,7 +1497,7 @@ function initGame() {
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
   isEnded = false; autoStatusMessage = ''; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
-  if (!isVsMode && account) { runStartedAt = Date.now(); replayStartPerf = performance.now(); replayEvents = []; } else { runStartedAt = 0; replayEvents = []; }
+  if (account) { runStartedAt = Date.now(); replayStartPerf = performance.now(); replayEvents = []; } else { runStartedAt = 0; replayEvents = []; }
   drawHold(); drawNext(); drawGarbagePreview();
 
   rngCallCount = 0;
@@ -1941,9 +2094,16 @@ function showAdminTab(name) {
 }
 document.querySelectorAll('.admin-tab').forEach(t => t.addEventListener('click', () => showAdminTab(t.dataset.tab)));
 
+function mountReplayPlayer(screenId) {
+  stopReplayPlayback();
+  const player = document.getElementById('replayPlayer');
+  document.getElementById(screenId).append(player);
+  player.style.display = 'none';
+}
 function openAdminScreen() {
   if (account?.role !== 'admin') return;
   if (autoBuildRunning) stopAutoBuild('自動積み停止');
+  mountReplayPlayer('adminScreen');
   switchScreen('adminScreen');
   showAdminTab('Players');
 }
@@ -1952,16 +2112,16 @@ document.getElementById('btnAdminBack').onclick = () => { stopReplayPlayback(); 
 
 async function fetchAdminReplays() {
   const d = await api('/admin/replays', undefined, 'GET');
-  adminReplayCache = (d.replays || []).slice().sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt));
+  adminReplayCache = (d.replays || []).map(r => ({ ...r, mode: r.mode === 'vs' ? 'vs' : 'solo', players: Array.isArray(r.players) && r.players.length ? r.players : [r.playerId] })).sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt));
   return adminReplayCache;
 }
 
 async function playCloudReplay(r) {
   try {
     const x = await api('/admin/replays/' + encodeURIComponent(r.replayId), undefined, 'GET');
-    await loadReplayText(x.replayData);
+    await loadReplayText(x.replayData, r.playerId);
     document.getElementById('replayPaste').value = x.replayData;
-    document.getElementById('replayTitle').textContent = `${r.playerId} · ${new Date(r.endedAt).toLocaleString()}`;
+    document.getElementById('replayTitle').textContent = `${replayWho(r)} · ${new Date(r.endedAt).toLocaleString()}`;
     document.getElementById('replayPlayer').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) { alert(e.message); }
 }
@@ -1972,11 +2132,12 @@ async function deleteCloudReplay(r) {
   catch (e) { alert('削除失敗: ' + e.message); return false; }
 }
 
+function replayWho(r) { return r.mode === 'vs' ? `対戦 ${r.players.join(' vs ')}` : `ソロ ${r.playerId}`; }
 function makeReplayRow(r, showPlayer, onChanged) {
   const row = document.createElement('div');
   row.className = 'admin-row';
   const label = document.createElement('div');
-  label.textContent = `${showPlayer ? r.playerId + ' · ' : ''}${new Date(r.endedAt).toLocaleString()} · ${(r.byteSize / 1024).toFixed(1)}KB · ${(r.durationMs / 1000).toFixed(1)}秒`;
+  label.textContent = `${showPlayer || r.mode === 'vs' ? replayWho(r) : 'ソロ'} · ${new Date(r.endedAt).toLocaleString()} · ${(r.byteSize / 1024).toFixed(1)}KB · ${(r.durationMs / 1000).toFixed(1)}秒`;
   const actions = document.createElement('div');
   actions.className = 'actions';
   actions.append(
@@ -2000,7 +2161,8 @@ async function refreshCloudPlayers() {
     const players = d.players || [];
     if (!players.length) root.textContent = 'プレイヤーはいません';
     for (const p of players) {
-      const replays = adminReplayCache.filter(r => r.playerId === p.id);
+      const replays = adminReplayCache.filter(r => r.playerId === p.id || r.players.includes(p.id));
+      const ownReplays = replays.filter(r => r.playerId === p.id);
       const row = document.createElement('div');
       row.className = 'admin-row';
       const label = document.createElement('div');
@@ -2021,7 +2183,7 @@ async function refreshCloudPlayers() {
       );
       if (p.id !== account?.id && p.role !== 'admin') {
         actions.append(adminButton('ID削除', async () => {
-          if (!confirm(`ID「${p.id}」を削除しますか？\nリプレイ${replays.length}件も削除されます。\n同じIDは再登録でき、再登録後は再承認が必要です。`)) return;
+          if (!confirm(`ID「${p.id}」を削除しますか？\nこのIDが保存したリプレイ${ownReplays.length}件も削除されます。\n同じIDは再登録でき、再登録後は再承認が必要です。`)) return;
           try {
             await api('/admin/players/' + encodeURIComponent(p.id), undefined, 'DELETE');
             toast(`ID「${p.id}」を削除しました`);
@@ -2037,23 +2199,60 @@ async function refreshCloudPlayers() {
   } catch (e) { root.textContent = e.message; }
 }
 
+function updateReplayUserOptions() {
+  const sel = document.getElementById('replayFilterUser'), keep = sel.value;
+  const has = (r, u) => r.playerId === u || r.players.includes(u);
+  const users = [...new Set(adminReplayCache.flatMap(r => [r.playerId, ...r.players]))].sort((a, b) => a.localeCompare(b, 'ja'));
+  sel.replaceChildren(new Option('すべて', ''), ...users.map(u => new Option(`${u}（${adminReplayCache.filter(r => has(r, u)).length}件）`, u)));
+  sel.value = users.includes(keep) ? keep : '';
+}
+function filteredReplays() {
+  const user = document.getElementById('replayFilterUser').value, mode = document.getElementById('replayFilterMode').value;
+  const fromV = document.getElementById('replayFilterFrom').value, toV = document.getElementById('replayFilterTo').value;
+  const from = fromV ? new Date(fromV).getTime() : -Infinity, to = toV ? new Date(toV).getTime() : Infinity;
+  const t = r => new Date(r.endedAt).getTime();
+  const list = adminReplayCache.filter(r => (!user || r.playerId === user || r.players.includes(user)) && (!mode || r.mode === mode) && t(r) >= from && t(r) <= to);
+  const sorters = {
+    newest: (a, b) => t(b) - t(a),
+    oldest: (a, b) => t(a) - t(b),
+    user: (a, b) => a.playerId.localeCompare(b.playerId, 'ja') || t(b) - t(a),
+    longest: (a, b) => (b.durationMs || 0) - (a.durationMs || 0) || t(b) - t(a),
+    shortest: (a, b) => (a.durationMs || 0) - (b.durationMs || 0) || t(b) - t(a)
+  };
+  return list.sort(sorters[document.getElementById('replaySort').value] || sorters.newest);
+}
+function renderCloudReplays() {
+  const root = document.getElementById('cloudReplays');
+  const list = filteredReplays();
+  root.replaceChildren();
+  document.getElementById('replayFilterCount').textContent = `${list.length} / ${adminReplayCache.length}件`;
+  if (!list.length) root.textContent = adminReplayCache.length ? '条件に合うリプレイはありません' : 'リプレイはありません';
+  for (const r of list) root.append(makeReplayRow(r, true, refreshCloudReplays));
+}
 async function refreshCloudReplays() {
   const root = document.getElementById('cloudReplays');
   root.textContent = '読み込み中…';
   try {
-    const replays = await fetchAdminReplays();
-    root.replaceChildren();
-    if (!replays.length) root.textContent = 'リプレイはありません';
-    for (const r of replays) root.append(makeReplayRow(r, true, refreshCloudReplays));
+    await fetchAdminReplays();
+    updateReplayUserOptions();
+    renderCloudReplays();
   } catch (e) { root.textContent = e.message; }
 }
+['replayFilterMode', 'replayFilterUser', 'replayFilterFrom', 'replayFilterTo', 'replaySort'].forEach(id => document.getElementById(id).addEventListener('change', renderCloudReplays));
+document.getElementById('btnReplayFilterReset').onclick = () => {
+  document.getElementById('replayFilterMode').value = '';
+  document.getElementById('replayFilterUser').value = '';
+  document.getElementById('replayFilterFrom').value = '';
+  document.getElementById('replayFilterTo').value = '';
+  document.getElementById('replaySort').value = 'newest';
+  renderCloudReplays();
+};
 document.getElementById('btnRefreshPlayers').onclick = refreshCloudPlayers;
 document.getElementById('btnRefreshReplays').onclick = refreshCloudReplays;
 
-function buildReplayState(targetMs) {
+function buildReplayState(events, targetMs) {
   const rb = Array.from({length:ROWS},()=>Array(COLS).fill(null));
-  let piece = null, hold = null, next = [], eventIndex = 0;
-  const events = currentReplay?.events || [];
+  let piece = null, eventIndex = 0;
   const lock = () => {
     if (!piece) return;
     const m = getShapeMatrix(piece.type, piece.r || 0);
@@ -2066,55 +2265,94 @@ function buildReplayState(targetMs) {
   };
   while(eventIndex<events.length && events[eventIndex][0]<=targetMs){
     const e=events[eventIndex++];
-    if(e.length===2 && e[1]==='L') lock();
-    else if(e.length===5 && typeof e[1]==='string') piece={type:e[1],x:e[2],y:e[3],r:e[4]};
+    if(e.length===2) lock();
+    else if(e.length===3) e[2].forEach(h=>{rb.shift();const row=Array(COLS).fill('X');row[h]=null;rb.push(row);});
+    else piece={type:e[1],x:e[2],y:e[3],r:e[4]};
   }
-  return {board:rb,piece,index:eventIndex,time:targetMs};
+  return {board:rb,piece,index:eventIndex};
+}
+function setupReplayBoards(fallbackName) {
+  const root=document.getElementById('replayBoards');
+  root.replaceChildren();
+  const vs=currentReplay.players.length>1||currentReplay.mode==='vs';
+  const resultLabel={win:'勝ち',lose:'負け',quit:'中断'};
+  currentReplay.players.forEach((p,i)=>{
+    const box=document.createElement('div');box.className='replay-board';
+    const name=document.createElement('div');
+    name.textContent=(p.name||fallbackName||'')+(vs&&i===0?'（ホスト）':'')+(p.result&&resultLabel[p.result]?` · ${resultLabel[p.result]}`:'');
+    const c=document.createElement('canvas');c.width=200;c.height=400;c.style.cssText='background:#111;border:1px solid var(--border);max-width:100%';
+    box.append(name,c);root.append(box);
+  });
 }
 function drawReplayFrame() {
-  if (!currentReplay?.events?.length) return;
-  const duration=currentReplay.durationMs||currentReplay.events[currentReplay.events.length-1][0]||1;
+  if (!currentReplay) return;
+  const duration=currentReplay.durationMs||1;
   replayClockMs=Math.max(0,Math.min(duration,replayClockMs));
-  const state=buildReplayState(replayClockMs), c=document.getElementById('replayCanvas'), x=c.getContext('2d');
-  x.clearRect(0,0,c.width,c.height);x.fillStyle='#111';x.fillRect(0,0,c.width,c.height);
-  state.board.forEach((row,r)=>row.forEach((v,col)=>{if(v){x.fillStyle=COLORS[v]||'#888';x.fillRect(col*20,r*20,19,19)}}));
-  const piece=state.piece;
-  if(piece?.type){const m=getShapeMatrix(piece.type,piece.r||0);x.fillStyle=COLORS[piece.type]||'#888';m.forEach((row,r)=>row.forEach((v,col)=>{if(v){const px=(piece.x+col)*20,py=(piece.y+r)*20;if(py>=0)x.fillRect(px,py,19,19)}}));}
-  document.getElementById('replayHoldCanvas').getContext('2d').clearRect(0,0,50,50);
-  document.getElementById('replayNextCanvas').getContext('2d').clearRect(0,0,50,250);
+  const canvases=document.querySelectorAll('#replayBoards canvas');
+  currentReplay.players.forEach((p,i)=>{
+    const state=buildReplayState(p.events||[],replayClockMs), c=canvases[i], x=c.getContext('2d');
+    x.clearRect(0,0,c.width,c.height);x.fillStyle='#111';x.fillRect(0,0,c.width,c.height);
+    state.board.forEach((row,r)=>row.forEach((v,col)=>{if(v){x.fillStyle=COLORS[v]||'#888';x.fillRect(col*20,r*20,19,19)}}));
+    const piece=state.piece;
+    if(piece?.type){const m=getShapeMatrix(piece.type,piece.r||0);x.fillStyle=COLORS[piece.type]||'#888';m.forEach((row,r)=>row.forEach((v,col)=>{if(v){const px=(piece.x+col)*20,py=(piece.y+r)*20;if(py>=0)x.fillRect(px,py,19,19)}}));}
+  });
   document.getElementById('replaySeek').value=String(Math.round((replayClockMs/duration)*1000));
-  document.getElementById('replayStatus').textContent=`${(replayClockMs/1000).toFixed(2)}秒 / ${(duration/1000).toFixed(2)}秒 · イベント ${state.index}/${currentReplay.events.length}`;
-  replayIndex=state.index;
+  document.getElementById('replayStatus').textContent=`${(replayClockMs/1000).toFixed(2)}秒 / ${(duration/1000).toFixed(2)}秒`;
 }
-async function loadReplayText(text) {
+async function loadReplayText(text, fallbackName) {
   stopReplayPlayback();
-  const parsed=await unpackReplay(text.trim());
-  if(parsed.version===3 && Array.isArray(parsed.events) && parsed.events.length){currentReplay=parsed;}
-  else throw new Error('対応していないリプレイ形式です。');
-  replayIndex=0;replayClockMs=0;document.getElementById('replayPlayer').style.display='flex';drawReplayFrame();
+  currentReplay=await unpackReplay(text.trim());
+  if(currentReplay.mode!=='vs') document.getElementById('replayTitle').textContent='';
+  replayClockMs=0;setupReplayBoards(fallbackName);document.getElementById('replayPlayer').style.display='flex';drawReplayFrame();
 }
 function stopReplayPlayback(){replayPlaying=false;if(replayTimer){clearInterval(replayTimer);replayTimer=null;}}
 function replayTick(){
-  if(!replayPlaying||!currentReplay?.events?.length)return;
+  if(!replayPlaying||!currentReplay)return;
   const speed=Number(document.getElementById('replaySpeed').value)||1;
   const now=performance.now();replayClockMs+=(now-replayLastWall)*speed;replayLastWall=now;
-  const duration=currentReplay.durationMs||currentReplay.events[currentReplay.events.length-1][0];
-  replayClockMs=Math.min(duration,replayClockMs);drawReplayFrame();
-  if(replayClockMs>=duration)stopReplayPlayback();
+  replayClockMs=Math.min(currentReplay.durationMs,replayClockMs);drawReplayFrame();
+  if(replayClockMs>=currentReplay.durationMs)stopReplayPlayback();
 }
 document.getElementById('btnReplayLoad').onclick=()=>loadReplayText(document.getElementById('replayPaste').value).catch(e=>alert('読み込み失敗: '+e.message));
 document.getElementById('btnReplayPlay').onclick=()=>{
   if(replayPlaying){stopReplayPlayback();return;}
-  if(!currentReplay?.events?.length)return;
+  if(!currentReplay)return;
   if(replayClockMs >= (currentReplay.durationMs||0)) replayClockMs=0;
   replayPlaying=true;replayLastWall=performance.now();replayTimer=setInterval(replayTick,16);
 };
-document.getElementById('btnReplayStart').onclick=()=>{stopReplayPlayback();replayIndex=0;replayClockMs=0;drawReplayFrame();};
+document.getElementById('btnReplayStart').onclick=()=>{stopReplayPlayback();replayClockMs=0;drawReplayFrame();};
 document.getElementById('replaySeek').addEventListener('input',e=>{
-  stopReplayPlayback();if(!currentReplay?.events?.length)return;
-  const duration=currentReplay.durationMs||currentReplay.events[currentReplay.events.length-1][0];
-  replayClockMs=duration*(Number(e.target.value)/1000);drawReplayFrame();
+  stopReplayPlayback();if(!currentReplay)return;
+  replayClockMs=currentReplay.durationMs*(Number(e.target.value)/1000);drawReplayFrame();
 });
+
+function renderVsReplayList() {
+  const root=document.getElementById('vsReplayList'), list=loadVsReplays();
+  root.replaceChildren();
+  if(!list.length){root.textContent='保存された対戦リプレイはありません';return;}
+  for(const r of list){
+    const row=document.createElement('div');row.className='admin-row';
+    const label=document.createElement('div');
+    label.textContent=`${r.names.join(' vs ')} · ${new Date(r.savedAt).toLocaleString()} · ${(r.durationMs/1000).toFixed(1)}秒`;
+    const actions=document.createElement('div');actions.className='actions';
+    actions.append(
+      adminButton('再生',async()=>{
+        try{await loadReplayText(r.data);document.getElementById('replayTitle').textContent=`${r.names.join(' vs ')} · ${new Date(r.savedAt).toLocaleString()}`;document.getElementById('replayPlayer').scrollIntoView({behavior:'smooth',block:'start'});}
+        catch(e){alert(e.message);}
+      }),
+      adminButton('データをコピー',async()=>{try{await navigator.clipboard.writeText(r.data);toast('リプレイデータをコピーしました');}catch(e){alert(e.message);}},'alt'),
+      adminButton('削除',()=>{
+        if(!confirm(`${r.names.join(' vs ')} のリプレイを削除しますか？`))return;
+        localStorage.setItem(VS_REPLAY_KEY,JSON.stringify(loadVsReplays().filter(x=>x.id!==r.id)));
+        stopReplayPlayback();document.getElementById('replayPlayer').style.display='none';renderVsReplayList();
+      },'danger')
+    );
+    row.append(label,actions);root.append(row);
+  }
+}
+document.getElementById('btnOpenVsReplays').onclick=()=>{mountReplayPlayer('vsReplayScreen');switchScreen('vsReplayScreen');renderVsReplayList();};
+document.getElementById('btnVsReplayBack').onclick=()=>{stopReplayPlayback();switchScreen('lobbyScreen');};
+
 
 requestAnimationFrame(gameLoop);
 // Require a server-validated account before entering the lobby.
