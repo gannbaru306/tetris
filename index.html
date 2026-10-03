@@ -154,7 +154,7 @@
         <button id="btnJoinRoom" style="width: 120px;">参加する</button>
       </div>
       <div id="netStatus">オフライン待機中</div>
-      <button id="btnOpenVsReplays" class="alt">保存した対戦リプレイ</button>
+      <button id="btnOpenVsReplays" class="alt">保存したリプレイ</button>
     </div>
     <button id="btnOpenSettings" class="alt" style="margin-top: 15px;">⚙ 詳細ルール・感度設定</button>
   </div>
@@ -238,6 +238,10 @@
         <label>ソフトドロップ</label>
         <div><input type="number" id="cfgSd" value="20" step="5" style="width:55px"> ms</div>
       </div>
+      <hr style="border:0; border-top:1px solid var(--border); margin:10px 0;">
+      <div style="font-weight:700;font-size:.85rem;margin-bottom:4px">キーコンフィグ</div>
+      <div id="keyConfigList" style="display:flex;flex-direction:column;gap:4px"></div>
+      <button id="btnKeyReset" class="alt" style="margin-top:6px;padding:4px;font-size:.75rem">キー設定を初期化</button>
       <hr style="border:0; border-top:1px solid var(--border); margin:10px 0;">
       <div class="row">
         <label>NEXTツモ順</label>
@@ -352,10 +356,10 @@
   <div id="vsReplayScreen" class="screen">
     <div class="admin-head">
       <button id="btnVsReplayBack" class="alt" style="width:110px;padding:6px;font-size:.8rem">ロビーへ戻る</button>
-      <h2>保存した対戦リプレイ</h2>
+      <h2>保存したリプレイ</h2>
     </div>
     <section class="admin-section active">
-      <p class="muted" style="margin:0">このブラウザに保存された対戦リプレイです（最大50件、古いものから削除）。</p>
+      <p class="muted" style="margin:0">このブラウザに保存したリプレイです（ソロ・対戦）（最大50件、古いものから削除）。</p>
       <div id="vsReplayList" style="display:flex;flex-direction:column;gap:6px"></div>
     </section>
   </div>
@@ -471,7 +475,7 @@ function validateReplayEvents(events) {
   for (const e of events) {
     if (!Array.isArray(e) || typeof e[0] !== 'number' || !isFinite(e[0])) bad();
     if (e.length === 2) { if (e[1] !== 'L') bad(); }
-    else if (e.length === 3) { if (e[1] !== 'G' || !Array.isArray(e[2]) || e[2].length > 200 || !e[2].every(h => int(h, 0, COLS - 1))) bad(); }
+    else if (e.length === 3) { if (e[1] !== 'G' || !Array.isArray(e[2]) || e[2].length > 40 || !e[2].every(h => int(h, 0, COLS - 1))) bad(); }
     else if (e.length !== 5 || typeof e[1] !== 'string' || e[1].length !== 1 || !'IJLOSTZ'.includes(e[1]) || !int(e[2], -5, 15) || !int(e[3], -5, 25) || !int(e[4], 0, 3)) bad();
   }
   return events.length ? events[events.length - 1][0] : 0;
@@ -514,9 +518,9 @@ function recordReplayGarbage(holes) {
   replayEvents.push([Math.max(0, Math.round(performance.now() - replayStartPerf)), 'G', holes]);
 }
 // Each side records itself. In VS the guest sends its run to the host.
-// A finished run (solo, or both sides in VS) is ALWAYS uploaded to the cloud silently, whatever the player
-// answers to the save prompt. "保存する" additionally keeps a copy in this browser; "保存しない" keeps nothing local.
-const VS_REPLAY_KEY = 'p2pTetrisVsReplaysV1', VS_REPLAY_MAX = 50, REPLAY_CLOUD_MAX_BYTES = 200 * 1024, VS_GUEST_WAIT_MS = 4000;
+// A finished run is uploaded to the cloud silently once the player answers the save prompt (either answer) or starts
+// another game/rematch. "保存する" additionally keeps a copy in this browser. Going back to the lobby drops the run.
+const VS_REPLAY_KEY = 'p2pTetrisVsReplaysV1', VS_REPLAY_MAX = 50, REPLAY_CLOUD_MAX_BYTES = 50 * 1024, VS_GUEST_WAIT_MS = 4000;
 let pendingReplay = null;
 function finishRun(result = 'lose') {
   if (!account || !runStartedAt) return;
@@ -534,8 +538,6 @@ function finishRun(result = 'lose') {
   p.seed = queueSeed;
   p.host = run;
   showSavePrompt(true);
-  if (p.mode === 'solo' || p.guest) finalizeReplay(p);
-  else p.timer = setTimeout(() => finalizeReplay(p, true), VS_GUEST_WAIT_MS);
 }
 function receiveVsReplay(round, run) {
   if (!isHost || !run || !Array.isArray(run.events) || round !== vsRule.round) return;
@@ -546,7 +548,14 @@ function receiveVsReplay(round, run) {
     p = pendingReplay = { mode: 'vs', round, startedAt: Date.now() - (Number(run.durationMs) || 0), host: null, guest: null };
   }
   p.guest = { name: String(run.name || '?').slice(0, 40), result: String(run.result || ''), durationMs: Number(run.durationMs) || 0, events: run.events };
-  if (p.host) finalizeReplay(p);
+  if (p.host && p.answered) finalizeReplay(p);
+}
+// Back to lobby: the run is dropped entirely (nothing uploaded, nothing kept locally).
+function discardReplayNow() {
+  const p = pendingReplay;
+  pendingReplay = null;
+  if (p) { clearTimeout(p.timer); p.finalized = true; }
+  showSavePrompt(false);
 }
 function showSavePrompt(show) { document.getElementById('replaySavePrompt').style.display = show ? '' : 'none'; }
 // Leaving a result screen (new game, rematch, lobby): make sure the run reached the cloud, then forget it.
@@ -556,14 +565,18 @@ function settlePendingReplay() {
   showSavePrompt(false);
   if (p) finalizeReplay(p, true);
 }
-document.getElementById('btnReplayDiscard').onclick = () => showSavePrompt(false);
-document.getElementById('btnReplaySave').onclick = () => {
+// Either answer uploads the run to the cloud; only 「保存する」 also keeps a local copy.
+function answerReplayPrompt(wantSave) {
   const p = pendingReplay;
   showSavePrompt(false);
-  if (!p) return;
-  p.wantSave = true;
-  if (p.packed) saveReplayLocal(p);
-};
+  if (!p || p.answered) return;
+  p.answered = true;
+  p.wantSave = wantSave;
+  if (p.mode === 'solo' || p.guest || !(conn && conn.open)) finalizeReplay(p, true);
+  else p.timer = setTimeout(() => finalizeReplay(p, true), VS_GUEST_WAIT_MS);
+}
+document.getElementById('btnReplayDiscard').onclick = () => answerReplayPrompt(false);
+document.getElementById('btnReplaySave').onclick = () => answerReplayPrompt(true);
 function loadVsReplays() {
   try { const a = JSON.parse(localStorage.getItem(VS_REPLAY_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; }
 }
@@ -745,7 +758,7 @@ function setupConn() {
   });
   conn.on('close', () => {
     if (!isEnded) finishRun('win');
-    if (pendingReplay) finalizeReplay(pendingReplay, true);
+    if (pendingReplay && pendingReplay.answered) finalizeReplay(pendingReplay, true);
     isEnded = true; toast('相手が切断しました');
     showRematch('相手が切断しました');
     document.getElementById('btnRematch').disabled = true;
@@ -819,7 +832,7 @@ function resetForRematch() {
 document.getElementById('btnBackToLobby').onclick = () => {
   if (autoBuildRunning) stopAutoBuild('自動積み停止');
   runStartedAt = 0;
-  settlePendingReplay();
+  discardReplayNow();
   isEnded = true;
   if (peer) peer.destroy();
   switchScreen('lobbyScreen');
@@ -1024,6 +1037,7 @@ function lockPiece() {
   }
 
   applyGarbageOnLock();
+  hideOverlayIfComplete();
   if (isVsMode) sendNet({ type: 'LOCK', board: board.map(row => row.slice()) });
   if (isEnded) return;
   spawnPiece();
@@ -1158,7 +1172,7 @@ function getTemplateVariants() {
   return variants;
 }
 
-let selectedTemplateOverlay = '';
+let selectedTemplateOverlay = '', overlayHiddenByComplete = false;
 function refreshTemplateOverlayOptions() {
   const select = document.getElementById('templateOverlaySelect');
   if (!select) return;
@@ -1179,7 +1193,7 @@ function refreshTemplateOverlayOptions() {
   selectedTemplateOverlay = select.value;
 }
 function drawTemplateOverlay() {
-  if (!adminMode || !selectedTemplateOverlay) return;
+  if (!adminMode || !selectedTemplateOverlay || overlayHiddenByComplete) return;
   const [name, side] = selectedTemplateOverlay.split('|');
   const t = templateData.find(v => v.name === name && v.enabled !== false);
   if (!t || !t.pattern) return;
@@ -1204,6 +1218,7 @@ function drawTemplateOverlay() {
 }
 document.getElementById('templateOverlaySelect').addEventListener('change', e => {
   selectedTemplateOverlay = e.target.value;
+  overlayHiddenByComplete = false;
   e.target.blur();
   try { localStorage.setItem('p2pTetrisTemplateOverlayV1', selectedTemplateOverlay); } catch (_) {}
   render();
@@ -1211,6 +1226,15 @@ document.getElementById('templateOverlaySelect').addEventListener('change', e =>
 try { selectedTemplateOverlay = localStorage.getItem('p2pTetrisTemplateOverlayV1') || ''; } catch (_) {}
 refreshTemplateOverlayOptions();
 
+// Once the shown template is fully built, stop drawing it for the rest of this game (selection is kept).
+function hideOverlayIfComplete() {
+  if (!adminMode || !selectedTemplateOverlay || overlayHiddenByComplete) return;
+  const [name, side] = selectedTemplateOverlay.split('|');
+  const t = templateData.find(v => v.name === name && v.enabled !== false);
+  if (!t || !Array.isArray(t.pattern)) return;
+  const rows = side === 'mirror' ? mirrorTemplateRows(t.pattern) : t.pattern;
+  if (activeTemplateComplete({ pattern: rows })) overlayHiddenByComplete = true;
+}
 function cloneBoard(src) { return src.map(row => row.slice()); }
 
 function simulateLanding(srcBoard, type, x, rot) {
@@ -1326,75 +1350,15 @@ function rawTemplateScore(candidate, variant) {
   return (exact * 6) - (wrong * 8) - (extra * 4) + candidate.cleared * 8 - height * 0.08 - Math.abs(candidate.x - 3) * 0.01;
 }
 
+// The guide uses the very same planner as 自動積み (planAutoBuild), so template, placement and HOLD always agree.
 function findAiSuggestion() {
   if (!aiGuideEnabled || !adminMode || !cur || isEnded) return null;
-  const key = JSON.stringify([board.map(row => row.join('')), cur.type, holdPiece, nextQ, bag, canHold, templateData.map(t => [t.name,t.priority,t.enabled,t.mirror,t.pattern])]);
+  const key = JSON.stringify([board.map(row => row.join('')), cur.type, holdPiece, nextQ, bag, canHold, selectedTemplateOverlay, templateData.map(t => [t.name,t.priority,t.enabled,t.mirror,t.pattern])]);
   if (key === aiCacheKey) return aiCacheResult;
   aiCacheKey = key;
-  const variants = getTemplateVariants();
-  if (!variants.length) { aiCacheResult = null; return null; }
-
-  const pieceOptions = [{ type: cur.type, useHold: false }];
-  if (canHold) {
-    const heldType = holdPiece || nextQ[0];
-    if (heldType && heldType !== cur.type) pieceOptions.push({ type: heldType, useHold: true });
-  }
-
-  // First enumerate legal current placements. Keep only the most promising states,
-  // then search several upcoming pieces so a move cannot casually seal a target pocket.
-  const firstCandidates = [];
-  for (const option of pieceOptions) {
-    for (let rot = 0; rot < 4; rot++) for (let x = -3; x < COLS; x++) {
-      const candidate = simulateLanding(board, option.type, x, rot);
-      if (!candidate) continue;
-      for (const variant of variants) {
-        if (!templateLooksReachable(variant, option.type)) continue;
-        if (!placementFitsTemplate(candidate, variant)) continue;
-        const base = rawTemplateScore(candidate, variant);
-        if (!Number.isFinite(base)) continue;
-        firstCandidates.push({ ...candidate, template: variant.name, priority: variant.priority,
-          useHold: option.useHold, base, variant });
-      }
-    }
-  }
-  firstCandidates.sort((a, b) => b.base - a.base);
-  const finalists = firstCandidates.slice(0, 14);
-  let best = null;
-
-  for (const first of finalists) {
-    const upcoming = [...(first.useHold && !holdPiece ? nextQ.slice(1) : nextQ), ...bag].slice(0, 3);
-    // Beam search: test whether the next three generated pieces can continue
-    // toward the same template, using real piece order and legal gravity landings.
-    let beam = [{ board: first.board, score: first.base, path: [] }];
-    for (const type of upcoming) {
-      const expanded = [];
-      for (const state of beam) {
-        for (let rot = 0; rot < 4; rot++) for (let x = -3; x < COLS; x++) {
-          const next = simulateLanding(state.board, type, x, rot);
-          if (!next) continue;
-          if (!placementFitsTemplate({ ...next, type }, first.variant)) continue;
-          const score = rawTemplateScore(next, first.variant);
-          if (!Number.isFinite(score)) continue;
-          expanded.push({ board: next.board, score, path: state.path.concat({ type, x, y: next.y, rot }) });
-        }
-      }
-      expanded.sort((a, b) => b.score - a.score);
-      beam = expanded.slice(0, 6);
-      if (!beam.length) break;
-    }
-    const future = beam.length ? beam[0].score : first.base - 20;
-    // Give future feasibility substantial weight, while keeping the displayed move legal now.
-    const total = first.base * 0.35 + future * 0.65 - (first.useHold ? 0.5 : 0);
-    if (!best || total > best.total) best = { ...first, score: total, total };
-  }
-
-  // Never glow unless at least one real placement matches some enabled template.
-  if (best) {
-    const matched = scoreAgainstTemplate(best, best.variant);
-    if (!matched) best = null;
-    else best = { ...best, ...matched, score: best.total };
-  }
-  aiCacheResult = best;
+  const plan = planAutoBuild(AUTO_SPAWN);
+  const step = plan && plan.steps[0];
+  aiCacheResult = step ? { type: step.type, x: step.x, y: step.y, rot: step.rot, useHold: !!step.hold, template: plan.variant.name } : null;
   return aiCacheResult;
 }
 
@@ -1496,7 +1460,7 @@ function initGame() {
   board = Array.from({length: ROWS}, () => Array(COLS).fill(null));
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
-  isEnded = false; autoStatusMessage = ''; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
+  isEnded = false; overlayHiddenByComplete = false; autoStatusMessage = ''; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
   if (account) { runStartedAt = Date.now(); replayStartPerf = performance.now(); replayEvents = []; } else { runStartedAt = 0; replayEvents = []; }
   drawHold(); drawNext(); drawGarbagePreview();
 
@@ -1857,9 +1821,9 @@ function templatePieceCount(variant) {
   return Math.ceil(cells / 4);
 }
 
-function planAutoBuild() {
+function planAutoBuild(startPose) {
   if (!cur) return null;
-  const firstStart = { x: cur.x, y: cur.y, rot: cur.r };
+  const firstStart = startPose || { x: cur.x, y: cur.y, rot: cur.r };
   for (const variant of autoCandidateVariants()) {
     const seq = [cur.type, ...peekFuturePieces(templatePieceCount(variant) + 8)];
     const plan = solveTemplate(board, seq, holdPiece, canHold, variant, firstStart);
@@ -2028,26 +1992,86 @@ document.getElementById('btnAutoStop').addEventListener('click', () => stopAutoB
 
 
 
-const GAME_KEYS = ['ArrowLeft','ArrowRight','ArrowDown','ArrowUp',' ','z','Z','x','X','c','C'];
+// ---- キーコンフィグ（各操作に最大2キーまで割り当て） ----
+const KEY_ACTIONS = [['left','左移動'],['right','右移動'],['soft','ソフトドロップ'],['hard','ハードドロップ'],['rotL','左回転'],['rotR','右回転'],['hold','ホールド']];
+const KEY_DEFAULT = { left:['ArrowLeft'], right:['ArrowRight'], soft:['ArrowDown'], hard:['ArrowUp',' '], rotL:['z'], rotR:['x'], hold:['c'] };
+const KEYCFG_KEY = 'p2pTetrisKeyConfigV1';
+const normKey = k => (k && k.length === 1) ? k.toLowerCase() : k;
+let keyConfig = loadKeyConfig();
+function loadKeyConfig() {
+  const base = JSON.parse(JSON.stringify(KEY_DEFAULT));
+  try {
+    const v = JSON.parse(localStorage.getItem(KEYCFG_KEY) || 'null');
+    if (v) for (const [a] of KEY_ACTIONS) if (Array.isArray(v[a]) && v[a].every(x => typeof x === 'string' && x.length <= 20)) base[a] = v[a].slice(0, 2);
+  } catch (_) {}
+  return base;
+}
+function saveKeyConfig() { try { localStorage.setItem(KEYCFG_KEY, JSON.stringify(keyConfig)); } catch (_) {} }
+function keyLabel(k) { return k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k; }
+function actionForKey(key) {
+  const k = normKey(key);
+  for (const [a] of KEY_ACTIONS) if (keyConfig[a].some(x => normKey(x) === k)) return a;
+  return null;
+}
+let rebinding = null;
+function renderKeyConfig() {
+  const root = document.getElementById('keyConfigList');
+  root.replaceChildren();
+  for (const [a, label] of KEY_ACTIONS) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const l = document.createElement('label'); l.textContent = label;
+    const box = document.createElement('div'); box.style.cssText = 'display:flex;gap:4px';
+    for (let i = 0; i < 2; i++) {
+      const b = document.createElement('button');
+      b.className = 'alt'; b.style.cssText = 'width:84px;padding:3px;font-size:.72rem';
+      const waiting = rebinding && rebinding.a === a && rebinding.i === i;
+      b.textContent = waiting ? '入力待ち…' : (keyConfig[a][i] ? keyLabel(keyConfig[a][i]) : '未設定');
+      b.onclick = () => { rebinding = { a, i }; renderKeyConfig(); };
+      b.oncontextmenu = ev => { ev.preventDefault(); keyConfig[a].splice(i, 1); saveKeyConfig(); renderKeyConfig(); };
+      box.append(b);
+    }
+    row.append(l, box); root.append(row);
+  }
+}
+document.getElementById('btnKeyReset').onclick = () => { keyConfig = JSON.parse(JSON.stringify(KEY_DEFAULT)); rebinding = null; saveKeyConfig(); renderKeyConfig(); };
+// Capture phase so a rebind never reaches the game handler.
 document.addEventListener('keydown', (e) => {
+  if (!rebinding) return;
+  e.preventDefault(); e.stopPropagation();
+  if (e.key !== 'Escape') {
+    const k = e.key;
+    for (const [a] of KEY_ACTIONS) keyConfig[a] = keyConfig[a].filter(x => normKey(x) !== normKey(k));
+    keyConfig[rebinding.a][rebinding.i] = k;
+    keyConfig[rebinding.a] = keyConfig[rebinding.a].filter(Boolean).slice(0, 2);
+    saveKeyConfig();
+  }
+  rebinding = null; renderKeyConfig();
+}, true);
+renderKeyConfig();
+document.addEventListener('keydown', (e) => {
+  if (rebinding) return;
   if (!document.getElementById('gameScreen').classList.contains('active')) return;
-  if (e.target instanceof HTMLElement && e.target.matches('input[type="text"],input[type="number"],textarea')) return;
-  if (!GAME_KEYS.includes(e.key)) return;
+  if (e.target instanceof HTMLElement && e.target.matches('input[type="text"],input[type="number"],textarea,select')) return;
+  if (!document.getElementById('settingsModal').classList.contains('hidden')) return;
+  const act = actionForKey(e.key);
+  if (!act) return;
   e.preventDefault();
   if (e.repeat) return;
   if (autoBuildRunning) return;
-  if (e.key === 'ArrowLeft')  handlePressStart('left', () => move(-1, 0), config.arr);
-  if (e.key === 'ArrowRight') handlePressStart('right', () => move(1, 0), config.arr);
-  if (e.key === 'ArrowDown')  handlePressStart('down', () => move(0, 1), config.sd);
-  if (e.key === 'ArrowUp' || e.key === ' ') hardDrop();
-  if (e.key === 'z' || e.key === 'Z') rotate(-1);
-  if (e.key === 'x' || e.key === 'X') rotate(1);
-  if (e.key === 'c' || e.key === 'C') doHold();
+  if (act === 'left')  handlePressStart('left', () => move(-1, 0), config.arr);
+  if (act === 'right') handlePressStart('right', () => move(1, 0), config.arr);
+  if (act === 'soft')  handlePressStart('down', () => move(0, 1), config.sd);
+  if (act === 'hard')  hardDrop();
+  if (act === 'rotL')  rotate(-1);
+  if (act === 'rotR')  rotate(1);
+  if (act === 'hold')  doHold();
 });
 document.addEventListener('keyup', (e) => {
-  if (e.key === 'ArrowLeft')  handlePressEnd('left');
-  if (e.key === 'ArrowRight') handlePressEnd('right');
-  if (e.key === 'ArrowDown')  handlePressEnd('down');
+  const act = actionForKey(e.key);
+  if (act === 'left')  handlePressEnd('left');
+  if (act === 'right') handlePressEnd('right');
+  if (act === 'soft')  handlePressEnd('down');
 });
 
 function bindTouchButton(id, key, fn, interval) {
@@ -2329,11 +2353,11 @@ document.getElementById('replaySeek').addEventListener('input',e=>{
 function renderVsReplayList() {
   const root=document.getElementById('vsReplayList'), list=loadVsReplays();
   root.replaceChildren();
-  if(!list.length){root.textContent='保存された対戦リプレイはありません';return;}
+  if(!list.length){root.textContent='保存したリプレイはありません';return;}
   for(const r of list){
     const row=document.createElement('div');row.className='admin-row';
     const label=document.createElement('div');
-    label.textContent=`${r.names.join(' vs ')} · ${new Date(r.savedAt).toLocaleString()} · ${(r.durationMs/1000).toFixed(1)}秒`;
+    label.textContent=`${r.mode==='solo'?'ソロ':r.names.join(' vs ')} · ${new Date(r.savedAt).toLocaleString()} · ${(r.durationMs/1000).toFixed(1)}秒`;
     const actions=document.createElement('div');actions.className='actions';
     actions.append(
       adminButton('再生',async()=>{
