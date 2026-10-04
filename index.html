@@ -465,9 +465,15 @@ let vsRule = { nextMode: 'common', holeChange: 0.3, seed: 12345, posInterval: 33
 let peer = null, conn = null, isHost = false, lastSendPosT = 0;
 let rematchRequested = false, remoteRematchRequested = false;
 let adminMode = false;
+const ADMIN_MENU_PERMS = ['replay.view', 'replay.delete', 'player.manage', 'player.delete', 'password.reset'];
 const ADMIN_FALLBACK = { 'replay.view': true, 'player.manage': true, 'password.reset': true };
 const hasPerm = k => isDeveloper() || !!(account && (account.perms ? account.perms[k] : (account.role === 'admin' && ADMIN_FALLBACK[k])));
-let maintenanceActive = false, maintenancePeek = false;
+let maintenanceActive = false, maintenancePeek = false, lastMaint = null;
+const canOpenAdminMenu = () => !!account && (isDeveloper() || ADMIN_MENU_PERMS.some(hasPerm));
+function refreshAdminUi() {
+  document.getElementById('btnOpenAdmin').style.display = canOpenAdminMenu() ? '' : 'none';
+  if (!canOpenAdminMenu() && document.getElementById('adminScreen').classList.contains('active')) switchScreen('lobbyScreen');
+}
 let maintOffset = 0, maintTimer = null;
 function fmtMaint(iso) {
   const d = new Date(iso), now = new Date(Date.now() + maintOffset);
@@ -488,6 +494,7 @@ function updateNoticeVisibility() {
   n.style.display = n.dataset.has && !inGame && !maintenanceActive ? 'block' : 'none';
 }
 function applyMaintenance(m) {
+  lastMaint = m;
   if (m && m.serverNow) maintOffset = m.serverNow - Date.now();
   const on = !!(m && m.on), bypass = isDeveloper() || !!(m && m.bypass) || hasPerm('maintenance.bypass');
   const block = on && !bypass;
@@ -497,7 +504,8 @@ function applyMaintenance(m) {
   const sch = m && !m.on ? m.schedule : null, notice = document.getElementById('maintenanceNotice');
   notice.textContent = maintNoticeText(sch); notice.dataset.has = sch ? '1' : '';
   const onLoginScreen = document.getElementById('accountScreen').classList.contains('active');
-  const show = block && !(maintenancePeek && onLoginScreen);
+  const show = block && !(maintenancePeek && onLoginScreen && !account);
+  document.getElementById('btnMaintenanceDev').style.display = account ? 'none' : '';
   if (block && !maintenanceActive && document.getElementById('gameScreen').classList.contains('active')) document.getElementById('btnBackToLobby').onclick();
   maintenanceActive = block;
   document.getElementById('maintenanceOverlay').style.display = show ? 'flex' : 'none';
@@ -508,9 +516,15 @@ function applyMaintenance(m) {
   if (target) maintTimer = setTimeout(pollMaintenance, Math.min(2147483000, Math.max(500, target - (Date.now() + maintOffset) + 700)));
 }
 async function pollMaintenance() {
-  try { const d = await api('/status', undefined, 'GET'); applyMaintenance(d.maintenance); } catch (_) {}
+  try {
+    if (authToken && account) {
+      const d = await api('/me', undefined, 'GET');
+      account.role = d.role; account.perms = d.perms || account.perms;
+      applyMaintenance(d.maintenance); refreshAdminUi();
+    } else { const d = await api('/status', undefined, 'GET'); applyMaintenance(d.maintenance); }
+  } catch (_) {}
 }
-document.getElementById('btnMaintenanceDev').onclick = () => { maintenancePeek = true; document.getElementById('maintenanceOverlay').style.display = 'none'; };
+document.getElementById('btnMaintenanceDev').onclick = () => { if (account) return; maintenancePeek = true; applyMaintenance(lastMaint); };
 setInterval(pollMaintenance, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) pollMaintenance(); });
 setTimeout(pollMaintenance, 500);
@@ -556,7 +570,7 @@ function apiConfigured() { return API_BASE.startsWith('https://') && !API_BASE.i
 function setAccountStatus(message) { document.getElementById('accountStatus').textContent = message; }
 function readSavedAuth() { try { const v = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); if (v?.token) { authToken = v.token; account = v.account || null; } } catch (_) {} }
 function saveAuth(data) { authToken = data.token; account = { id: data.id, role: data.role || 'player' }; try { localStorage.setItem(AUTH_KEY, JSON.stringify({ token: authToken, account })); } catch (_) {} }
-function clearAuth() { authToken = ''; account = null; try { localStorage.removeItem(AUTH_KEY); } catch (_) {} }
+function clearAuth() { authToken = ''; account = null; if (typeof refreshAdminUi === 'function') refreshAdminUi(); try { localStorage.removeItem(AUTH_KEY); } catch (_) {} }
 async function api(path, body, method='POST') {
   if (!apiConfigured()) throw new Error('API_BASEにCloudflare WorkersのURLを設定してください。');
   const res = await fetch(API_BASE.replace(/\/$/, '') + path, { method, headers: { 'Content-Type':'application/json', ...(authToken ? {Authorization:'Bearer '+authToken} : {}) }, ...(body === undefined ? {} : {body:JSON.stringify(body)}) });
@@ -735,7 +749,7 @@ async function requireLogin() {
     document.getElementById('playerLabel').textContent = `ログイン中: ${account.id}${account.role === 'developer' ? '（開発者）' : account.role === 'admin' ? '（管理者）' : ''}`;
     document.getElementById('adminTemplateControls').style.display = isStaff() ? 'flex' : 'none';
     document.getElementById('adminAutoControls').style.display = isStaff() ? 'flex' : 'none';
-    if (isStaff()) document.getElementById('btnOpenAdmin').style.display = '';
+    refreshAdminUi();
     document.getElementById('soloBuildableSeedRow').style.display = isStaff() ? 'flex' : 'none';
     switchScreen('lobbyScreen');
   } catch(e) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログイン状態を確認できません: '+e.message); }
@@ -2243,13 +2257,13 @@ function mountReplayPlayer(screenId) {
   player.style.display = 'none';
 }
 function openAdminScreen() {
-  if (!isStaff()) return;
+  if (!canOpenAdminMenu()) return;
   if (autoBuildRunning) stopAutoBuild('自動積み停止');
   mountReplayPlayer('adminScreen');
   switchScreen('adminScreen');
-  const vis = { Players: hasPerm('player.manage'), Replays: hasPerm('replay.view'), Templates: true, Dev: isDeveloper() };
+  const vis = { Players: ['player.manage', 'player.delete', 'password.reset'].some(hasPerm), Replays: hasPerm('replay.view'), Templates: isStaff(), Dev: isDeveloper() };
   document.querySelectorAll('.admin-tab').forEach(t => { t.style.display = vis[t.dataset.tab] ? '' : 'none'; });
-  showAdminTab(['Players', 'Replays', 'Templates'].find(n => vis[n]));
+  showAdminTab(['Players', 'Replays', 'Templates', 'Dev'].find(n => vis[n]));
 }
 let devPermData = null;
 const OV_LABEL = { '': '設定しない（全体に従う）', 'true': '許可', 'false': '禁止' };
@@ -2384,10 +2398,10 @@ async function refreshCloudPlayers() {
       const approve = adminButton(p.approved ? '承認済み' : '承認', async () => { try { await api('/admin/players/' + encodeURIComponent(p.id), { approved: true }); refreshCloudPlayers(); } catch (e) { alert(e.message); } });
       approve.disabled = !!p.approved;
       actions.append(
-        approve,
-        adminButton(p.allowed ? 'プレイ禁止' : 'プレイ許可', async () => { try { await api('/admin/players/' + encodeURIComponent(p.id), { allowed: !p.allowed }); refreshCloudPlayers(); } catch (e) { alert(e.message); } }, 'alt'),
+        ...(!hasPerm('player.manage') ? [] : [approve]),
+        ...(!hasPerm('player.manage') ? [] : [adminButton(p.allowed ? 'プレイ禁止' : 'プレイ許可', async () => { try { await api('/admin/players/' + encodeURIComponent(p.id), { allowed: !p.allowed }); refreshCloudPlayers(); } catch (e) { alert(e.message); } }, 'alt')]),
         ...(!hasPerm('password.reset') ? [] : [adminButton('PW再発行', async () => { try { const x = await api('/admin/reset-password/' + encodeURIComponent(p.id), {}); alert(`${p.id} の新パスワード: ${x.password}`); } catch (e) { alert(e.message); } }, 'alt')]),
-        adminButton(`リプレイ (${replays.length})`, () => sub.classList.toggle('open'), 'alt')
+        ...(!hasPerm('replay.view') ? [] : [adminButton(`リプレイ (${replays.length})`, () => sub.classList.toggle('open'), 'alt')])
       );
       if (hasPerm('player.delete') && p.id !== account?.id && p.role !== 'admin') {
         actions.append(adminButton('ID削除', async () => {
