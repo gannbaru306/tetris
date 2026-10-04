@@ -55,8 +55,36 @@
     #aiGuideStatus { min-height: 18px; width: 100%; text-align: center; color: #a6e3a1; font-size: .72rem; font-weight: 700; margin-top: 3px; }
     #holdCanvas { width: 50px; height: 50px; }
     #nextCanvas { width: 50px; height: 250px; }
-    #p2Canvas { width: 100px; height: 200px; }
+    .opp-boards { display:none; flex-direction:column; gap:6px; margin-left:4px; }
+    .opp-boards.active { display:flex; }
+    .opp-box { display:flex; flex-direction:column; align-items:center; background:var(--panel); padding:4px; border-radius:8px; border:1px solid var(--border); }
+    .opp-box .p2-title { max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:2px; }
+    .opp-boards.n1 canvas { width:100px; height:200px; }
+    .opp-boards.n2 canvas { width:80px; height:160px; }
+    .opp-boards.n3 canvas { width:64px; height:128px; }
     
+    /* 狭い画面: 相手の盤面を上の横並びに、HOLD/NEXT を大きく */
+    @media (max-width: 520px) {
+      body { padding: 6px; }
+      .screen, .game-container, .controls, #rematchArea { max-width: 100%; }
+      .game-container { flex-wrap: wrap; gap: 4px; }
+      .opp-boards.active { order: -1; flex: 1 0 100%; flex-direction: row; justify-content: center; margin: 0 0 4px; gap: 4px; }
+      .opp-box { padding: 2px 3px; }
+      .opp-box .p2-title { font-size: .62rem; max-width: 76px; }
+      .opp-boards.n1 canvas { width: 76px; height: 152px; }
+      .opp-boards.n2 canvas { width: 70px; height: 140px; }
+      .opp-boards.n3 canvas { width: 64px; height: 128px; }
+      .side-box { width: 58px; }
+      .side-box > span { font-size: .8rem !important; font-weight: 700; }
+      #holdCanvas { width: 58px; height: 58px; }
+      #nextCanvas { width: 58px; height: 290px; }
+    }
+    @media (max-width: 380px) {
+      #mainCanvas { width: 176px; height: 352px; }
+      #garbagePreviewCanvas { height: 352px; }
+      #nextCanvas { width: 54px; height: 270px; }
+      .side-box { width: 54px; } #holdCanvas { width: 54px; height: 54px; }
+    }
     #rematchArea { display: none; width: 100%; max-width: 400px; margin-top: 10px; text-align: center; }
     #rematchArea.active { display: block; }
     #rematchStatus { color: var(--sub); font-size: 0.85rem; margin-top: 6px; }
@@ -130,6 +158,8 @@
   </div>
   <div id="maintenanceNotice"></div>
   <div id="maintenanceBanner">メンテナンスモード中です（一般ユーザーは利用できません）</div>
+  <div id="noticeSpacer" style="width:100%;height:0;flex:none"></div>
+  <div id="videoOverlay" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(17,17,27,.94);color:#fff;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center"><div id="videoMsg">動画に変換中…</div><button id="btnVideoCancel" class="alt" style="width:auto;padding:6px 16px">中止</button></div>
 
   <h1>Web Tetris VS</h1>
 
@@ -138,7 +168,7 @@
     <div class="lobby-card">
       <h2>プレイヤーログイン</h2>
       <label for="accountId">ID</label><input id="accountId" maxlength="24" autocomplete="username" placeholder="自分で決めたID">
-      <label for="accountPassword">パスワード</label><input id="accountPassword" type="password" maxlength="64" autocomplete="current-password" placeholder="パスワード（管理者も同じフォーム）">
+      <label for="accountPassword">パスワード</label><input id="accountPassword" type="password" maxlength="64" autocomplete="current-password" placeholder="パスワード">
       <button id="btnLogin">ログイン</button>
       <button id="btnRegister" class="alt">新規登録・認証申請</button>
       <div id="accountStatus" role="status">ログインまたは新規登録してください。</div>
@@ -162,11 +192,23 @@
       <div id="playerLabel" style="font-size:.8rem;color:var(--sub);text-align:center"></div>
       <button id="btnLogout" class="alt">ログアウト</button>
       <button id="btnOpenAdmin" class="alt" style="display:none">管理者メニュー</button>
-      <h2>Wi-Fi対戦 (オンライン)</h2>
-      <button id="btnCreateRoom" class="alt">部屋を作る (ホスト)</button>
+      <h2>オンライン対戦</h2>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <label for="roomMax" style="font-size:.8rem;color:var(--sub);white-space:nowrap">対戦人数</label>
+        <select id="roomMax" style="background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:6px"><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option></select>
+        <button id="btnCreateRoom" class="alt" style="flex:1">部屋を作る</button>
+      </div>
       <div style="display:flex; gap:6px;">
         <input type="number" id="roomInput" placeholder="5桁コード">
         <button id="btnJoinRoom" style="width: 120px;">参加する</button>
+      </div>
+      <div id="roomPanel" style="display:none;flex-direction:column;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:.85rem">
+        <div id="roomCodeLabel" style="font-weight:700"></div>
+        <div id="roomCount" style="color:var(--sub)"></div>
+        <div id="roomRoster" style="display:flex;flex-direction:column;gap:2px"></div>
+        <div id="roomHint" style="font-size:.75rem;color:var(--sub)"></div>
+        <button id="btnStartMatch">対戦開始</button>
+        <button id="btnLeaveRoom" class="alt">部屋を出る</button>
       </div>
       <div id="netStatus">オフライン待機中</div>
       <button id="btnOpenVsReplays" class="alt">保存したリプレイ</button>
@@ -211,10 +253,7 @@
         <canvas id="nextCanvas" width="50" height="250"></canvas>
       </div>
 
-      <div id="p2Container" class="p2-container">
-        <div class="p2-title">OPPONENT</div>
-        <canvas id="p2Canvas" width="100" height="200"></canvas>
-      </div>
+      <div id="oppBoards" class="opp-boards"></div>
     </div>
 
     <div id="rematchArea">
@@ -222,6 +261,7 @@
         <div style="font-size:.9rem;margin-bottom:6px">リプレイを保存しますか？</div>
         <div style="display:flex;gap:8px"><button id="btnReplaySave" style="flex:1">保存する</button><button id="btnReplayDiscard" class="alt" style="flex:1">保存しない</button></div>
       </div>
+      <div id="rankingText" style="font-size:.8rem;color:var(--sub);margin-bottom:6px"></div>
       <button id="btnRematch">再戦する</button>
       <div id="rematchStatus">両者が再戦を選ぶと始まります</div>
     </div>
@@ -337,6 +377,11 @@
       <div class="muted" style="font-size:.78rem">「許可」「禁止」を選ぶと、全体設定に関係なくその設定になります。「設定しない」で全体設定に戻ります。</div>
       <select id="devUserSelect"></select>
       <div id="devUserPerms" class="perm-grid"></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">Gistの公開状態</div>
+      <div class="muted" style="font-size:.78rem">保存先のGistがSecretでないもの（公開）を探し、Secretで作り直します。GitHubは公開設定を後から変更できないため、作り直し後は古いGistを削除します。</div>
+      <div id="gistFixStatus" style="font-size:.85rem"></div>
+      <div style="display:flex;gap:8px"><button id="btnGistAudit" class="alt" style="flex:1">点検だけ行う</button><button id="btnGistFix" class="danger" style="flex:1">公開のものをSecretに直す</button></div>
     </section>
 
     <section id="adminTabReplays" class="admin-section">
@@ -363,6 +408,11 @@
         <button id="btnReplayFilterReset" class="alt" style="width:auto">条件をクリア</button>
         <span id="replayFilterCount" class="muted" style="font-size:.85rem"></span>
       </div>
+      <div id="bulkDeleteBox" style="display:none;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px">
+        <div style="font-size:.78rem;color:var(--sub)">上の「種類・ユーザー・開始・終了」の条件に合うクラウドのリプレイをまとめて削除します（ユーザーは投稿者）。例: このユーザーの19時〜20時。</div>
+        <div id="bulkResult" style="font-size:.85rem"></div>
+        <div style="display:flex;gap:8px"><button id="btnBulkCount" class="alt" style="flex:1">対象を確認</button><button id="btnBulkDelete" class="danger" style="flex:1">条件に合うものを削除</button></div>
+      </div>
       <div id="cloudReplays" style="display:flex;flex-direction:column;gap:6px"></div>
       <label for="replayPaste">リプレイデータを貼り付け</label>
       <textarea id="replayPaste" rows="3" placeholder="TTP1:..." style="width:100%;box-sizing:border-box;font-family:monospace"></textarea>
@@ -371,6 +421,19 @@
 
     <section id="adminTabTemplates" class="admin-section">
       <label style="display:flex;align-items:center;gap:8px"><input id="cfgAiGuide" type="checkbox" style="width:auto"> 次の1手AIガイドを表示</label>
+      <div style="border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:.78rem;color:var(--sub)">テンプレはこのブラウザに保存されます。URLが変わる・ブラウザのデータを消すと見えなくなるため、クラウド（アカウント）とファイルにバックアップできます。変更すると自動でクラウドにも保存されます。</div>
+        <div id="templateBackupStatus" style="font-size:.8rem"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button id="btnTplCloudSave" class="alt" style="flex:1;min-width:0">クラウドに保存</button>
+          <button id="btnTplCloudLoad" class="alt" style="flex:1;min-width:0">クラウドから復元</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button id="btnTplExport" class="alt" style="flex:1;min-width:0">ファイルに書き出す</button>
+          <button id="btnTplImport" class="alt" style="flex:1;min-width:0">ファイルから読み込む</button>
+          <input id="tplImportFile" type="file" accept="application/json,.json" style="display:none">
+        </div>
+      </div>
       <div id="templateList" style="display:flex;flex-direction:column;gap:8px"></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <label for="templateName">テンプレ名</label>
@@ -380,6 +443,7 @@
 ....T.....
 ..TTT....." style="width:100%;box-sizing:border-box;font-family:monospace"></textarea>
       <label style="display:flex;align-items:center;gap:8px"><input id="templateMirror" type="checkbox" checked style="width:auto"> 左右反転パターンも自動生成</label>
+      <label for="templatePriority" style="display:flex;align-items:center;gap:8px">優先度（大きいほど選ばれやすい）<input id="templatePriority" type="number" min="-999" max="999" step="1" value="10" style="width:80px"></label>
       <div style="display:flex;gap:8px"><button id="btnAddTemplate" style="flex:1 1 auto;width:auto;min-width:0">テンプレ追加</button><button id="btnCancelTemplateEdit" class="alt" style="display:none;flex:0 0 auto;width:auto;white-space:nowrap">編集をやめる</button></div>
     </section>
 
@@ -463,16 +527,19 @@ let lockMoves = 0;
 let config = { das: 150, arr: 30, sd: 20 };
 let vsRule = { nextMode: 'common', holeChange: 0.3, seed: 12345, posInterval: 33 };
 let peer = null, conn = null, isHost = false, lastSendPosT = 0;
-let rematchRequested = false, remoteRematchRequested = false;
+let rematchRequested = false;
 let adminMode = false;
-const ADMIN_MENU_PERMS = ['replay.view', 'replay.delete', 'player.manage', 'player.delete', 'password.reset'];
+const ADMIN_MENU_PERMS = ['replay.view', 'replay.delete', 'player.manage', 'player.delete', 'password.reset', 'role.promote'];
 const ADMIN_FALLBACK = { 'replay.view': true, 'player.manage': true, 'password.reset': true };
 const hasPerm = k => isDeveloper() || !!(account && (account.perms ? account.perms[k] : (account.role === 'admin' && ADMIN_FALLBACK[k])));
 let maintenanceActive = false, maintenancePeek = false, lastMaint = null;
 const canOpenAdminMenu = () => !!account && (isDeveloper() || ADMIN_MENU_PERMS.some(hasPerm));
 function refreshAdminUi() {
   document.getElementById('btnOpenAdmin').style.display = canOpenAdminMenu() ? '' : 'none';
-  if (!canOpenAdminMenu() && document.getElementById('adminScreen').classList.contains('active')) switchScreen('lobbyScreen');
+  const adminOpen = document.getElementById('adminScreen').classList.contains('active');
+  if (!adminOpen) return;
+  if (!canOpenAdminMenu()) { stopReplayPlayback(); switchScreen('lobbyScreen'); toast('管理者メニューの権限がなくなりました'); }
+  else if (typeof applyAdminTabs === 'function') applyAdminTabs();
 }
 let maintOffset = 0, maintTimer = null;
 function fmtMaint(iso) {
@@ -492,7 +559,12 @@ function updateNoticeVisibility() {
   const n = document.getElementById('maintenanceNotice');
   const inGame = document.getElementById('gameScreen').classList.contains('active');
   n.style.display = n.dataset.has && !inGame && !maintenanceActive ? 'block' : 'none';
+  // The banners are fixed to the top; add the same amount of space to the page so nothing is hidden behind them.
+  const banner = document.getElementById('maintenanceBanner');
+  const h = n.style.display === 'block' ? n.offsetHeight : (banner.style.display === 'block' ? banner.offsetHeight : 0);
+  document.getElementById('noticeSpacer').style.height = h + 'px';
 }
+window.addEventListener('resize', () => { if (typeof updateNoticeVisibility === 'function') updateNoticeVisibility(); });
 function applyMaintenance(m) {
   lastMaint = m;
   if (m && m.serverNow) maintOffset = m.serverNow - Date.now();
@@ -515,13 +587,53 @@ function applyMaintenance(m) {
   const target = !m ? null : m.on ? (m.endAt ? Date.parse(m.endAt) : null) : (m.schedule ? Date.parse(m.schedule.startAt || m.schedule.endAt) : null);
   if (target) maintTimer = setTimeout(pollMaintenance, Math.min(2147483000, Math.max(500, target - (Date.now() + maintOffset) + 700)));
 }
+let eventToken = '', eventLoopRunning = false;
+function applySessionLabels() {
+  if (!account) return;
+  document.getElementById('playerLabel').textContent = `ログイン中: ${account.id}${account.role === 'developer' ? '（開発者）' : account.role === 'admin' ? '（管理者）' : ''}`;
+  document.getElementById('adminTemplateControls').style.display = canUseDevTools() ? 'flex' : 'none';
+  document.getElementById('adminAutoControls').style.display = canUseDevTools() ? 'flex' : 'none';
+  document.getElementById('soloBuildableSeedRow').style.display = canUseDevTools() ? 'flex' : 'none';
+  adminMode = canUseDevTools();
+}
+async function refreshSession() {
+  const d = await api('/me', undefined, 'GET');
+  if (!d.allowed) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('このアカウントは現在プレイできません。'); return; }
+  account = { id: d.id, role: d.role, perms: d.perms || {} };
+  if (d.rev) eventToken = d.rev;
+  applySessionLabels();
+  applyMaintenance(d.maintenance);
+  refreshAdminUi();
+  maybeOfferTemplateRestore();
+}
+// Server -> client "events": a long-poll on /events. The Worker answers the moment a permission, role or maintenance change
+// affects this user, and this loop then re-reads /me, so menus and the maintenance screen update within a few seconds.
+const waitVisible = () => new Promise(res => { const f = () => { if (!document.hidden) { document.removeEventListener('visibilitychange', f); res(); } }; document.addEventListener('visibilitychange', f); });
+async function eventLoop() {
+  if (eventLoopRunning) return;
+  eventLoopRunning = true;
+  let fails = 0;
+  try {
+    while (authToken && account) {
+      if (document.hidden) { await waitVisible(); continue; }
+      try {
+        const t0 = Date.now();
+        const d = await api('/events?since=' + encodeURIComponent(eventToken || ''), undefined, 'GET');
+        fails = 0;
+        if (d.token) eventToken = d.token;
+        if (d.changed) await refreshSession();
+        else if (Date.now() - t0 < 1000) await new Promise(r => setTimeout(r, 1000 - (Date.now() - t0))); // never spin if the server answers instantly
+      } catch (e) {
+        if (/ログインしてください/.test(e.message)) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログイン状態が無効になりました。'); break; }
+        fails++; await new Promise(r => setTimeout(r, Math.min(30000, 2000 * fails)));
+      }
+    }
+  } finally { eventLoopRunning = false; }
+}
 async function pollMaintenance() {
   try {
-    if (authToken && account) {
-      const d = await api('/me', undefined, 'GET');
-      account.role = d.role; account.perms = d.perms || account.perms;
-      applyMaintenance(d.maintenance); refreshAdminUi();
-    } else { const d = await api('/status', undefined, 'GET'); applyMaintenance(d.maintenance); }
+    if (authToken && account) { await refreshSession(); eventLoop(); }
+    else { const d = await api('/status', undefined, 'GET'); applyMaintenance(d.maintenance); }
   } catch (_) {}
 }
 document.getElementById('btnMaintenanceDev').onclick = () => { if (account) return; maintenancePeek = true; applyMaintenance(lastMaint); };
@@ -530,6 +642,8 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
 setTimeout(pollMaintenance, 500);
 const isStaff = () => account && (account.role === 'admin' || account.role === 'developer');
 const isDeveloper = () => account && account.role === 'developer';
+let devToolsUnlocked = false;                    // in-memory only: gone after a reload
+const canUseDevTools = () => isDeveloper() || devToolsUnlocked;
 let aiGuideEnabled = false;
 let aiSuggestion = null;
 let aiCacheKey = '';
@@ -545,15 +659,37 @@ const DEFAULT_TEMPLATE_DATA = [
   { name: 'あずにゃん砲 / 開幕DT砲', priority: 10, pattern: ['..LL....SS','...LZZ.SSI','JJ.LTZZOOI','J..TTTIOOI','J...SSIZZI','OO.SSLIJZZ','OO.LLLIJJJ'] },
   { name: 'ガムシロ積み・基本形', priority: 40, pattern: ['..I......Z','..IT....ZZ','OOITTSS.ZL','OOITSS.LLL'] }
 ];
+const TEMPLATE_KEY = 'p2pTetrisTemplatesV1';
+function normalizeTemplates(arr) {
+  if (!Array.isArray(arr)) return null;
+  const out = [];
+  for (const t of arr) {
+    if (!t || typeof t.name !== 'string' || !Array.isArray(t.pattern) || !t.pattern.length || t.pattern.some(r => typeof r !== 'string' || !/^[IJLOSTZ.]{10}$/.test(r))) return null;
+    const p = Number(t.priority);
+    out.push({ name: t.name.trim().slice(0, 60) || 'テンプレ', priority: Number.isFinite(p) ? Math.max(-999, Math.min(999, Math.round(p))) : 10, pattern: t.pattern.slice(0, 40), enabled: t.enabled !== false, mirror: t.mirror !== false });
+  }
+  return out;
+}
 let templateData = loadTemplateData();
 function loadTemplateData() {
+  const defaults = () => DEFAULT_TEMPLATE_DATA.map(t => ({...t, enabled:true, mirror:true}));
+  let saved = null;
+  try { saved = localStorage.getItem(TEMPLATE_KEY); } catch (_) { return defaults(); }
+  if (saved === null) return defaults();
   try {
-    const saved = localStorage.getItem('p2pTetrisTemplatesV1');
-    return saved ? JSON.parse(saved) : DEFAULT_TEMPLATE_DATA.map(t => ({...t, enabled:true, mirror:true}));
-  } catch (_) { return DEFAULT_TEMPLATE_DATA.map(t => ({...t, enabled:true, mirror:true})); }
+    const list = normalizeTemplates(JSON.parse(saved));
+    if (list) return list;
+  } catch (_) {}
+  // Unreadable saved data is never overwritten silently: keep the raw text under another key before falling back.
+  try { localStorage.setItem('p2pTetrisTemplatesBrokenV1', saved); } catch (_) {}
+  return defaults();
 }
+let tplCloudTimer = null;
 function saveTemplateData() {
-  try { localStorage.setItem('p2pTetrisTemplatesV1', JSON.stringify(templateData)); } catch (_) {}
+  try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templateData)); } catch (_) {}
+  // Quiet automatic copy to the account (write-only, so it can never overwrite what is on screen).
+  clearTimeout(tplCloudTimer);
+  if (account && authToken && canUseDevTools()) tplCloudTimer = setTimeout(() => cloudSaveTemplates(true), 2000);
 }
 function mirrorTemplateRows(rows) {
   const swap = { J:'L', L:'J', S:'Z', Z:'S' };
@@ -564,13 +700,12 @@ const ctx = document.getElementById('mainCanvas').getContext('2d');
 const garbagePreviewCtx = document.getElementById('garbagePreviewCanvas').getContext('2d');
 const holdCtx = document.getElementById('holdCanvas').getContext('2d');
 const nextCtx = document.getElementById('nextCanvas').getContext('2d');
-const p2Ctx = document.getElementById('p2Canvas').getContext('2d');
 
 function apiConfigured() { return API_BASE.startsWith('https://') && !API_BASE.includes('YOUR_CLOUDFLARE'); }
 function setAccountStatus(message) { document.getElementById('accountStatus').textContent = message; }
 function readSavedAuth() { try { const v = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); if (v?.token) { authToken = v.token; account = v.account || null; } } catch (_) {} }
 function saveAuth(data) { authToken = data.token; account = { id: data.id, role: data.role || 'player' }; try { localStorage.setItem(AUTH_KEY, JSON.stringify({ token: authToken, account })); } catch (_) {} }
-function clearAuth() { authToken = ''; account = null; if (typeof refreshAdminUi === 'function') refreshAdminUi(); try { localStorage.removeItem(AUTH_KEY); } catch (_) {} }
+function clearAuth() { authToken = ''; account = null; devToolsUnlocked = false; if (typeof refreshAdminUi === 'function') refreshAdminUi(); try { localStorage.removeItem(AUTH_KEY); } catch (_) {} }
 async function api(path, body, method='POST') {
   if (!apiConfigured()) throw new Error('API_BASEにCloudflare WorkersのURLを設定してください。');
   const res = await fetch(API_BASE.replace(/\/$/, '') + path, { method, headers: { 'Content-Type':'application/json', ...(authToken ? {Authorization:'Bearer '+authToken} : {}) }, ...(body === undefined ? {} : {body:JSON.stringify(body)}) });
@@ -601,7 +736,7 @@ function validateReplayEvents(events) {
 function validateReplay(o) {
   if (!o || o.version !== 3) throw new Error('対応していないリプレイ形式です。');
   const players = o.mode === 'vs'
-    ? (Array.isArray(o.players) ? o.players : []).slice(0, 2).map(p => ({ name: String(p?.name || '?').slice(0, 40), result: p?.result || '', events: p?.events }))
+    ? (Array.isArray(o.players) ? o.players : []).slice(0, 4).map(p => ({ name: String(p?.name || '?').slice(0, 40), result: p?.result || '', events: p?.events }))
     : [{ name: '', result: '', events: o.events }];
   if (!players.length || !players.some(p => Array.isArray(p.events) && p.events.length)) throw new Error('対応していないリプレイ形式です。');
   const last = Math.max(...players.map(p => validateReplayEvents(p.events)));
@@ -646,8 +781,8 @@ function recordReplayGarbage(holes) {
   replayEvents.push([Math.max(0, Math.round(replayNow())), 'G', holes]);
 }
 // Each side records itself. In VS the guest sends its run to the host.
-// A finished run is uploaded to the cloud silently once the player answers the save prompt (either answer) or starts
-// another game/rematch. "保存する" additionally keeps a copy in this browser. Going back to the lobby drops the run.
+// Solo: uploaded to the cloud silently whichever button is pressed (「保存する」 also keeps a local copy).
+// Versus: stored (cloud + local) ONLY when the player pressed 「保存する」; 「保存しない」, no answer, or leaving drops it.
 const VS_REPLAY_KEY = 'p2pTetrisVsReplaysV1', VS_REPLAY_MAX = 50, REPLAY_CLOUD_MAX_BYTES = 50 * 1024, VS_GUEST_WAIT_MS = 4000;
 let pendingReplay = null;
 function finishRun(result = 'lose') {
@@ -660,24 +795,26 @@ function finishRun(result = 'lose') {
   let p = pendingReplay;
   if (!p || p.round !== round || p.host) {
     settlePendingReplay();
-    p = pendingReplay = { mode: isVsMode ? 'vs' : 'solo', round, host: null, guest: null };
+    p = pendingReplay = { mode: isVsMode ? 'vs' : 'solo', round, host: null, guests: {} };
   }
   p.mode = isVsMode ? 'vs' : 'solo';
   p.startedAt = Date.now() - run.durationMs;
   p.seed = queueSeed;
   p.host = run;
+  p.expectedGuests = isVsMode ? vsRoster.filter(r => r.seat !== 0 && !r.left).length : 0;
   showSavePrompt(true);
 }
-function receiveVsReplay(round, run) {
+const haveAllGuestReplays = p => Object.keys(p.guests || {}).length >= (p.expectedGuests || 0);
+function receiveVsReplay(round, run, seat = 1) {
   if (!isHost || !run || !Array.isArray(run.events) || round !== vsRule.round) return;
   try { validateReplayEvents(run.events); } catch (_) { return; }
   let p = pendingReplay;
   if (!p || p.round !== round) {
     settlePendingReplay();
-    p = pendingReplay = { mode: 'vs', round, startedAt: Date.now() - (Number(run.durationMs) || 0), host: null, guest: null };
+    p = pendingReplay = { mode: 'vs', round, startedAt: Date.now() - (Number(run.durationMs) || 0), host: null, guests: {} };
   }
-  p.guest = { name: String(run.name || '?').slice(0, 40), result: String(run.result || ''), durationMs: Number(run.durationMs) || 0, events: run.events };
-  if (p.host && p.answered) finalizeReplay(p);
+  p.guests[seat] = { name: String(run.name || '?').slice(0, 40), result: String(run.result || ''), durationMs: Number(run.durationMs) || 0, events: run.events };
+  if (p.host && p.answered && haveAllGuestReplays(p)) finalizeReplay(p);
 }
 // Back to lobby: the run is dropped entirely (nothing uploaded, nothing kept locally).
 function discardReplayNow() {
@@ -701,7 +838,7 @@ function answerReplayPrompt(wantSave) {
   if (!p || p.answered) return;
   p.answered = true;
   p.wantSave = wantSave;
-  if (p.mode === 'solo' || p.guest || !(conn && conn.open)) finalizeReplay(p, true);
+  if (p.mode === 'solo' || (p.mode === 'vs' && !wantSave) || haveAllGuestReplays(p) || !vsHasPeers()) finalizeReplay(p, true);
   else p.timer = setTimeout(() => finalizeReplay(p, true), VS_GUEST_WAIT_MS);
 }
 document.getElementById('btnReplayDiscard').onclick = () => answerReplayPrompt(false);
@@ -722,10 +859,11 @@ function saveReplayLocal(p) {
 // Packs the run once, uploads it silently (one retry), and keeps a local copy if the player asked for it.
 async function finalizeReplay(p, force = false) {
   if (!p || p.finalized || !p.host) return;
-  if (p.mode === 'vs' && !p.guest && !force && conn && conn.open) return;
+  if (p.mode === 'vs' && !p.wantSave) { p.finalized = true; clearTimeout(p.timer); return; } // 対戦: 「保存しない」/未回答ならクラウドにも保存しない
+  if (p.mode === 'vs' && !haveAllGuestReplays(p) && !force && vsHasPeers()) return;
   p.finalized = true;
   clearTimeout(p.timer);
-  p.players = [p.host, p.guest].filter(Boolean);
+  p.players = [p.host, ...Object.keys(p.guests || {}).map(Number).sort((a, b) => a - b).map(k => p.guests[k])];
   p.durationMs = Math.max(...p.players.map(x => x.durationMs || 0));
   try {
     p.packed = await packReplay(p.mode === 'vs' ? { version:3, mode:'vs', durationMs:p.durationMs, players:p.players } : { version:3, durationMs:p.durationMs, seed:p.seed, events:p.host.events });
@@ -744,14 +882,12 @@ async function requireLogin() {
     const data = await api('/me', undefined, 'GET');
     if (!data.allowed) throw new Error('このアカウントは現在プレイできません。');
     account = { id:data.id, role:data.role, perms:data.perms || {} };
-    adminMode = isStaff();
+    eventToken = data.rev || '';
+    applySessionLabels();
     applyMaintenance(data.maintenance);
-    document.getElementById('playerLabel').textContent = `ログイン中: ${account.id}${account.role === 'developer' ? '（開発者）' : account.role === 'admin' ? '（管理者）' : ''}`;
-    document.getElementById('adminTemplateControls').style.display = isStaff() ? 'flex' : 'none';
-    document.getElementById('adminAutoControls').style.display = isStaff() ? 'flex' : 'none';
     refreshAdminUi();
-    document.getElementById('soloBuildableSeedRow').style.display = isStaff() ? 'flex' : 'none';
     switchScreen('lobbyScreen');
+    eventLoop();
   } catch(e) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログイン状態を確認できません: '+e.message); }
 }
 
@@ -799,9 +935,8 @@ async function startSoloGame() {
   settlePendingReplay();
   try { const data = await api('/me', undefined, 'GET'); if (!data.allowed) throw new Error('ソロプレイは許可されていません'); }
   catch(e) { toast(e.message); return; }
-  if (peer) { peer.destroy(); peer=null; conn=null; }
-  isVsMode = false; isHost = false;
-  document.getElementById('p2Container').classList.remove('active');
+  leaveRoom();
+  isVsMode = false;
   document.getElementById('matchModeLabel').textContent = 'ソロプレイ';
   document.getElementById('rematchArea').classList.remove('active');
   let seed;
@@ -832,129 +967,357 @@ document.getElementById('btnSetupAdmin').onclick = async () => {
   catch(e) { setAccountStatus(e.message); }
 };
 
+// ==========================================
+// オンライン対戦（最大4人・ホスト中心のスター型）
+// ==========================================
+// ゲスト同士は直接つながらず、全員がホストに接続します。ホストが盤面・攻撃・脱落・結果を中継します。
+// おじゃまは「全員に均等」: 攻撃ラインは、生き残っている自分以外の全員にそのまま届きます。
+const MAX_ROOM = 4;
+let guests = [];                 // host only: [{conn, seat, name, alive, wantsRematch}]
+let mySeat = 0, myPlace = 0, roomMax = 2, roomState = 'idle', roomCode = '';
+let vsRoster = [], waitingRoster = [], rematchReady = [], rematchTotal = 0, rankingSummary = '';
+const oppView = new Map();       // seat -> {ctx, canvas, title, name, dead}
+const myName = () => (account && account.id) || 'ゲスト';
+const cleanName = v => String(v == null ? '?' : v).replace(/[\u0000-\u001f]/g, '').slice(0, 24) || '?';
+const vsHasPeers = () => isHost ? guests.some(g => g.conn && g.conn.open) : !!(conn && conn.open);
+function safeSend(c, msg) { try { if (c && c.open) c.send(msg); } catch (_) {} }
+function sendTo(seat, msg) { const g = guests.find(x => x.seat === seat); if (g) safeSend(g.conn, msg); }
+function broadcast(msg, exceptSeat = -1) { for (const g of guests) if (g.seat !== exceptSeat) safeSend(g.conn, msg); }
+const assignSeats = () => guests.forEach((g, i) => { g.seat = i + 1; });
+const makeRoster = () => [{ seat: 0, name: myName(), alive: true, place: 0, left: false }, ...guests.map(g => ({ seat: g.seat, name: g.name, alive: true, place: 0, left: false }))];
+
+// ---- lobby: waiting room ----
+function renderRoomPanel() {
+  const panel = document.getElementById('roomPanel');
+  const inRoom = !!peer && roomState === 'waiting';
+  panel.style.display = inRoom ? 'flex' : 'none';
+  for (const id of ['btnCreateRoom', 'btnJoinRoom', 'roomMax', 'roomInput']) document.getElementById(id).disabled = !!peer;
+  if (!inRoom) return;
+  const list = isHost ? [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name }))] : waitingRoster;
+  document.getElementById('roomCodeLabel').textContent = `部屋コード: ${roomCode}`;
+  document.getElementById('roomCount').textContent = `参加者 ${list.length} / ${roomMax}人`;
+  document.getElementById('roomRoster').replaceChildren(...list.map(p => { const d = document.createElement('div'); d.textContent = `${p.name}${p.seat === 0 ? '（ホスト）' : ''}${p.seat === mySeat && !isHost ? '（あなた）' : ''}`; return d; }));
+  const start = document.getElementById('btnStartMatch');
+  start.style.display = isHost ? '' : 'none';
+  start.disabled = list.length < 2;
+  start.textContent = list.length < 2 ? '対戦開始（2人以上で開始できます）' : `対戦開始（${list.length}人）`;
+  document.getElementById('roomHint').textContent = isHost
+    ? (list.length < roomMax ? `最大${roomMax}人まで参加できます。人数が揃わなくても、2人以上いれば開始できます。` : '全員そろいました。')
+    : 'ホストが開始するまでお待ちください。';
+  document.getElementById('btnLeaveRoom').textContent = isHost ? '部屋を閉じる' : '部屋を出る';
+}
+function leaveRoom() {
+  const p = peer;
+  peer = null; conn = null; guests = []; isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = '';
+  if (p) { try { p.destroy(); } catch (_) {} }
+  oppView.clear();
+  const ob = document.getElementById('oppBoards'); ob.classList.remove('active'); ob.replaceChildren();
+  renderRoomPanel();
+  document.getElementById('netStatus').textContent = 'オフライン待機中';
+}
+document.getElementById('btnLeaveRoom').onclick = leaveRoom;
+document.getElementById('btnStartMatch').onclick = () => startMatchAsHost();
+
 document.getElementById('btnCreateRoom').onclick = () => {
-  const code = Math.floor(10000 + Math.random() * 90000).toString();
-  peer = new Peer('wtvs-' + code);
+  if (peer) return;
+  roomMax = Math.min(MAX_ROOM, Math.max(2, parseInt(document.getElementById('roomMax').value, 10) || 2));
+  roomCode = Math.floor(10000 + Math.random() * 90000).toString();
+  guests = []; vsRoster = []; mySeat = 0; roomState = 'creating';
+  peer = new Peer('wtvs-' + roomCode);
   peer.on('open', () => {
-    isHost = true;
-    document.getElementById('netStatus').textContent = `部屋を作成しました (コード: ${code})`;
-    toast(`部屋コード: ${code} を共有してください`);
+    isHost = true; roomState = 'waiting';
+    document.getElementById('netStatus').textContent = `部屋を作成しました（最大${roomMax}人）`;
+    toast(`部屋コード: ${roomCode} を共有してください`);
+    renderRoomPanel();
   });
-  peer.on('connection', (c) => {
-    conn = c; setupConn();
-    document.getElementById('netStatus').textContent = '対戦相手が接続しました！自動スタートします';
+  peer.on('connection', onGuestConnection);
+  peer.on('error', err => {
+    if (err && err.type === 'unavailable-id') { toast('コードが重複しました。もう一度お試しください'); leaveRoom(); return; }
+    toast('通信エラー: ' + (err && err.type));
   });
-  peer.on('error', err => toast('通信エラー: ' + err.type));
+  renderRoomPanel();
 };
 
 document.getElementById('btnJoinRoom').onclick = () => {
+  if (peer) return;
   const code = document.getElementById('roomInput').value.trim();
   if (code.length !== 5) return toast('5桁のコードを入力してください');
+  roomCode = code; roomState = 'joining'; isHost = false;
   peer = new Peer();
-  peer.on('open', () => {
-    conn = peer.connect('wtvs-' + code);
-    isHost = false; setupConn();
-  });
-  peer.on('error', () => toast('部屋が見つかりませんでした'));
+  peer.on('open', () => { conn = peer.connect('wtvs-' + code); setupGuestConn(); });
+  peer.on('error', () => { if (roomState === 'joining') { toast('部屋が見つかりませんでした'); leaveRoom(); } });
+  renderRoomPanel();
 };
 
-function setupConn() {
-  conn.on('open', () => {
-    document.getElementById('netStatus').textContent = '接続完了！';
-    if (isHost) startVsGame();
+// ---- guest side ----
+function setupGuestConn() {
+  const c = conn;
+  c.on('open', () => {
+    roomState = 'waiting';
+    document.getElementById('netStatus').textContent = '部屋に参加しました。ホストの開始を待っています';
+    safeSend(c, { type: 'HELLO', name: myName() });
+    renderRoomPanel();
   });
-  conn.on('data', data => {
-    if (data.type === 'RULE') {
-      vsRule = data.rule;
-      startVsGame();
+  c.on('data', onHostData);
+  c.on('close', () => { if (conn === c) onHostClosed(); });
+}
+function setRosterFromHost(d) {
+  if (Array.isArray(d.roster)) vsRoster = d.roster.map(r => ({ seat: r.seat | 0, name: cleanName(r.name), alive: true, place: 0, left: false }));
+  if (Number.isInteger(d.you)) mySeat = d.you;
+}
+function onHostData(d) {
+  if (!d || typeof d !== 'object') return;
+  switch (d.type) {
+    case 'ROSTER':
+      roomMax = (d.max | 0) || roomMax;
+      waitingRoster = Array.isArray(d.players) ? d.players.map(p => ({ seat: p.seat | 0, name: cleanName(p.name) })) : [];
+      if (Number.isInteger(d.you)) mySeat = d.you;
+      renderRoomPanel(); break;
+    case 'FULL': toast(String(d.reason || '参加できません')); leaveRoom(); break;
+    case 'RULE':
+      vsRule = d.rule; setRosterFromHost(d); roomState = 'playing'; startVsGame(); break;
+    case 'POS': drawOpp(d.p, d.board, d.cur); break;
+    case 'LOCK': drawOpp(d.p, d.board, null); break;
+    case 'ATTACK': receiveAttack(d.holes); break;
+    case 'DEAD': applyDead(d.p, d.place); break;
+    case 'END': applyEnd(d); break;
+    case 'REMATCH_STATUS': rematchReady = Array.isArray(d.ready) ? d.ready : []; rematchTotal = d.total | 0; updateRematchStatus(); break;
+    case 'REMATCH_START': vsRule = d.rule; setRosterFromHost(d); roomState = 'playing'; resetForRematch(); break;
+  }
+}
+function onHostClosed() {
+  if (roomState === 'idle') return;
+  if (roomState === 'waiting' || roomState === 'joining') { toast('ホストが部屋を閉じました'); leaveRoom(); return; }
+  if (!isEnded) { if (autoBuildRunning) stopAutoBuild(''); finishRun('quit'); }
+  isEnded = true; roomState = 'closed';
+  toast('ホストが切断しました');
+  document.getElementById('netStatus').textContent = '切断されました';
+  showRematch('ホストが切断しました');
+}
+
+// ---- host side ----
+function onGuestConnection(c) {
+  if (roomState !== 'waiting' || guests.length >= roomMax - 1) {
+    const reason = roomState !== 'waiting' ? '対戦中のため参加できません' : '満員です';
+    c.on('open', () => { safeSend(c, { type: 'FULL', reason }); setTimeout(() => { try { c.close(); } catch (_) {} }, 400); });
+    return;
+  }
+  const g = { conn: c, seat: 0, name: '?', alive: true, wantsRematch: false };
+  guests.push(g); assignSeats();
+  c.on('open', () => sendRoster());
+  c.on('data', d => onGuestData(g, d));
+  c.on('close', () => onGuestClose(g));
+  c.on('error', () => {});
+}
+function sendRoster() {
+  const players = [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name }))];
+  for (const g of guests) safeSend(g.conn, { type: 'ROSTER', max: roomMax, players, you: g.seat });
+  renderRoomPanel();
+}
+function newRound() {
+  vsRule.seed = Math.floor(Math.random() * 1000000);
+  vsRule.round = Math.random().toString(36).slice(2, 10);
+}
+function startMatchAsHost() {
+  if (!isHost || roomState !== 'waiting') return;
+  guests = guests.filter(g => g.conn && g.conn.open); assignSeats();
+  if (!guests.length) { toast('2人以上で開始できます'); sendRoster(); return; }
+  newRound();
+  vsRule.nextMode = document.getElementById('cfgNextMode').value;
+  vsRule.holeChange = parseFloat(document.getElementById('cfgHoleChange').value);
+  vsRule.posInterval = parseInt(document.getElementById('cfgPosInterval').value, 10) || 33;
+  roomState = 'playing'; mySeat = 0;
+  vsRoster = makeRoster();
+  for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'RULE', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
+  startVsGame();
+}
+function onGuestData(g, d) {
+  if (!d || typeof d !== 'object') return;
+  switch (d.type) {
+    case 'HELLO': g.name = cleanName(d.name); if (roomState === 'waiting') sendRoster(); break;
+    case 'POS': if (Array.isArray(d.board)) { broadcast({ type: 'POS', p: g.seat, board: d.board, cur: d.cur }, g.seat); drawOpp(g.seat, d.board, d.cur); } break;
+    case 'LOCK': if (Array.isArray(d.board)) { broadcast({ type: 'LOCK', p: g.seat, board: d.board }, g.seat); drawOpp(g.seat, d.board, null); } break;
+    case 'ATTACK': distributeAttack(g.seat, d.holes); break;
+    case 'GAMEOVER': handlePlayerOut(g.seat); break;
+    case 'REPLAY': receiveVsReplay(d.round, d.run, g.seat); break;
+    case 'REMATCH': if (roomState === 'result') { g.wantsRematch = true; broadcastRematchStatus(); tryStartRematch(); } break;
+  }
+}
+function distributeAttack(fromSeat, holes) {
+  if (!isHost || roomState !== 'playing' || !Array.isArray(holes) || holes.length > 40) return;
+  const sender = vsRoster.find(r => r.seat === fromSeat);
+  if (!sender || !sender.alive) return;
+  const clean = holes.filter(h => Number.isInteger(h) && h >= 0 && h < COLS);
+  if (!clean.length) return;
+  for (const r of vsRoster) {
+    if (!r.alive || r.seat === fromSeat) continue;
+    if (r.seat === 0) receiveAttack(clean); else sendTo(r.seat, { type: 'ATTACK', holes: clean, from: fromSeat });
+  }
+}
+function onGuestClose(g) {
+  const i = guests.indexOf(g);
+  if (i < 0) return;
+  if (roomState === 'waiting') { guests.splice(i, 1); assignSeats(); sendRoster(); return; }
+  if (roomState === 'playing') handlePlayerOut(g.seat, true);
+  else { const r = vsRoster.find(x => x.seat === g.seat); if (r) r.left = true; }
+  const j = guests.indexOf(g); if (j >= 0) guests.splice(j, 1);   // seats stay fixed during a match
+  if (roomState === 'result') { broadcastRematchStatus(); tryStartRematch(); refreshRematchUi(); }
+}
+// A player is out (topped out, or disconnected). The last one standing wins.
+function handlePlayerOut(seat, left = false) {
+  if (!isHost) return;
+  const r = vsRoster.find(x => x.seat === seat);
+  if (!r) return;
+  if (left) r.left = true;
+  if (!r.alive || roomState !== 'playing') return;
+  r.alive = false; r.place = vsRoster.filter(x => x.alive).length + 1;
+  broadcast({ type: 'DEAD', p: seat, place: r.place });
+  applyDead(seat, r.place);
+  const alive = vsRoster.filter(x => x.alive);
+  if (alive.length <= 1) {
+    if (alive[0]) alive[0].place = 1;
+    roomState = 'result';
+    const end = { type: 'END', winner: alive[0] ? alive[0].seat : -1, ranking: vsRoster.map(x => ({ seat: x.seat, name: x.name, place: x.place || vsRoster.length })) };
+    broadcast(end);
+    applyEnd(end);
+  }
+}
+
+// ---- shared by everyone: opponent boards, elimination, result ----
+function buildOppViews() {
+  const root = document.getElementById('oppBoards');
+  root.replaceChildren(); oppView.clear();
+  const others = vsRoster.filter(r => r.seat !== mySeat);
+  root.className = 'opp-boards active n' + Math.max(1, Math.min(3, others.length));
+  for (const r of others) {
+    const box = document.createElement('div'); box.className = 'opp-box';
+    const title = document.createElement('div'); title.className = 'p2-title'; title.textContent = r.name;
+    const canvas = document.createElement('canvas'); canvas.width = 100; canvas.height = 200;
+    box.append(title, canvas); root.append(box);
+    oppView.set(r.seat, { ctx: canvas.getContext('2d'), canvas, title, name: r.name, dead: false });
+  }
+}
+function drawOpp(seat, bBoard, pCur) {
+  const v = oppView.get(seat);
+  if (!v || !Array.isArray(bBoard)) return;
+  const x = v.ctx;
+  try {
+    x.clearRect(0, 0, 100, 200);
+    bBoard.forEach((row, r) => row.forEach((val, c) => { if (val && COLORS[val]) { x.fillStyle = COLORS[val]; x.fillRect(c * 10, r * 10, 9, 9); } }));
+    if (pCur && pCur.type && COLORS[pCur.type]) {
+      const m = getShapeMatrix(pCur.type, pCur.r); x.fillStyle = COLORS[pCur.type];
+      m.forEach((row, r) => row.forEach((val, c) => { if (val) x.fillRect((pCur.x + c) * 10, (pCur.y + r) * 10, 9, 9); }));
     }
-    if (data.type === 'POS') drawP2(data.board, data.cur);
-    if (data.type === 'LOCK') drawP2(data.board, null);
-    if (data.type === 'ATTACK') receiveAttack(data.holes);
-    if (data.type === 'GAMEOVER') {
-      if (!isEnded) finishRun('win');
-      isEnded = true;
-      showRematch('WIN! 相手を倒しました！');
-    }
-    if (data.type === 'REPLAY') receiveVsReplay(data.round, data.run);
-    if (data.type === 'REMATCH') {
-      remoteRematchRequested = true;
-      updateRematchStatus();
-      tryStartRematch();
-    }
-    if (data.type === 'REMATCH_START') {
-      vsRule = data.rule;
-      resetForRematch();
-    }
-  });
-  conn.on('close', () => {
-    if (!isEnded) finishRun('win');
-    if (pendingReplay && pendingReplay.answered) finalizeReplay(pendingReplay, true);
-    isEnded = true; toast('相手が切断しました');
-    showRematch('相手が切断しました');
-    document.getElementById('btnRematch').disabled = true;
-    document.getElementById('netStatus').textContent = '切断されました';
-  });
+  } catch (_) {}
+}
+function applyDead(seat, place) {
+  const r = vsRoster.find(x => x.seat === seat);
+  if (r) { r.alive = false; r.place = place | 0; }
+  if (seat === mySeat) {
+    myPlace = place | 0;
+    if (autoBuildRunning) stopAutoBuild('');
+    if (roomState === 'playing' && isEnded) showRematch('GAME OVER');
+    return;
+  }
+  const v = oppView.get(seat);
+  if (v) { v.dead = true; v.title.textContent = `${v.name} ✕${place | 0}位`; v.canvas.style.opacity = '.45'; }
+}
+function applyEnd(d) {
+  roomState = 'result';
+  const rank = Array.isArray(d.ranking) ? d.ranking : [];
+  for (const r of rank) { const v = vsRoster.find(x => x.seat === r.seat); if (v) v.place = r.place | 0; }
+  if (autoBuildRunning) stopAutoBuild('');
+  if (d.winner === mySeat) { if (!isEnded) finishRun('win'); isEnded = true; myPlace = 1; }
+  rankingSummary = rank.slice().sort((a, b) => a.place - b.place).map(r => `${r.place}位 ${cleanName(r.name)}`).join(' / ');
+  rematchReady = []; rematchTotal = isHost ? 1 + guests.length : vsRoster.length;
+  showRematch(d.winner === mySeat ? 'WIN! 1位' : (myPlace ? `GAME OVER（${myPlace}位）` : 'GAME OVER'));
 }
 
 function startVsGame() {
   if (isVsMode && document.getElementById('gameScreen').classList.contains('active')) return;
   isVsMode = true;
-  document.getElementById('p2Container').classList.add('active');
-  document.getElementById('matchModeLabel').textContent = 'Wi-Fi対戦中';
-  if (isHost) {
-    vsRule.seed = Math.floor(Math.random() * 1000000);
-    vsRule.nextMode = document.getElementById('cfgNextMode').value;
-    vsRule.holeChange = parseFloat(document.getElementById('cfgHoleChange').value);
-    vsRule.posInterval = parseInt(document.getElementById('cfgPosInterval').value, 10) || 33;
-    vsRule.round = Math.random().toString(36).slice(2, 10);
-    if (conn && conn.open) conn.send({ type: 'RULE', rule: vsRule });
+  rematchRequested = false; rematchReady = []; myPlace = 0; rankingSummary = '';
+  clearRematchArea();
+  buildOppViews();
+  document.getElementById('matchModeLabel').textContent = `オンライン対戦中（${vsRoster.length}人）`;
+  renderRoomPanel();
+  switchScreen('gameScreen'); initGame();
+}
+function clearRematchArea() {
+  document.getElementById('rematchArea').classList.remove('active');
+  document.getElementById('rankingText').textContent = '';
+  document.getElementById('rematchStatus').textContent = '';
+  document.getElementById('btnRematch').style.display = '';
+  document.getElementById('btnRematch').disabled = false;
+}
+function sendNet(data) {
+  if (!isVsMode) return;
+  if (!isHost) { safeSend(conn, data); return; }
+  switch (data.type) {
+    case 'POS': case 'LOCK': broadcast({ ...data, p: 0 }); break;
+    case 'ATTACK': distributeAttack(0, data.holes); break;
+    case 'GAMEOVER': handlePlayerOut(0); break;
   }
-  switchScreen('gameScreen');
-  initGame();
 }
 
-function sendNet(data) { if (isVsMode && conn && conn.open) conn.send(data); }
-
+// ---- result / rematch ----
 function showRematch(message) {
   document.getElementById('rematchArea').classList.add('active');
-  const btn = document.getElementById('btnRematch');
+  const btn = document.getElementById('btnRematch'), status = document.getElementById('rematchStatus'), rank = document.getElementById('rankingText');
   btn.textContent = isVsMode ? '再戦する' : 'リトライ';
-  btn.disabled = isVsMode && !(conn && conn.open);
-  document.getElementById('rematchStatus').textContent = message || (isVsMode ? '再戦するには両者がボタンを押してください' : '');
+  if (!isVsMode) { btn.style.display = ''; btn.disabled = false; status.textContent = message || ''; rank.textContent = ''; return; }
+  if (myPlace && message === 'GAME OVER') message = `GAME OVER（${myPlace}位）`;
+  rank.textContent = [message, rankingSummary].filter(Boolean).join('　');
+  refreshRematchUi();
 }
-
+// No peers left (disconnected) -> no rematch: the button is removed instead of just disabled.
+function refreshRematchUi() {
+  if (!isVsMode) return;
+  const btn = document.getElementById('btnRematch');
+  btn.style.display = vsHasPeers() ? '' : 'none';
+  btn.disabled = !(roomState === 'result' && vsHasPeers());
+  updateRematchStatus();
+}
 function updateRematchStatus() {
+  if (!isVsMode) return;
   const status = document.getElementById('rematchStatus');
+  if (!vsHasPeers()) { status.textContent = ''; return; }
+  if (roomState !== 'result') { status.textContent = '試合終了までお待ちください'; return; }
+  const ready = rematchReady.length, total = rematchTotal || vsRoster.length;
   status.textContent = rematchRequested
-    ? (remoteRematchRequested ? '再戦します…' : '相手の再戦待ち…')
-    : (remoteRematchRequested ? '相手が再戦を希望しています。ボタンを押してください' : '両者が再戦を選ぶと始まります');
+    ? (ready >= total ? '再戦します…' : `再戦待ち… ${ready}/${total}`)
+    : (ready > 0 ? `再戦希望 ${ready}/${total}。ボタンを押してください` : '全員が再戦を選ぶと始まります');
 }
-
 document.getElementById('btnRematch').onclick = () => {
   if (!isVsMode) { if (isEnded) startSoloGame(); return; }
-  if (!isEnded || rematchRequested) return;
+  if (!isEnded || rematchRequested || roomState !== 'result' || !vsHasPeers()) return;
   rematchRequested = true;
-  sendNet({ type: 'REMATCH' });
+  if (isHost) { broadcastRematchStatus(); tryStartRematch(); } else safeSend(conn, { type: 'REMATCH' });
   updateRematchStatus();
-  tryStartRematch();
 };
-
+function broadcastRematchStatus() {
+  rematchReady = [];
+  if (rematchRequested) rematchReady.push(0);
+  for (const g of guests) if (g.wantsRematch) rematchReady.push(g.seat);
+  rematchTotal = 1 + guests.length;
+  broadcast({ type: 'REMATCH_STATUS', ready: rematchReady, total: rematchTotal });
+  updateRematchStatus();
+}
 function tryStartRematch() {
-  if (!isHost || !rematchRequested || !remoteRematchRequested) return;
-  vsRule.seed = Math.floor(Math.random() * 1000000);
-  vsRule.round = Math.random().toString(36).slice(2, 10);
-  const rule = { ...vsRule };
-  sendNet({ type: 'REMATCH_START', rule });
+  if (!isHost || roomState !== 'result' || !rematchRequested) return;
+  guests = guests.filter(g => g.conn && g.conn.open);
+  if (!guests.length || !guests.every(g => g.wantsRematch)) return;
+  newRound(); assignSeats();
+  vsRoster = makeRoster(); roomState = 'playing';
+  for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'REMATCH_START', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
   resetForRematch();
 }
-
 function resetForRematch() {
   settlePendingReplay();
-  rematchRequested = false;
-  remoteRematchRequested = false;
-  document.getElementById('rematchArea').classList.remove('active');
-  document.getElementById('rematchStatus').textContent = '';
+  rematchRequested = false; rematchReady = []; rankingSummary = ''; myPlace = 0;
+  clearRematchArea();
+  buildOppViews();
+  document.getElementById('matchModeLabel').textContent = `オンライン対戦中（${vsRoster.length}人）`;
   initGame();
   toast('再戦スタート！');
   sendPosNow();
@@ -965,9 +1328,9 @@ document.getElementById('btnBackToLobby').onclick = () => {
   runStartedAt = 0;
   discardReplayNow();
   isEnded = true;
-  if (peer) peer.destroy();
+  leaveRoom();
+  clearRematchArea();
   switchScreen('lobbyScreen');
-  document.getElementById('netStatus').textContent = 'オフライン待機中';
 };
 
 // ==========================================
@@ -1576,21 +1939,13 @@ function drawNext() {
   });
 }
 
-function drawP2(bBoard, p2Cur) {
-  p2Ctx.clearRect(0, 0, 100, 200);
-  if (bBoard) bBoard.forEach((row, r) => row.forEach((val, c) => {
-    if (val) { p2Ctx.fillStyle = COLORS[val]; p2Ctx.fillRect(c * 10, r * 10, 9, 9); }
-  }));
-  if (p2Cur) {
-    const m = getShapeMatrix(p2Cur.type, p2Cur.r); p2Ctx.fillStyle = COLORS[p2Cur.type];
-    m.forEach((row, r) => row.forEach((val, c) => { if (val) p2Ctx.fillRect((p2Cur.x + c) * 10, (p2Cur.y + r) * 10, 9, 9); }));
-  }
-}
 
 function initGame() {
   board = Array.from({length: ROWS}, () => Array(COLS).fill(null));
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
+  autoBuildRunning = false; autoBuildToken++;
+  { const b1 = document.getElementById('btnAutoBuild'), b2 = document.getElementById('btnAutoStop'); if (b1) b1.disabled = false; if (b2) b2.disabled = true; }
   isEnded = false; overlayHiddenByComplete = false; autoStatusMessage = ''; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
   if (account) { runStartedAt = Date.now(); replayStartPerf = performance.now(); replayHiddenMs = 0; replayHiddenSince = document.hidden ? performance.now() : 0; replayEvents = []; } else { runStartedAt = 0; replayEvents = []; }
   drawHold(); drawNext(); drawGarbagePreview();
@@ -1617,6 +1972,16 @@ document.getElementById('btnOpenSettings').onclick = () => {
   if (isHost) posSelect.value = String(vsRule.posInterval || 33);
   document.getElementById('settingsModal').classList.remove('hidden');
 };
+// Hidden switch: ARR and soft drop both set to 490 ms unlocks the developer tools for this page load
+// (the two values snap back to their defaults; a reload locks it again).
+function checkDevUnlock() {
+  const arr = document.getElementById('cfgArr'), sd = document.getElementById('cfgSd');
+  if (parseInt(arr.value, 10) !== 490 || parseInt(sd.value, 10) !== 490) return;
+  devToolsUnlocked = true;
+  arr.value = '30'; sd.value = '20'; updateConfig();
+  applySessionLabels(); refreshAdminUi();
+}
+['cfgArr', 'cfgSd'].forEach(id => { const el = document.getElementById(id); el.addEventListener('input', checkDevUnlock); el.addEventListener('change', checkDevUnlock); });
 document.getElementById('btnCloseSettings').onclick = () => document.getElementById('settingsModal').classList.add('hidden');
 
 document.getElementById('cfgAiGuide').addEventListener('change', (e) => {
@@ -1642,7 +2007,14 @@ function renderTemplateList() {
     const meta = document.createElement('div');
     meta.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;';
     const chip = (text) => { const el = document.createElement('span'); el.textContent = text; el.style.cssText = 'display:inline-block;font-size:.72rem;color:var(--sub);border:1px solid var(--border);border-radius:5px;padding:2px 6px;white-space:nowrap;'; return el; };
-    meta.append(chip(`${count}行`), chip(`優先度 ${Number(t.priority)||0}`));
+    meta.append(chip(`${count}行`));
+    const pri = document.createElement('input');
+    pri.type = 'number'; pri.min = '-999'; pri.max = '999'; pri.step = '1'; pri.value = String(Number(t.priority) || 0);
+    pri.setAttribute('aria-label', `${t.name}の優先度`); pri.title = '優先度（大きいほど選ばれやすい）';
+    pri.style.cssText = 'width:64px;padding:2px 4px;font-size:.78rem;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:5px;';
+    pri.onchange = () => { const v = Math.max(-999, Math.min(999, Math.round(Number(pri.value) || 0))); pri.value = String(v); t.priority = v; saveTemplateData(); refreshTemplateOverlayOptions(); render(); };
+    const priLabel = document.createElement('label'); priLabel.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:.72rem;color:var(--sub);';
+    priLabel.append('優先度', pri); meta.append(priLabel);
     if (t.mirror) meta.append(chip('左右反転あり'));
     info.append(title, meta);
     const actions = document.createElement('div');
@@ -1677,6 +2049,7 @@ function resetTemplateForm() {
   editingTemplateIndex = -1;
   document.getElementById('templateName').value = ''; document.getElementById('templatePattern').value = '';
   document.getElementById('templateMirror').checked = true;
+  document.getElementById('templatePriority').value = '10';
   document.getElementById('btnAddTemplate').textContent = 'テンプレ追加';
   document.getElementById('btnCancelTemplateEdit').style.display = 'none';
 }
@@ -1686,6 +2059,7 @@ function startTemplateEdit(i) {
   document.getElementById('templateName').value = t.name;
   document.getElementById('templatePattern').value = (t.pattern || []).join('\n');
   document.getElementById('templateMirror').checked = t.mirror !== false;
+  document.getElementById('templatePriority').value = String(Number(t.priority) || 0);
   document.getElementById('btnAddTemplate').textContent = 'テンプレ更新';
   document.getElementById('btnCancelTemplateEdit').style.display = '';
   renderTemplateList();
@@ -1701,14 +2075,62 @@ document.getElementById('btnAddTemplate').onclick = () => {
     alert('各行を10文字にし、I J L O S T Z . だけを使ってください。'); return;
   }
   const mirror = document.getElementById('templateMirror').checked;
+  const priority = Math.max(-999, Math.min(999, Math.round(Number(document.getElementById('templatePriority').value) || 0)));
   if (editingTemplateIndex >= 0 && templateData[editingTemplateIndex]) {
-    Object.assign(templateData[editingTemplateIndex], { name, pattern: rows, mirror });
+    Object.assign(templateData[editingTemplateIndex], { name, pattern: rows, mirror, priority });
     toast(`テンプレ「${name}」を更新しました`);
   } else {
-    templateData.push({ name, priority: 10, pattern: rows, enabled: true, mirror });
+    templateData.push({ name, priority, pattern: rows, enabled: true, mirror });
   }
   resetTemplateForm();
   saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions(); render();
+};
+
+function setTplStatus(msg) { const el = document.getElementById('templateBackupStatus'); if (el) el.textContent = msg; }
+async function cloudSaveTemplates(quiet) {
+  try { const r = await api('/templates', { data: templateData }); if (!quiet) toast(`クラウドに${r.count}件保存しました`); setTplStatus(`クラウドに保存済み（${r.count}件・${new Date().toLocaleTimeString()}）`); }
+  catch (e) { if (!quiet) alert('クラウド保存に失敗: ' + e.message); setTplStatus('クラウド保存に失敗しました'); }
+}
+function applyTemplateList(list) {
+  templateData = list; resetTemplateForm();
+  try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templateData)); } catch (_) {}
+  renderTemplateList(); refreshTemplateOverlayOptions(); render();
+}
+async function cloudLoadTemplates(askFirst) {
+  try {
+    const d = await api('/templates', undefined, 'GET');
+    const list = normalizeTemplates(d.data);
+    if (!list) { if (!askFirst) alert('クラウドに保存されたテンプレはありません'); return false; }
+    if (!confirm(`クラウドのテンプレ${list.length}件（${d.updatedAt ? new Date(d.updatedAt).toLocaleString() : ''}）で、いまのテンプレを置き換えますか？`)) return false;
+    applyTemplateList(list); toast('クラウドから復元しました'); return true;
+  } catch (e) { if (!askFirst) alert('復元に失敗: ' + e.message); return false; }
+}
+// A fresh browser/URL has no saved templates: offer the account copy once instead of silently starting from the defaults.
+let tplRestoreChecked = false;
+async function maybeOfferTemplateRestore() {
+  if (tplRestoreChecked || !account || !canUseDevTools()) return;
+  tplRestoreChecked = true;
+  let has = true; try { has = localStorage.getItem(TEMPLATE_KEY) !== null; } catch (_) {}
+  if (!has) await cloudLoadTemplates(true);
+}
+document.getElementById('btnTplCloudSave').onclick = () => cloudSaveTemplates(false);
+document.getElementById('btnTplCloudLoad').onclick = () => cloudLoadTemplates(false);
+document.getElementById('btnTplExport').onclick = () => {
+  const blob = new Blob([JSON.stringify({ app: 'p2p-tetris-templates', version: 1, templates: templateData }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `tetris-templates-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+document.getElementById('btnTplImport').onclick = () => document.getElementById('tplImportFile').click();
+document.getElementById('tplImportFile').onchange = async (e) => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    const list = normalizeTemplates(Array.isArray(j) ? j : j.templates);
+    if (!list) throw new Error('テンプレートの形式が正しくありません');
+    if (!confirm(`ファイルのテンプレ${list.length}件で、いまのテンプレを置き換えますか？`)) return;
+    applyTemplateList(list); toast('読み込みました'); if (account && canUseDevTools()) cloudSaveTemplates(true);
+  } catch (err) { alert('読み込み失敗: ' + err.message); }
 };
 
 function stopAutoBuild(message = '自動積み停止') {
@@ -2256,14 +2678,26 @@ function mountReplayPlayer(screenId) {
   document.getElementById(screenId).append(player);
   player.style.display = 'none';
 }
+function adminTabVis() {
+  return { Players: ['player.manage', 'player.delete', 'password.reset', 'role.promote'].some(hasPerm), Replays: hasPerm('replay.view'), Templates: canUseDevTools(), Dev: isDeveloper() };
+}
+// Shows only the tabs the user may use; if the tab being viewed was taken away, jump to the first allowed one.
+function applyAdminTabs() {
+  const vis = adminTabVis(), order = ['Players', 'Replays', 'Templates', 'Dev'];
+  document.querySelectorAll('.admin-tab').forEach(t => { t.style.display = vis[t.dataset.tab] ? '' : 'none'; });
+  document.getElementById('bulkDeleteBox').style.display = hasPerm('replay.delete') ? 'flex' : 'none';
+  const active = document.querySelector('.admin-tab.active');
+  const keep = active && vis[active.dataset.tab] ? active.dataset.tab : order.find(n => vis[n]);
+  if (keep) showAdminTab(keep);
+  return !!keep;
+}
 function openAdminScreen() {
   if (!canOpenAdminMenu()) return;
   if (autoBuildRunning) stopAutoBuild('自動積み停止');
   mountReplayPlayer('adminScreen');
   switchScreen('adminScreen');
-  const vis = { Players: ['player.manage', 'player.delete', 'password.reset'].some(hasPerm), Replays: hasPerm('replay.view'), Templates: isStaff(), Dev: isDeveloper() };
-  document.querySelectorAll('.admin-tab').forEach(t => { t.style.display = vis[t.dataset.tab] ? '' : 'none'; });
-  showAdminTab(['Players', 'Replays', 'Templates', 'Dev'].find(n => vis[n]));
+  document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+  applyAdminTabs();
 }
 let devPermData = null;
 const OV_LABEL = { '': '設定しない（全体に従う）', 'true': '許可', 'false': '禁止' };
@@ -2312,6 +2746,23 @@ function renderDevUserPerms() {
   }
 }
 document.getElementById('devUserSelect').onchange = renderDevUserPerms;
+async function gistScan(apply) {
+  const st = document.getElementById('gistFixStatus'), tot = { checked: 0, publicFound: 0, fixed: 0, failed: 0, missing: 0 };
+  if (apply && !confirm('公開(Public)のGistをSecretで作り直し、古いGistを削除します。続けますか？')) return;
+  try {
+    let cursor = '';
+    for (;;) {
+      const r = await api('/dev/gists/fix', { apply, cursor });
+      for (const k of Object.keys(tot)) tot[k] += r[k] || 0;
+      st.textContent = `確認中… ${tot.checked}件 / 公開 ${tot.publicFound}件${apply ? ` / 修正 ${tot.fixed}件` : ''}`;
+      if (!r.nextCursor) break;
+      cursor = r.nextCursor;
+    }
+    st.textContent = `完了: 確認 ${tot.checked}件、公開 ${tot.publicFound}件${apply ? `、Secretに修正 ${tot.fixed}件、失敗 ${tot.failed}件` : ''}${tot.missing ? `、GitHub上に見つからない ${tot.missing}件` : ''}`;
+  } catch (e) { st.textContent = 'エラー: ' + e.message; }
+}
+document.getElementById('btnGistAudit').onclick = () => gistScan(false);
+document.getElementById('btnGistFix').onclick = () => gistScan(true);
 async function setMaintenance(on) {
   const msg = document.getElementById('devMaintMessage').value.trim();
   if (on && !confirm('メンテナンスを開始します。全員にメンテナンス画面が表示され、プレイ中のユーザーはロビーに戻されます。よろしいですか？')) return;
@@ -2354,6 +2805,76 @@ async function deleteCloudReplay(r) {
   catch (e) { alert('削除失敗: ' + e.message); return false; }
 }
 
+// ---- replay -> video (MP4 where the browser can record it, otherwise WebM) ----
+// Frames are drawn on a canvas in real time and recorded with MediaRecorder, so a 3-minute replay takes 3 minutes.
+let videoJob = null;
+function pickVideoMime() {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return null;
+  return ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(t => MediaRecorder.isTypeSupported(t)) || null;
+}
+async function convertReplayToVideo(text, baseName) {
+  if (videoJob) { alert('別の動画を変換中です'); return; }
+  const canvas = document.createElement('canvas');
+  const mime = pickVideoMime();
+  if (!mime || !canvas.captureStream) { alert('このブラウザは動画の書き出しに対応していません。PCのChrome / Edge、または最新のSafariでお試しください。'); return; }
+  const isMp4 = mime.startsWith('video/mp4');
+  if (!isMp4 && !confirm('このブラウザはMP4で録画できないため、WebM形式で保存します。続けますか？')) return;
+  let rep;
+  try { rep = await parseReplay(text); } catch (e) { alert('リプレイを読み込めません: ' + e.message); return; }
+  const players = rep.players, n = players.length, dur = rep.durationMs;
+  const CELL = 16, BW = CELL * 10, BH = CELL * 20, PAD = 16, TITLE = 26, FOOT = 30, even = v => v + (v % 2);
+  canvas.width = even(n * BW + (n + 1) * PAD); canvas.height = even(TITLE + BH + FOOT + PAD);
+  const x = canvas.getContext('2d');
+  const rec = new MediaRecorder(canvas.captureStream(30), { mimeType: mime, videoBitsPerSecond: 2500000 });
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  const job = { cancelled: false, hidden: false }; videoJob = job;
+  const overlay = document.getElementById('videoOverlay'), msg = document.getElementById('videoMsg');
+  overlay.style.display = 'flex';
+  document.getElementById('btnVideoCancel').onclick = () => { job.cancelled = true; };
+  const fmt = ms => `${Math.floor(ms / 60000)}:${(ms / 1000 % 60).toFixed(1).padStart(4, '0')}`;
+  const draw = t => {
+    x.fillStyle = '#11111b'; x.fillRect(0, 0, canvas.width, canvas.height);
+    players.forEach((p, i) => {
+      const ox = PAD + i * (BW + PAD), oy = TITLE;
+      const st = buildReplayState(p.events || [], t);
+      x.fillStyle = '#cdd6f4'; x.font = 'bold 14px system-ui, sans-serif'; x.textBaseline = 'middle';
+      x.fillText(String(p.name || baseName || `P${i + 1}`).slice(0, 14) + (n > 1 && i === 0 ? '（ホスト）' : ''), ox, TITLE / 2 + 2);
+      x.fillStyle = '#111'; x.fillRect(ox, oy, BW, BH);
+      st.board.forEach((row, r) => row.forEach((v, c) => { if (v) { x.fillStyle = COLORS[v] || '#888'; x.fillRect(ox + c * CELL, oy + r * CELL, CELL - 1, CELL - 1); } }));
+      const pc = st.piece;
+      if (pc && pc.type) { const m = getShapeMatrix(pc.type, pc.r || 0); x.fillStyle = COLORS[pc.type] || '#888'; m.forEach((row, r) => row.forEach((v, c) => { const py = (pc.y + r) * CELL; if (v && py >= 0) x.fillRect(ox + (pc.x + c) * CELL, oy + py, CELL - 1, CELL - 1); })); }
+      x.strokeStyle = '#45475a'; x.strokeRect(ox - .5, oy - .5, BW + 1, BH + 1);
+    });
+    x.fillStyle = '#a6adc8'; x.font = '13px system-ui, sans-serif'; x.textAlign = 'right';
+    x.fillText(`${fmt(Math.min(t, dur))} / ${fmt(dur)}`, canvas.width - PAD, TITLE + BH + FOOT / 2 + 4); x.textAlign = 'left';
+  };
+  try {
+    await new Promise(resolve => {
+      rec.onstop = resolve;
+      draw(0); rec.start(500);
+      const t0 = performance.now();
+      const timer = setInterval(() => {
+        const el = performance.now() - t0;
+        if (document.hidden) job.hidden = true;
+        draw(Math.min(el, dur));
+        msg.textContent = `動画に変換中… ${fmt(Math.min(el, dur))} / ${fmt(dur)}（${isMp4 ? 'MP4' : 'WebM'}・このタブを開いたままにしてください）`;
+        if (el >= dur + 500 || job.cancelled) { clearInterval(timer); setTimeout(() => { try { rec.stop(); } catch (_) { resolve(); } }, 120); }
+      }, 33);
+    });
+    if (!job.cancelled && chunks.length) {
+      const ext = isMp4 ? 'mp4' : 'webm';
+      const blob = new Blob(chunks, { type: mime.split(';')[0] });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = `tetris-replay-${String(baseName || 'replay').replace(/[^\w\u3040-\u30ff\u4e00-\u9fff-]+/g, '_').slice(0, 40)}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast(job.hidden ? '保存しました（途中でタブを離れたため、コマ落ちしている可能性があります）' : `${ext.toUpperCase()}を保存しました`);
+      return { ext, bytes: blob.size, name: a.download };
+    }
+    if (job.cancelled) toast('動画の変換を中止しました');
+  } finally { overlay.style.display = 'none'; videoJob = null; }
+}
+
 function replayWho(r) { return r.mode === 'vs' ? `対戦 ${r.players.join(' vs ')}` : `ソロ ${r.playerId}`; }
 function makeReplayRow(r, showPlayer, onChanged) {
   const row = document.createElement('div');
@@ -2366,6 +2887,10 @@ function makeReplayRow(r, showPlayer, onChanged) {
     adminButton('再生', () => playCloudReplay(r)),
     adminButton('データをコピー', async () => {
       try { const x = await api('/admin/replays/' + encodeURIComponent(r.replayId), undefined, 'GET'); await navigator.clipboard.writeText(x.replayData); document.getElementById('replayPaste').value = x.replayData; toast('リプレイデータをコピーしました'); }
+      catch (e) { alert(e.message); }
+    }, 'alt'),
+    adminButton('動画に変換', async () => {
+      try { const x = await api('/admin/replays/' + encodeURIComponent(r.replayId), undefined, 'GET'); await convertReplayToVideo(x.replayData, replayWho(r)); }
       catch (e) { alert(e.message); }
     }, 'alt'),
     ...(hasPerm('replay.delete') ? [adminButton('削除', async () => { if (await deleteCloudReplay(r)) onChanged(); }, 'danger')] : [])
@@ -2395,13 +2920,20 @@ async function refreshCloudPlayers() {
       actions.className = 'actions';
       const sub = document.createElement('div');
       sub.className = 'admin-sub';
+      const isAdminRow = p.role === 'admin';
       const approve = adminButton(p.approved ? '承認済み' : '承認', async () => { try { await api('/admin/players/' + encodeURIComponent(p.id), { approved: true }); refreshCloudPlayers(); } catch (e) { alert(e.message); } });
       approve.disabled = !!p.approved;
+      const roleBtn = !hasPerm('role.promote') || p.id === account?.id ? [] : [adminButton(isAdminRow ? 'プレイヤーに降格' : '管理者に昇格', async () => {
+        if (!confirm(isAdminRow ? `「${p.id}」を一般プレイヤーに戻しますか？` : `「${p.id}」を管理者にしますか？`)) return;
+        try { await api('/admin/players/' + encodeURIComponent(p.id) + '/role', { role: isAdminRow ? 'player' : 'admin' }); toast(isAdminRow ? '降格しました' : '管理者にしました'); } catch (e) { alert(e.message); }
+        refreshCloudPlayers();
+      }, isAdminRow ? 'danger' : 'alt')];
       actions.append(
-        ...(!hasPerm('player.manage') ? [] : [approve]),
-        ...(!hasPerm('player.manage') ? [] : [adminButton(p.allowed ? 'プレイ禁止' : 'プレイ許可', async () => { try { await api('/admin/players/' + encodeURIComponent(p.id), { allowed: !p.allowed }); refreshCloudPlayers(); } catch (e) { alert(e.message); } }, 'alt')]),
-        ...(!hasPerm('password.reset') ? [] : [adminButton('PW再発行', async () => { try { const x = await api('/admin/reset-password/' + encodeURIComponent(p.id), {}); alert(`${p.id} の新パスワード: ${x.password}`); } catch (e) { alert(e.message); } }, 'alt')]),
-        ...(!hasPerm('replay.view') ? [] : [adminButton(`リプレイ (${replays.length})`, () => sub.classList.toggle('open'), 'alt')])
+        ...(isAdminRow || !hasPerm('player.manage') ? [] : [approve]),
+        ...(isAdminRow || !hasPerm('player.manage') ? [] : [adminButton(p.allowed ? 'プレイ禁止' : 'プレイ許可', async () => { try { await api('/admin/players/' + encodeURIComponent(p.id), { allowed: !p.allowed }); refreshCloudPlayers(); } catch (e) { alert(e.message); } }, 'alt')]),
+        ...(isAdminRow || !hasPerm('password.reset') ? [] : [adminButton('PW再発行', async () => { try { const x = await api('/admin/reset-password/' + encodeURIComponent(p.id), {}); alert(`${p.id} の新パスワード: ${x.password}`); } catch (e) { alert(e.message); } }, 'alt')]),
+        ...(!hasPerm('replay.view') ? [] : [adminButton(`リプレイ (${replays.length})`, () => sub.classList.toggle('open'), 'alt')]),
+        ...roleBtn
       );
       if (hasPerm('player.delete') && p.id !== account?.id && p.role !== 'admin') {
         actions.append(adminButton('ID削除', async () => {
@@ -2461,6 +2993,44 @@ async function refreshCloudReplays() {
   } catch (e) { root.textContent = e.message; }
 }
 ['replayFilterMode', 'replayFilterUser', 'replayFilterFrom', 'replayFilterTo', 'replaySort'].forEach(id => document.getElementById(id).addEventListener('change', renderCloudReplays));
+function bulkCondition() {
+  const val = id => document.getElementById(id).value;
+  const c = {};
+  if (val('replayFilterUser')) c.playerId = val('replayFilterUser');
+  if (val('replayFilterMode')) c.mode = val('replayFilterMode');
+  if (val('replayFilterFrom')) c.from = new Date(val('replayFilterFrom')).toISOString();
+  if (val('replayFilterTo')) c.to = new Date(val('replayFilterTo')).toISOString();
+  return c;
+}
+function bulkDescribe(c) {
+  const f = v => new Date(v).toLocaleString();
+  return [c.playerId ? `投稿者 ${c.playerId}` : '全ユーザー', c.mode === 'vs' ? '対戦' : c.mode === 'solo' ? 'ソロ' : '全種類', c.from || c.to ? `${c.from ? f(c.from) : '最初'} 〜 ${c.to ? f(c.to) : '最後'}` : '全期間'].join(' / ');
+}
+document.getElementById('btnBulkCount').onclick = async () => {
+  const c = bulkCondition(), out = document.getElementById('bulkResult');
+  if (!Object.keys(c).length) { out.textContent = '条件を1つ以上指定してください'; return; }
+  try { const r = await api('/admin/replays/bulk-delete', { ...c, dryRun: true }); out.textContent = `対象 ${r.count}件（${bulkDescribe(c)}）`; }
+  catch (e) { out.textContent = '確認失敗: ' + e.message; }
+};
+document.getElementById('btnBulkDelete').onclick = async () => {
+  const c = bulkCondition(), out = document.getElementById('bulkResult');
+  if (!Object.keys(c).length) { alert('条件を1つ以上指定してください（全件の一括削除はできません）'); return; }
+  try {
+    const { count } = await api('/admin/replays/bulk-delete', { ...c, dryRun: true });
+    if (!count) { out.textContent = '条件に合うリプレイはありません'; return; }
+    if (!confirm(`${bulkDescribe(c)}\n\nこの条件のクラウドのリプレイ ${count} 件を削除します。元に戻せません。よろしいですか？`)) return;
+    let deleted = 0, failed = 0, remaining = count;
+    while (remaining > 0) {
+      const r = await api('/admin/replays/bulk-delete', c);
+      deleted += r.deleted; failed += r.failed; remaining = r.remaining;
+      out.textContent = `削除中… ${deleted}件 / 残り ${remaining}件`;
+      if (!r.deleted) break;   // nothing progressed (errors): stop instead of looping forever
+    }
+    out.textContent = `完了: ${deleted}件削除${failed ? `（失敗 ${failed}件）` : ''}`;
+    toast(`${deleted}件削除しました`);
+    await fetchAdminReplays().catch(() => []); renderCloudReplays();
+  } catch (e) { out.textContent = '削除失敗: ' + e.message; }
+};
 document.getElementById('btnReplayFilterReset').onclick = () => {
   document.getElementById('replayFilterMode').value = '';
   document.getElementById('replayFilterUser').value = '';
@@ -2512,9 +3082,10 @@ function setupReplayBoards(fallbackName) {
   const resultLabel={win:'勝ち',lose:'負け',quit:'中断'};
   currentReplay.players.forEach((p,i)=>{
     const box=document.createElement('div');box.className='replay-board';
+    const many=currentReplay.players.length>2;
     const name=document.createElement('div');
     name.textContent=(p.name||fallbackName||'')+(vs&&i===0?'（ホスト）':'')+(p.result&&resultLabel[p.result]?` · ${resultLabel[p.result]}`:'');
-    const c=document.createElement('canvas');c.width=200;c.height=400;c.style.cssText='background:#111;border:1px solid var(--border);max-width:100%';
+    const c=document.createElement('canvas');c.width=200;c.height=400;c.style.cssText='background:#111;border:1px solid var(--border);max-width:100%'+(many?';width:150px;height:300px':'');
     box.append(name,c);root.append(box);
   });
 }
@@ -2552,12 +3123,16 @@ function buildReplayMarks() {
   for (const p of currentReplay.players) for (const e of p.events || []) { all.add(e[0]); if (e.length === 2) locks.add(e[0]); }
   replayMarks = { all: [...all].sort((a, b) => a - b), locks: [...locks].sort((a, b) => a - b) };
 }
+async function parseReplay(text) {
+  const rep = await unpackReplay(text.trim());
+  let maxDur = 0;
+  rep.players = rep.players.map(p => { const q = squeezeIdle(p.events || [], p.durationMs || rep.durationMs || 0); maxDur = Math.max(maxDur, q.durationMs); return { ...p, events: q.events, durationMs: q.durationMs }; });
+  rep.durationMs = Math.max(maxDur, 1);
+  return rep;
+}
 async function loadReplayText(text, fallbackName) {
   stopReplayPlayback();
-  currentReplay=await unpackReplay(text.trim());
-  let maxDur = 0;
-  currentReplay.players = currentReplay.players.map(p => { const q = squeezeIdle(p.events || [], p.durationMs || currentReplay.durationMs || 0); maxDur = Math.max(maxDur, q.durationMs); return { ...p, events: q.events, durationMs: q.durationMs }; });
-  currentReplay.durationMs = Math.max(maxDur, 1);
+  currentReplay = await parseReplay(text);
   buildReplayMarks();
   if(currentReplay.mode!=='vs') document.getElementById('replayTitle').textContent='';
   replayClockMs=0;setupReplayBoards(fallbackName);document.getElementById('replayPlayer').style.display='flex';drawReplayFrame();
@@ -2624,6 +3199,7 @@ function renderVsReplayList() {
         renderVsReplayList();
       },'alt'),
       adminButton('データをコピー',async()=>{try{await navigator.clipboard.writeText(r.data);toast('リプレイデータをコピーしました');}catch(e){alert(e.message);}},'alt'),
+      adminButton('動画に変換',()=>convertReplayToVideo(r.data,r.title||kind),'alt'),
       adminButton('削除',()=>{
         if(!confirm(`${r.names.join(' vs ')} のリプレイを削除しますか？`))return;
         localStorage.setItem(VS_REPLAY_KEY,JSON.stringify(loadVsReplays().filter(x=>x.id!==r.id)));
