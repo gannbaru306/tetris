@@ -97,6 +97,12 @@
     .admin-head { width:100%; display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
     .admin-head h2 { margin:0; font-size:1.05rem; color:var(--accent); }
     .admin-tabs { width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:10px; }
+    #maintenanceOverlay { position:fixed; inset:0; z-index:9999; display:none; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:24px; text-align:center; background:rgba(17,17,27,.97); color:#fff; }
+    #maintenanceOverlay h2 { margin:0; font-size:1.4rem; }
+    #maintenanceNotice { display:none; position:fixed; top:0; left:0; right:0; z-index:8000; padding:5px 8px; text-align:center; font-size:.78rem; background:#f9e2af; color:#11111b; }
+  #maintenanceBanner { display:none; position:fixed; top:0; left:0; right:0; z-index:9000; padding:4px 8px; text-align:center; font-size:.75rem; background:#f9e2af; color:#11111b; }
+    .perm-grid { display:grid; grid-template-columns:1fr auto auto; gap:6px 10px; align-items:center; font-size:.85rem; }
+    .perm-grid select { padding:3px; font-size:.8rem; }
     .admin-tab { padding:8px; font-size:.9rem; background:#45475a; color:#fff; }
     .admin-tab.active { background:var(--accent); color:#11111b; }
     .admin-section { display:none; width:100%; flex-direction:column; gap:8px; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px; }
@@ -115,6 +121,15 @@
   </style>
 </head>
 <body>
+  <div id="maintenanceOverlay" role="alertdialog" aria-live="assertive">
+    <h2>メンテナンス中です</h2>
+    <div>現在プレイできません。終了までしばらくお待ちください。</div>
+    <div id="maintenanceMessage" class="muted"></div>
+    <div id="maintenanceEnd" class="muted"></div>
+    <button id="btnMaintenanceDev" class="alt" style="width:auto;padding:4px 12px;font-size:.75rem">開発者の方はこちら</button>
+  </div>
+  <div id="maintenanceNotice"></div>
+  <div id="maintenanceBanner">メンテナンスモード中です（一般ユーザーは利用できません）</div>
 
   <h1>Web Tetris VS</h1>
 
@@ -286,12 +301,42 @@
       <button class="admin-tab active" data-tab="Players" role="tab">プレイヤー</button>
       <button class="admin-tab" data-tab="Replays" role="tab">リプレイ</button>
       <button class="admin-tab" data-tab="Templates" role="tab">テンプレ</button>
+      <button class="admin-tab" data-tab="Dev" id="adminTabBtnDev" role="tab" style="display:none">開発者</button>
     </div>
 
     <section id="adminTabPlayers" class="admin-section active">
       <button id="btnRefreshPlayers" class="alt">プレイヤー一覧を更新</button>
       <p class="muted" style="margin:0">IDを削除するとそのプレイヤーのリプレイも削除されます。削除したIDは再登録でき、再登録後は再度承認が必要です。</p>
       <div id="cloudPlayers" style="display:flex;flex-direction:column;gap:6px"></div>
+    </section>
+
+    <section id="adminTabDev" class="admin-section">
+      <div style="font-weight:700">メンテナンス</div>
+      <div id="devMaintStatus" class="muted"></div>
+      <input id="devMaintMessage" type="text" maxlength="200" placeholder="表示するメッセージ（任意）">
+      <div style="display:flex;gap:8px">
+        <button id="btnMaintOn" class="danger" style="width:auto;padding:6px 12px">メンテナンスを開始</button>
+        <button id="btnMaintOff" class="alt" style="width:auto;padding:6px 12px">メンテナンスを終了</button>
+      </div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">メンテナンス予定</div>
+      <div class="muted" style="font-size:.78rem">開始・終了はどちらか片方でも指定できます。開始時刻になると自動でメンテナンスが始まり、終了時刻に自動で解除されます。開始を空欄にした場合は手動で開始し、終了時刻になっても開始しなければ予定は消えます。ロビーなどに予定が表示されます。</div>
+      <label style="font-size:.8rem">開始（空欄＝未定）<input id="devSchedStart" type="datetime-local"></label>
+      <label style="font-size:.8rem">終了（空欄＝未定）<input id="devSchedEnd" type="datetime-local"></label>
+      <input id="devSchedMessage" type="text" maxlength="200" placeholder="予定のメッセージ（任意）">
+      <div style="display:flex;gap:8px">
+        <button id="btnSchedSave" style="width:auto;padding:6px 12px">予定を登録</button>
+        <button id="btnSchedClear" class="alt" style="width:auto;padding:6px 12px">予定を取り消す</button>
+      </div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">全体の権限</div>
+      <div class="muted" style="font-size:.78rem">個人設定が「設定しない」のユーザーに適用されます。一般ユーザーは自分のリプレイだけが対象です。開発者は常にすべて可能です。</div>
+      <div id="devGlobalPerms" class="perm-grid"></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">個人の権限</div>
+      <div class="muted" style="font-size:.78rem">「許可」「禁止」を選ぶと、全体設定に関係なくその設定になります。「設定しない」で全体設定に戻ります。</div>
+      <select id="devUserSelect"></select>
+      <div id="devUserPerms" class="perm-grid"></div>
     </section>
 
     <section id="adminTabReplays" class="admin-section">
@@ -346,6 +391,12 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <button id="btnReplayPlay" style="width:auto">再生 / 一時停止</button>
         <button id="btnReplayStart" class="alt" style="width:auto">先頭</button>
+        <button id="btnReplayBack5" class="alt" style="width:auto">−5秒</button>
+        <button id="btnReplayFwd5" class="alt" style="width:auto">+5秒</button>
+        <button id="btnReplayPrevPiece" class="alt" style="width:auto">◀ミノ</button>
+        <button id="btnReplayNextPiece" class="alt" style="width:auto">ミノ▶</button>
+        <button id="btnReplayPrevFrame" class="alt" style="width:auto">◀コマ</button>
+        <button id="btnReplayNextFrame" class="alt" style="width:auto">コマ▶</button>
         <label for="replaySpeed">速度</label>
         <select id="replaySpeed"><option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="2">2倍</option><option value="4">4倍</option></select>
       </div>
@@ -360,6 +411,7 @@
     </div>
     <section class="admin-section active">
       <p class="muted" style="margin:0">このブラウザに保存したリプレイです（ソロ・対戦）（最大50件、古いものから削除）。</p>
+      <div><button id="btnVsReplayClear" class="danger" style="width:auto;padding:4px 10px;font-size:.78rem">すべて削除</button></div>
       <div id="vsReplayList" style="display:flex;flex-direction:column;gap:6px"></div>
     </section>
   </div>
@@ -413,6 +465,57 @@ let vsRule = { nextMode: 'common', holeChange: 0.3, seed: 12345, posInterval: 33
 let peer = null, conn = null, isHost = false, lastSendPosT = 0;
 let rematchRequested = false, remoteRematchRequested = false;
 let adminMode = false;
+const ADMIN_FALLBACK = { 'replay.view': true, 'player.manage': true, 'password.reset': true };
+const hasPerm = k => isDeveloper() || !!(account && (account.perms ? account.perms[k] : (account.role === 'admin' && ADMIN_FALLBACK[k])));
+let maintenanceActive = false, maintenancePeek = false;
+let maintOffset = 0, maintTimer = null;
+function fmtMaint(iso) {
+  const d = new Date(iso), now = new Date(Date.now() + maintOffset);
+  const t = d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === now.toDateString() ? t : `${d.getMonth() + 1}/${d.getDate()} ${t}`;
+}
+function maintNoticeText(sch) {
+  if (!sch) return '';
+  let txt;
+  if (sch.startAt && sch.endAt) txt = `${fmtMaint(sch.startAt)}〜${fmtMaint(sch.endAt)} にメンテナンスを予定しています`;
+  else if (sch.startAt) txt = `${fmtMaint(sch.startAt)}からメンテナンスを予定しています（終了未定）`;
+  else txt = `メンテナンスを予定しています（開始未定・${fmtMaint(sch.endAt)}終了予定）`;
+  return sch.message ? `${txt} / ${sch.message}` : txt;
+}
+function updateNoticeVisibility() {
+  const n = document.getElementById('maintenanceNotice');
+  const inGame = document.getElementById('gameScreen').classList.contains('active');
+  n.style.display = n.dataset.has && !inGame && !maintenanceActive ? 'block' : 'none';
+}
+function applyMaintenance(m) {
+  if (m && m.serverNow) maintOffset = m.serverNow - Date.now();
+  const on = !!(m && m.on), bypass = isDeveloper() || !!(m && m.bypass) || hasPerm('maintenance.bypass');
+  const block = on && !bypass;
+  document.getElementById('maintenanceMessage').textContent = (m && m.message) || '';
+  document.getElementById('maintenanceEnd').textContent = on ? (m && m.endAt ? `終了予定: ${fmtMaint(m.endAt)}` : '終了時刻は未定です') : '';
+  document.getElementById('maintenanceBanner').style.display = on && bypass ? 'block' : 'none';
+  const sch = m && !m.on ? m.schedule : null, notice = document.getElementById('maintenanceNotice');
+  notice.textContent = maintNoticeText(sch); notice.dataset.has = sch ? '1' : '';
+  const onLoginScreen = document.getElementById('accountScreen').classList.contains('active');
+  const show = block && !(maintenancePeek && onLoginScreen);
+  if (block && !maintenanceActive && document.getElementById('gameScreen').classList.contains('active')) document.getElementById('btnBackToLobby').onclick();
+  maintenanceActive = block;
+  document.getElementById('maintenanceOverlay').style.display = show ? 'flex' : 'none';
+  updateNoticeVisibility();
+  // Re-check right when the schedule starts/ends so the switch happens on time, not up to 30s late.
+  clearTimeout(maintTimer);
+  const target = !m ? null : m.on ? (m.endAt ? Date.parse(m.endAt) : null) : (m.schedule ? Date.parse(m.schedule.startAt || m.schedule.endAt) : null);
+  if (target) maintTimer = setTimeout(pollMaintenance, Math.min(2147483000, Math.max(500, target - (Date.now() + maintOffset) + 700)));
+}
+async function pollMaintenance() {
+  try { const d = await api('/status', undefined, 'GET'); applyMaintenance(d.maintenance); } catch (_) {}
+}
+document.getElementById('btnMaintenanceDev').onclick = () => { maintenancePeek = true; document.getElementById('maintenanceOverlay').style.display = 'none'; };
+setInterval(pollMaintenance, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollMaintenance(); });
+setTimeout(pollMaintenance, 500);
+const isStaff = () => account && (account.role === 'admin' || account.role === 'developer');
+const isDeveloper = () => account && account.role === 'developer';
 let aiGuideEnabled = false;
 let aiSuggestion = null;
 let aiCacheKey = '';
@@ -458,6 +561,7 @@ async function api(path, body, method='POST') {
   if (!apiConfigured()) throw new Error('API_BASEにCloudflare WorkersのURLを設定してください。');
   const res = await fetch(API_BASE.replace(/\/$/, '') + path, { method, headers: { 'Content-Type':'application/json', ...(authToken ? {Authorization:'Bearer '+authToken} : {}) }, ...(body === undefined ? {} : {body:JSON.stringify(body)}) });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 503 && data.maintenance) { maintenancePeek = false; applyMaintenance({ on: true, message: data.error, bypass: false }); }
   if (!res.ok) throw new Error(data.error || `通信エラー (${res.status})`);
   return data;
 }
@@ -502,9 +606,18 @@ async function unpackReplay(str) {
   else throw new Error('未対応のリプレイ形式です。');
   return validateReplay(JSON.parse(json));
 }
+// Replay clock = wall time minus the time the tab was hidden (the game is frozen then, so nothing should be recorded).
+let replayHiddenMs = 0, replayHiddenSince = 0;
+const replayNow = () => performance.now() - replayStartPerf - replayHiddenMs - (replayHiddenSince ? performance.now() - replayHiddenSince : 0);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (!replayHiddenSince) replayHiddenSince = performance.now(); return; }
+  if (replayHiddenSince) { replayHiddenMs += performance.now() - replayHiddenSince; replayHiddenSince = 0; }
+  // Don't let the frozen time turn into an instant gravity step / lock when the tab comes back.
+  lastDropTime = 0; groundedAt = 0;
+});
 function recordReplayPosition() {
   if (!runStartedAt || isEnded || !cur) return;
-  const t = Math.max(0, Math.round(performance.now() - replayStartPerf));
+  const t = Math.max(0, Math.round(replayNow()));
   const last = replayEvents[replayEvents.length - 1];
   if (last && last.length === 5 && last[1] === cur.type && last[2] === cur.x && last[3] === cur.y && last[4] === cur.r) return;
   replayEvents.push([t, cur.type, cur.x, cur.y, cur.r]);
@@ -512,11 +625,11 @@ function recordReplayPosition() {
 function recordReplayLock() {
   if (!runStartedAt || isEnded || !cur) return;
   recordReplayPosition(); // the lock must always carry the final resting pose
-  replayEvents.push([Math.max(0, Math.round(performance.now() - replayStartPerf)), 'L']);
+  replayEvents.push([Math.max(0, Math.round(replayNow())), 'L']);
 }
 function recordReplayGarbage(holes) {
   if (!runStartedAt || !holes.length) return;
-  replayEvents.push([Math.max(0, Math.round(performance.now() - replayStartPerf)), 'G', holes]);
+  replayEvents.push([Math.max(0, Math.round(replayNow())), 'G', holes]);
 }
 // Each side records itself. In VS the guest sends its run to the host.
 // A finished run is uploaded to the cloud silently once the player answers the save prompt (either answer) or starts
@@ -525,7 +638,8 @@ const VS_REPLAY_KEY = 'p2pTetrisVsReplaysV1', VS_REPLAY_MAX = 50, REPLAY_CLOUD_M
 let pendingReplay = null;
 function finishRun(result = 'lose') {
   if (!account || !runStartedAt) return;
-  const run = { name: account.id, result, durationMs: Math.max(0, Math.round(performance.now() - replayStartPerf)), events: replayEvents };
+  const squeezed = squeezeIdle(replayEvents, Math.max(0, Math.round(replayNow())));
+  const run = { name: account.id, result, durationMs: squeezed.durationMs, events: squeezed.events };
   runStartedAt = 0;
   if (isVsMode && !isHost) { sendNet({ type: 'REPLAY', round: vsRule.round, run }); return; }
   const round = isVsMode ? vsRule.round : null;
@@ -615,13 +729,14 @@ async function requireLogin() {
   try {
     const data = await api('/me', undefined, 'GET');
     if (!data.allowed) throw new Error('このアカウントは現在プレイできません。');
-    account = { id:data.id, role:data.role };
-    adminMode = account.role === 'admin';
-    document.getElementById('playerLabel').textContent = `ログイン中: ${account.id}`;
-    document.getElementById('adminTemplateControls').style.display = account.role === 'admin' ? 'flex' : 'none';
-    document.getElementById('adminAutoControls').style.display = account.role === 'admin' ? 'flex' : 'none';
-    if (account.role === 'admin') document.getElementById('btnOpenAdmin').style.display = '';
-    document.getElementById('soloBuildableSeedRow').style.display = account.role === 'admin' ? 'flex' : 'none';
+    account = { id:data.id, role:data.role, perms:data.perms || {} };
+    adminMode = isStaff();
+    applyMaintenance(data.maintenance);
+    document.getElementById('playerLabel').textContent = `ログイン中: ${account.id}${account.role === 'developer' ? '（開発者）' : account.role === 'admin' ? '（管理者）' : ''}`;
+    document.getElementById('adminTemplateControls').style.display = isStaff() ? 'flex' : 'none';
+    document.getElementById('adminAutoControls').style.display = isStaff() ? 'flex' : 'none';
+    if (isStaff()) document.getElementById('btnOpenAdmin').style.display = '';
+    document.getElementById('soloBuildableSeedRow').style.display = isStaff() ? 'flex' : 'none';
     switchScreen('lobbyScreen');
   } catch(e) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログイン状態を確認できません: '+e.message); }
 }
@@ -659,6 +774,7 @@ function toast(msg) {
 function switchScreen(screenId) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
+  if (typeof updateNoticeVisibility === 'function') updateNoticeVisibility();
 }
 
 // ==========================================
@@ -1462,7 +1578,7 @@ function initGame() {
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
   isEnded = false; overlayHiddenByComplete = false; autoStatusMessage = ''; groundedAt = 0; lockMoves = 0; lastSendPosT = 0; updateGbBar();
-  if (account) { runStartedAt = Date.now(); replayStartPerf = performance.now(); replayEvents = []; } else { runStartedAt = 0; replayEvents = []; }
+  if (account) { runStartedAt = Date.now(); replayStartPerf = performance.now(); replayHiddenMs = 0; replayHiddenSince = document.hidden ? performance.now() : 0; replayEvents = []; } else { runStartedAt = 0; replayEvents = []; }
   drawHold(); drawNext(); drawGarbagePreview();
 
   rngCallCount = 0;
@@ -2051,7 +2167,7 @@ document.addEventListener('keydown', (e) => {
 }, true);
 renderKeyConfig();
 document.addEventListener('keydown', (e) => {
-  if (rebinding) return;
+  if (rebinding || maintenanceActive) return;
   if (!document.getElementById('gameScreen').classList.contains('active')) return;
   if (e.target instanceof HTMLElement && e.target.matches('input[type="text"],input[type="number"],textarea,select')) return;
   if (!document.getElementById('settingsModal').classList.contains('hidden')) return;
@@ -2111,11 +2227,12 @@ function adminButton(label, onClick, cls) {
 
 function showAdminTab(name) {
   document.querySelectorAll('.admin-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['Players', 'Replays', 'Templates'].forEach(n => document.getElementById('adminTab' + n).classList.toggle('active', n === name));
+  ['Players', 'Replays', 'Templates', 'Dev'].forEach(n => document.getElementById('adminTab' + n).classList.toggle('active', n === name));
   if (name === 'Templates') { stopReplayPlayback(); document.getElementById('replayPlayer').style.display = 'none'; }
   if (name === 'Players') refreshCloudPlayers();
   if (name === 'Replays') refreshCloudReplays();
   if (name === 'Templates') renderTemplateList();
+  if (name === 'Dev') renderDevPanel();
 }
 document.querySelectorAll('.admin-tab').forEach(t => t.addEventListener('click', () => showAdminTab(t.dataset.tab)));
 
@@ -2126,12 +2243,78 @@ function mountReplayPlayer(screenId) {
   player.style.display = 'none';
 }
 function openAdminScreen() {
-  if (account?.role !== 'admin') return;
+  if (!isStaff()) return;
   if (autoBuildRunning) stopAutoBuild('自動積み停止');
   mountReplayPlayer('adminScreen');
   switchScreen('adminScreen');
-  showAdminTab('Players');
+  const vis = { Players: hasPerm('player.manage'), Replays: hasPerm('replay.view'), Templates: true, Dev: isDeveloper() };
+  document.querySelectorAll('.admin-tab').forEach(t => { t.style.display = vis[t.dataset.tab] ? '' : 'none'; });
+  showAdminTab(['Players', 'Replays', 'Templates'].find(n => vis[n]));
 }
+let devPermData = null;
+const OV_LABEL = { '': '設定しない（全体に従う）', 'true': '許可', 'false': '禁止' };
+async function renderDevPanel() {
+  const st = document.getElementById('devMaintStatus');
+  try {
+    const s = await api('/status', undefined, 'GET');
+    const mm = s.maintenance; maintOffset = mm.serverNow ? mm.serverNow - Date.now() : maintOffset;
+    st.textContent = mm.on ? `現在: メンテナンス中（${mm.endAt ? '終了予定 ' + fmtMaint(mm.endAt) : '終了未定'}）` : mm.schedule ? `現在: 通常運用中 / 予定あり: ${maintNoticeText(mm.schedule)}` : '現在: 通常運用中（予定なし）';
+    devPermData = await api('/dev/permissions', undefined, 'GET');
+  } catch (e) { st.textContent = e.message; return; }
+  const g = document.getElementById('devGlobalPerms');
+  g.replaceChildren();
+  for (const t of ['項目', '管理者', '一般']) { const h = document.createElement('div'); h.style.fontWeight = '700'; h.textContent = t; g.append(h); }
+  for (const p of devPermData.perms) {
+    const l = document.createElement('div'); l.textContent = p.label; g.append(l);
+    for (const role of ['admin', 'player']) {
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!devPermData.global[role][p.key];
+      cb.onchange = async () => {
+        try { await api('/dev/permissions/global', { role, perm: p.key, allowed: cb.checked }); devPermData.global[role][p.key] = cb.checked; toast('全体設定を保存しました'); }
+        catch (e) { cb.checked = !cb.checked; alert(e.message); }
+      };
+      g.append(cb);
+    }
+  }
+  const sel = document.getElementById('devUserSelect'), keep = sel.value;
+  sel.replaceChildren(...devPermData.users.map(u => new Option(`${u.id}（${u.role === 'admin' ? '管理者' : '一般'}）`, u.id)));
+  if (devPermData.users.some(u => u.id === keep)) sel.value = keep;
+  renderDevUserPerms();
+}
+function renderDevUserPerms() {
+  const box = document.getElementById('devUserPerms'); box.replaceChildren();
+  const u = devPermData && devPermData.users.find(x => x.id === document.getElementById('devUserSelect').value);
+  if (!u) { box.textContent = 'ユーザーがいません'; return; }
+  for (const p of devPermData.perms) {
+    const l = document.createElement('div'); l.textContent = p.label; box.append(l);
+    const eff = document.createElement('select');
+    for (const k of ['', 'true', 'false']) eff.append(new Option(OV_LABEL[k], k));
+    eff.value = p.key in u.overrides ? String(u.overrides[p.key]) : '';
+    eff.onchange = async () => {
+      const v = eff.value === '' ? null : eff.value === 'true';
+      try { await api('/dev/permissions/user/' + encodeURIComponent(u.id), { perm: p.key, allowed: v }); if (v === null) delete u.overrides[p.key]; else u.overrides[p.key] = v; toast('個人設定を保存しました'); }
+      catch (e) { eff.value = p.key in u.overrides ? String(u.overrides[p.key]) : ''; alert(e.message); }
+    };
+    box.append(eff, document.createElement('span'));
+  }
+}
+document.getElementById('devUserSelect').onchange = renderDevUserPerms;
+async function setMaintenance(on) {
+  const msg = document.getElementById('devMaintMessage').value.trim();
+  if (on && !confirm('メンテナンスを開始します。全員にメンテナンス画面が表示され、プレイ中のユーザーはロビーに戻されます。よろしいですか？')) return;
+  try { await api('/dev/maintenance', { on, message: msg }); toast(on ? 'メンテナンスを開始しました' : 'メンテナンスを終了しました'); renderDevPanel(); pollMaintenance(); }
+  catch (e) { alert(e.message); }
+}
+const toIsoLocal = v => v ? new Date(v).toISOString() : null;
+async function saveSchedule(clear) {
+  const body = clear ? { startAt: null, endAt: null } : { startAt: toIsoLocal(document.getElementById('devSchedStart').value), endAt: toIsoLocal(document.getElementById('devSchedEnd').value), message: document.getElementById('devSchedMessage').value.trim() };
+  if (!clear && !body.startAt && !body.endAt) return alert('開始か終了のどちらかは指定してください');
+  try { await api('/dev/maintenance/schedule', body); toast(clear ? '予定を取り消しました' : '予定を登録しました'); if (clear) ['devSchedStart', 'devSchedEnd', 'devSchedMessage'].forEach(id => document.getElementById(id).value = ''); renderDevPanel(); pollMaintenance(); }
+  catch (e) { alert(e.message); }
+}
+document.getElementById('btnSchedSave').onclick = () => saveSchedule(false);
+document.getElementById('btnSchedClear').onclick = () => saveSchedule(true);
+document.getElementById('btnMaintOn').onclick = () => setMaintenance(true);
+document.getElementById('btnMaintOff').onclick = () => setMaintenance(false);
 document.getElementById('btnOpenAdmin').onclick = openAdminScreen;
 document.getElementById('btnAdminBack').onclick = () => { stopReplayPlayback(); switchScreen('lobbyScreen'); };
 
@@ -2171,7 +2354,7 @@ function makeReplayRow(r, showPlayer, onChanged) {
       try { const x = await api('/admin/replays/' + encodeURIComponent(r.replayId), undefined, 'GET'); await navigator.clipboard.writeText(x.replayData); document.getElementById('replayPaste').value = x.replayData; toast('リプレイデータをコピーしました'); }
       catch (e) { alert(e.message); }
     }, 'alt'),
-    adminButton('削除', async () => { if (await deleteCloudReplay(r)) onChanged(); }, 'danger')
+    ...(hasPerm('replay.delete') ? [adminButton('削除', async () => { if (await deleteCloudReplay(r)) onChanged(); }, 'danger')] : [])
   );
   row.append(label, actions);
   return row;
@@ -2203,10 +2386,10 @@ async function refreshCloudPlayers() {
       actions.append(
         approve,
         adminButton(p.allowed ? 'プレイ禁止' : 'プレイ許可', async () => { try { await api('/admin/players/' + encodeURIComponent(p.id), { allowed: !p.allowed }); refreshCloudPlayers(); } catch (e) { alert(e.message); } }, 'alt'),
-        adminButton('PW再発行', async () => { try { const x = await api('/admin/reset-password/' + encodeURIComponent(p.id), {}); alert(`${p.id} の新パスワード: ${x.password}`); } catch (e) { alert(e.message); } }, 'alt'),
+        ...(!hasPerm('password.reset') ? [] : [adminButton('PW再発行', async () => { try { const x = await api('/admin/reset-password/' + encodeURIComponent(p.id), {}); alert(`${p.id} の新パスワード: ${x.password}`); } catch (e) { alert(e.message); } }, 'alt')]),
         adminButton(`リプレイ (${replays.length})`, () => sub.classList.toggle('open'), 'alt')
       );
-      if (p.id !== account?.id && p.role !== 'admin') {
+      if (hasPerm('player.delete') && p.id !== account?.id && p.role !== 'admin') {
         actions.append(adminButton('ID削除', async () => {
           if (!confirm(`ID「${p.id}」を削除しますか？\nこのIDが保存したリプレイ${ownReplays.length}件も削除されます。\n同じIDは再登録でき、再登録後は再承認が必要です。`)) return;
           try {
@@ -2336,9 +2519,32 @@ function drawReplayFrame() {
   document.getElementById('replaySeek').value=String(Math.round((replayClockMs/duration)*1000));
   document.getElementById('replayStatus').textContent=`${(replayClockMs/1000).toFixed(2)}秒 / ${(duration/1000).toFixed(2)}秒`;
 }
+// Old recordings contain the time the tab was in the background as one long idle stretch; squeeze it away.
+const REPLAY_IDLE_MAX_MS = 2000, REPLAY_IDLE_KEEP_MS = 200;
+function squeezeIdle(events, durationMs) {
+  let shift = 0, prev = 0;
+  const out = events.map(e => {
+    const gap = e[0] - prev; prev = e[0];
+    if (gap > REPLAY_IDLE_MAX_MS) shift += gap - REPLAY_IDLE_KEEP_MS;
+    return [e[0] - shift, ...e.slice(1)];
+  });
+  const tail = durationMs - prev;
+  if (tail > REPLAY_IDLE_MAX_MS) shift += tail - REPLAY_IDLE_KEEP_MS;
+  return { events: out, durationMs: Math.max(0, durationMs - shift) };
+}
+let replayMarks = { all: [], locks: [] };
+function buildReplayMarks() {
+  const all = new Set(), locks = new Set();
+  for (const p of currentReplay.players) for (const e of p.events || []) { all.add(e[0]); if (e.length === 2) locks.add(e[0]); }
+  replayMarks = { all: [...all].sort((a, b) => a - b), locks: [...locks].sort((a, b) => a - b) };
+}
 async function loadReplayText(text, fallbackName) {
   stopReplayPlayback();
   currentReplay=await unpackReplay(text.trim());
+  let maxDur = 0;
+  currentReplay.players = currentReplay.players.map(p => { const q = squeezeIdle(p.events || [], p.durationMs || currentReplay.durationMs || 0); maxDur = Math.max(maxDur, q.durationMs); return { ...p, events: q.events, durationMs: q.durationMs }; });
+  currentReplay.durationMs = Math.max(maxDur, 1);
+  buildReplayMarks();
   if(currentReplay.mode!=='vs') document.getElementById('replayTitle').textContent='';
   replayClockMs=0;setupReplayBoards(fallbackName);document.getElementById('replayPlayer').style.display='flex';drawReplayFrame();
 }
@@ -2346,10 +2552,15 @@ function stopReplayPlayback(){replayPlaying=false;if(replayTimer){clearInterval(
 function replayTick(){
   if(!replayPlaying||!currentReplay)return;
   const speed=Number(document.getElementById('replaySpeed').value)||1;
-  const now=performance.now();replayClockMs+=(now-replayLastWall)*speed;replayLastWall=now;
+  const now=performance.now();replayClockMs+=Math.min(now-replayLastWall,100)*speed;replayLastWall=now;
   replayClockMs=Math.min(currentReplay.durationMs,replayClockMs);drawReplayFrame();
   if(replayClockMs>=currentReplay.durationMs)stopReplayPlayback();
 }
+let replayResumeOnShow=false;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ if(replayPlaying){ replayResumeOnShow=true; stopReplayPlayback(); } return; }
+  if(replayResumeOnShow){ replayResumeOnShow=false; if(currentReplay){ replayPlaying=true; replayLastWall=performance.now(); replayTimer=setInterval(replayTick,16); } }
+});
 document.getElementById('btnReplayLoad').onclick=()=>loadReplayText(document.getElementById('replayPaste').value).catch(e=>alert('読み込み失敗: '+e.message));
 document.getElementById('btnReplayPlay').onclick=()=>{
   if(replayPlaying){stopReplayPlayback();return;}
@@ -2358,6 +2569,20 @@ document.getElementById('btnReplayPlay').onclick=()=>{
   replayPlaying=true;replayLastWall=performance.now();replayTimer=setInterval(replayTick,16);
 };
 document.getElementById('btnReplayStart').onclick=()=>{stopReplayPlayback();replayClockMs=0;drawReplayFrame();};
+function replayJump(list, dir) {
+  if (!currentReplay) return;
+  stopReplayPlayback();
+  const t = replayClockMs, eps = 0.5;
+  const target = dir > 0 ? list.find(x => x > t + eps) : [...list].reverse().find(x => x < t - eps);
+  replayClockMs = target !== undefined ? target : (dir > 0 ? currentReplay.durationMs : 0);
+  drawReplayFrame();
+}
+document.getElementById('btnReplayBack5').onclick = () => { if (!currentReplay) return; stopReplayPlayback(); replayClockMs -= 5000; drawReplayFrame(); };
+document.getElementById('btnReplayFwd5').onclick = () => { if (!currentReplay) return; stopReplayPlayback(); replayClockMs += 5000; drawReplayFrame(); };
+document.getElementById('btnReplayPrevPiece').onclick = () => replayJump(replayMarks.locks, -1);
+document.getElementById('btnReplayNextPiece').onclick = () => replayJump(replayMarks.locks, 1);
+document.getElementById('btnReplayPrevFrame').onclick = () => replayJump(replayMarks.all, -1);
+document.getElementById('btnReplayNextFrame').onclick = () => replayJump(replayMarks.all, 1);
 document.getElementById('replaySeek').addEventListener('input',e=>{
   stopReplayPlayback();if(!currentReplay)return;
   replayClockMs=currentReplay.durationMs*(Number(e.target.value)/1000);drawReplayFrame();
@@ -2370,13 +2595,20 @@ function renderVsReplayList() {
   for(const r of list){
     const row=document.createElement('div');row.className='admin-row';
     const label=document.createElement('div');
-    label.textContent=`${r.mode==='solo'?'ソロ':r.names.join(' vs ')} · ${new Date(r.savedAt).toLocaleString()} · ${(r.durationMs/1000).toFixed(1)}秒`;
+    const kind=r.mode==='solo'?'ソロ':r.names.join(' vs ');label.textContent=`${r.title?r.title+' · ':''}${kind} · ${new Date(r.savedAt).toLocaleString()} · ${(r.durationMs/1000).toFixed(1)}秒`;
     const actions=document.createElement('div');actions.className='actions';
     actions.append(
       adminButton('再生',async()=>{
-        try{await loadReplayText(r.data);document.getElementById('replayTitle').textContent=`${r.names.join(' vs ')} · ${new Date(r.savedAt).toLocaleString()}`;document.getElementById('replayPlayer').scrollIntoView({behavior:'smooth',block:'start'});}
+        try{await loadReplayText(r.data);document.getElementById('replayTitle').textContent=`${r.title||r.names.join(' vs ')} · ${new Date(r.savedAt).toLocaleString()}`;document.getElementById('replayPlayer').scrollIntoView({behavior:'smooth',block:'start'});}
         catch(e){alert(e.message);}
       }),
+      adminButton('名前変更',()=>{
+        const v=prompt('リプレイの名前（空欄で解除、40文字まで）',r.title||'');
+        if(v===null)return;
+        const list=loadVsReplays().map(x=>x.id===r.id?{...x,title:v.trim().slice(0,40)}:x);
+        try{localStorage.setItem(VS_REPLAY_KEY,JSON.stringify(list));}catch(_){}
+        renderVsReplayList();
+      },'alt'),
       adminButton('データをコピー',async()=>{try{await navigator.clipboard.writeText(r.data);toast('リプレイデータをコピーしました');}catch(e){alert(e.message);}},'alt'),
       adminButton('削除',()=>{
         if(!confirm(`${r.names.join(' vs ')} のリプレイを削除しますか？`))return;
@@ -2387,6 +2619,12 @@ function renderVsReplayList() {
     row.append(label,actions);root.append(row);
   }
 }
+document.getElementById('btnVsReplayClear').onclick=()=>{
+  const n=loadVsReplays().length;
+  if(!n||!confirm(`保存したリプレイ${n}件をすべて削除しますか？（このブラウザの分のみ）`))return;
+  try{localStorage.removeItem(VS_REPLAY_KEY);}catch(_){}
+  stopReplayPlayback();document.getElementById('replayPlayer').style.display='none';renderVsReplayList();
+};
 document.getElementById('btnOpenVsReplays').onclick=()=>{mountReplayPlayer('vsReplayScreen');switchScreen('vsReplayScreen');renderVsReplayList();};
 document.getElementById('btnVsReplayBack').onclick=()=>{stopReplayPlayback();switchScreen('lobbyScreen');};
 
