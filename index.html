@@ -36,7 +36,7 @@
       padding: 10px; border-radius: 6px; border: none; background: var(--accent);
       color: #11111b; font-weight: bold; cursor: pointer; font-size: 1rem; width: 100%;
     }
-    /* ボタンの文字が縦書きに潰れないようにする */
+    /* ボタンの文字が縦書きに潰れないようにする（横に並べた時の最低幅） */
     button { writing-mode: horizontal-tb; }
     .lobby-card button { min-width: 6em; }
     button.alt { background: #45475a; color: #fff; }
@@ -58,6 +58,9 @@
     #aiGuideStatus { min-height: 18px; width: 100%; text-align: center; color: #a6e3a1; font-size: .72rem; font-weight: 700; margin-top: 3px; }
     #holdCanvas { width: 50px; height: 50px; }
     #nextCanvas { width: 50px; height: 250px; }
+    .room-item { display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:.85rem; }
+    .room-item .room-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .room-item button { width:auto; min-width:5em; padding:6px 12px; }
     .opp-boards { display:none; flex-direction:column; gap:6px; margin-left:4px; }
     .opp-boards.active { display:flex; }
     .opp-box { display:flex; flex-direction:column; align-items:center; background:var(--panel); padding:4px; border-radius:8px; border:1px solid var(--border); }
@@ -196,18 +199,28 @@
       <button id="btnLogout" class="alt">ログアウト</button>
       <button id="btnOpenAdmin" class="alt" style="display:none">管理者メニュー</button>
       <h2>オンライン対戦</h2>
-      <div style="display:flex; gap:6px; align-items:center;">
+      <div style="display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center;">
         <label for="roomMax" style="font-size:.8rem;color:var(--sub);white-space:nowrap">対戦人数</label>
         <select id="roomMax" style="width:auto;flex:0 0 auto;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option></select>
-        <button id="btnCreateRoom" class="alt" style="flex:1 1 auto;min-width:0;white-space:nowrap">部屋を作る</button>
+        <label for="roomVisibility" style="font-size:.8rem;color:var(--sub);white-space:nowrap">公開設定</label>
+        <select id="roomVisibility" style="width:auto;flex:0 0 auto;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="private">非公開</option><option value="public">公開</option></select>
       </div>
+      <button id="btnCreateRoom" class="alt" style="white-space:nowrap">部屋を作る</button>
       <div style="display:flex; gap:6px;">
         <input type="number" id="roomInput" placeholder="5桁コード">
         <button id="btnJoinRoom" style="width: 120px;">参加する</button>
       </div>
+      <div id="roomListBox" style="display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:.85rem;font-weight:700">公開中の部屋</span>
+          <button id="btnRoomListRefresh" class="alt" style="width:auto;min-width:0;padding:4px 12px;font-size:.75rem">更新</button>
+        </div>
+        <div id="roomList" style="display:flex;flex-direction:column;gap:4px"></div>
+      </div>
       <div id="roomPanel" style="display:none;flex-direction:column;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:.85rem">
         <div id="roomCodeLabel" style="font-weight:700"></div>
         <div id="roomCount" style="color:var(--sub)"></div>
+        <label id="roomPublicRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><input id="roomPublicToggle" type="checkbox" style="width:auto"> 部屋一覧に公開する</label>
         <div id="roomRoster" style="display:flex;flex-direction:column;gap:2px"></div>
         <div id="roomHint" style="font-size:.75rem;color:var(--sub)"></div>
         <button id="btnStartMatch">対戦開始</button>
@@ -891,7 +904,7 @@ async function requireLogin() {
   if (!authToken) { switchScreen('accountScreen'); return; }
   try {
     const data = await api('/me', undefined, 'GET');
-    if (!data.allowed) throw new Error('このアカウントでは現在プレイできません。');
+    if (!data.allowed) throw new Error('このアカウントは現在プレイできません。');
     account = { id:data.id, role:data.role, perms:data.perms || {} };
     eventToken = data.rev || '';
     applySessionLabels();
@@ -936,6 +949,7 @@ function switchScreen(screenId) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
   if (typeof updateNoticeVisibility === 'function') updateNoticeVisibility();
+  if (screenId === 'lobbyScreen' && typeof roomListLoop === 'function') setTimeout(roomListLoop, 0);
 }
 
 // ==========================================
@@ -984,6 +998,7 @@ document.getElementById('btnSetupAdmin').onclick = async () => {
 // ゲスト同士は直接つながらず、全員がホストに接続します。ホストが盤面・攻撃・脱落・結果を中継します。
 // おじゃまは「全員に均等」: 攻撃ラインは、生き残っている自分以外の全員にそのまま届きます。
 const MAX_ROOM = 4;
+let roomPublic = false, roomAnnounceTimer = null, roomListToken = '', roomListRunning = false;
 let guests = [];                 // host only: [{conn, seat, name, alive, wantsRematch}]
 let mySeat = 0, myPlace = 0, roomMax = 2, roomState = 'idle', roomCode = '';
 let vsRoster = [], waitingRoster = [], rematchReady = [], rematchTotal = 0, rankingSummary = '';
@@ -1002,11 +1017,14 @@ function renderRoomPanel() {
   const panel = document.getElementById('roomPanel');
   const inRoom = !!peer && roomState === 'waiting';
   panel.style.display = inRoom ? 'flex' : 'none';
-  for (const id of ['btnCreateRoom', 'btnJoinRoom', 'roomMax', 'roomInput']) document.getElementById(id).disabled = !!peer;
+  document.getElementById('roomListBox').style.display = peer ? 'none' : 'flex';
+  for (const id of ['btnCreateRoom', 'btnJoinRoom', 'roomMax', 'roomVisibility', 'roomInput']) document.getElementById(id).disabled = !!peer;
   if (!inRoom) return;
   const list = isHost ? [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name }))] : waitingRoster;
   document.getElementById('roomCodeLabel').textContent = `部屋コード: ${roomCode}`;
-  document.getElementById('roomCount').textContent = `参加者 ${list.length} / ${roomMax}人`;
+  document.getElementById('roomCount').textContent = `参加者 ${list.length} / ${roomMax}人${isHost ? (roomPublic ? '・公開中' : '・非公開') : ''}`;
+  const pubRow = document.getElementById('roomPublicRow'); pubRow.style.display = isHost ? 'flex' : 'none';
+  document.getElementById('roomPublicToggle').checked = roomPublic;
   document.getElementById('roomRoster').replaceChildren(...list.map(p => { const d = document.createElement('div'); d.textContent = `${p.name}${p.seat === 0 ? '（ホスト）' : ''}${p.seat === mySeat && !isHost ? '（あなた）' : ''}`; return d; }));
   const start = document.getElementById('btnStartMatch');
   start.style.display = isHost ? '' : 'none';
@@ -1019,6 +1037,7 @@ function renderRoomPanel() {
 }
 function leaveRoom() {
   const p = peer;
+  stopRoomAnnounce();
   peer = null; conn = null; guests = []; isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = '';
   if (p) { try { p.destroy(); } catch (_) {} }
   oppView.clear();
@@ -1026,6 +1045,68 @@ function leaveRoom() {
   renderRoomPanel();
   document.getElementById('netStatus').textContent = 'オフライン待機中';
 }
+// ---- public room directory (host side): announce while waiting, remove when the match starts or the room closes ----
+function roomCountNow() { return 1 + guests.filter(g => g.conn && g.conn.open).length; }
+function announceRoom() {
+  if (!isHost || !roomPublic || roomState !== 'waiting' || !authToken) return;
+  api('/rooms/announce', { code: roomCode, max: roomMax, count: roomCountNow(), state: 'waiting' }).catch(() => {});
+}
+function startRoomAnnounce() {
+  clearInterval(roomAnnounceTimer);
+  if (!roomPublic) return;
+  announceRoom();
+  roomAnnounceTimer = setInterval(announceRoom, 12000);   // the directory drops rooms that stay silent for ~35 s
+}
+function stopRoomAnnounce() {
+  clearInterval(roomAnnounceTimer); roomAnnounceTimer = null;
+  if (roomPublic && roomCode && authToken) api('/rooms/close', { code: roomCode }).catch(() => {});
+  roomPublic = false;
+}
+document.getElementById('roomPublicToggle').onchange = (e) => {
+  if (!isHost || roomState !== 'waiting') { e.target.checked = roomPublic; return; }
+  if (e.target.checked) { roomPublic = true; startRoomAnnounce(); toast('部屋を公開しました'); }
+  else { stopRoomAnnounce(); toast('部屋を非公開にしました'); }
+  renderRoomPanel();
+};
+
+// ---- public room list (lobby) ----
+function renderRoomList(rooms) {
+  const box = document.getElementById('roomList');
+  if (!rooms.length) { const d = document.createElement('div'); d.style.cssText = 'font-size:.8rem;color:var(--sub);text-align:center;padding:6px'; d.textContent = '公開中の部屋はありません'; box.replaceChildren(d); return; }
+  box.replaceChildren(...rooms.map(r => {
+    const row = document.createElement('div'); row.className = 'room-item';
+    const name = document.createElement('span'); name.className = 'room-name'; name.textContent = `${cleanName(r.host)}　${r.count}/${r.max}人`;
+    const btn = document.createElement('button'); btn.textContent = '参加';
+    btn.onclick = () => { if (peer) return; document.getElementById('roomInput').value = r.code; document.getElementById('btnJoinRoom').onclick(); };
+    row.append(name, btn); return row;
+  }));
+}
+async function refreshRoomList(force) {
+  if (force) roomListToken = '';
+  const d = await api('/rooms?since=' + encodeURIComponent(roomListToken), undefined, 'GET');
+  roomListToken = d.token || '';
+  if (d.changed !== false) renderRoomList(d.rooms || []);
+  return d;
+}
+const lobbyActive = () => document.getElementById('lobbyScreen').classList.contains('active') && !peer;
+async function roomListLoop() {
+  if (roomListRunning) return;
+  roomListRunning = true;
+  let fails = 0;
+  try {
+    while (authToken && account && lobbyActive()) {
+      if (document.hidden) { await waitVisible(); continue; }
+      const t0 = Date.now();
+      try {
+        const d = await refreshRoomList(false);
+        fails = 0;
+        if (d.retryMs) await new Promise(r => setTimeout(r, d.retryMs));
+        else if (Date.now() - t0 < 1000) await new Promise(r => setTimeout(r, 1000 - (Date.now() - t0)));
+      } catch (e) { fails++; await new Promise(r => setTimeout(r, Math.min(30000, 2000 * fails))); }
+    }
+  } finally { roomListRunning = false; }
+}
+document.getElementById('btnRoomListRefresh').onclick = () => refreshRoomList(true).catch(() => toast('部屋一覧を取得できませんでした'));
 document.getElementById('btnLeaveRoom').onclick = leaveRoom;
 document.getElementById('btnStartMatch').onclick = () => startMatchAsHost();
 
@@ -1037,7 +1118,9 @@ document.getElementById('btnCreateRoom').onclick = () => {
   peer = new Peer('wtvs-' + roomCode);
   peer.on('open', () => {
     isHost = true; roomState = 'waiting';
-    document.getElementById('netStatus').textContent = `部屋を作成しました（最大${roomMax}人）`;
+    roomPublic = document.getElementById('roomVisibility').value === 'public';
+    document.getElementById('netStatus').textContent = `部屋を作成しました（最大${roomMax}人・${roomPublic ? '公開' : '非公開'}）`;
+    startRoomAnnounce();
     toast(`部屋コード: ${roomCode} を共有してください`);
     renderRoomPanel();
   });
@@ -1056,7 +1139,7 @@ document.getElementById('btnJoinRoom').onclick = () => {
   roomCode = code; roomState = 'joining'; isHost = false;
   peer = new Peer();
   peer.on('open', () => { conn = peer.connect('wtvs-' + code); setupGuestConn(); });
-  peer.on('error', () => { if (roomState === 'joining') { toast('部屋が見つかりませんでした'); leaveRoom(); } });
+  peer.on('error', () => { if (roomState === 'joining') { toast('部屋が見つかりませんでした'); leaveRoom(); refreshRoomList(true).catch(() => {}); } });
   renderRoomPanel();
 };
 
@@ -1124,6 +1207,7 @@ function sendRoster() {
   const players = [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name }))];
   for (const g of guests) safeSend(g.conn, { type: 'ROSTER', max: roomMax, players, you: g.seat });
   renderRoomPanel();
+  announceRoom();
 }
 function newRound() {
   vsRule.seed = Math.floor(Math.random() * 1000000);
@@ -1133,6 +1217,7 @@ function startMatchAsHost() {
   if (!isHost || roomState !== 'waiting') return;
   guests = guests.filter(g => g.conn && g.conn.open); assignSeats();
   if (!guests.length) { toast('2人以上で開始できます'); sendRoster(); return; }
+  stopRoomAnnounce();   // a started match is no longer joinable: take it off the list
   newRound();
   vsRule.nextMode = document.getElementById('cfgNextMode').value;
   vsRule.holeChange = parseFloat(document.getElementById('cfgHoleChange').value);
