@@ -148,18 +148,19 @@
     .admin-sub.open { display:flex; }
     .muted { font-size:.8rem; color:var(--sub); }
     #toast {
-      position: fixed; top: 15px; background: #a6e3a1; color: #11111b;
+      position: fixed; top: calc(var(--notice-h, 0px) + 15px); background: #a6e3a1; color: #11111b;
       padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.85rem;
-      opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 200;
+      opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 10000;
     }
   </style>
 </head>
 <body>
   <div id="maintenanceOverlay" role="alertdialog" aria-live="assertive">
-    <h2>メンテナンス中です</h2>
-    <div>現在プレイできません。終了までしばらくお待ちください。</div>
+    <h2 id="maintenanceTitle">メンテナンス中です</h2>
+    <div id="maintenanceBody">現在プレイできません。終了までしばらくお待ちください。</div>
     <div id="maintenanceMessage" class="muted"></div>
     <div id="maintenanceEnd" class="muted"></div>
+    <button id="btnMaintenanceReload" style="display:none;width:auto;padding:8px 22px">再読み込みして続ける</button>
     <button id="btnMaintenanceDev" class="alt" style="width:auto;padding:4px 12px;font-size:.75rem">開発者の方はこちら</button>
   </div>
   <div id="maintenanceNotice"></div>
@@ -210,6 +211,16 @@
         <input type="number" id="roomInput" placeholder="5桁コード">
         <button id="btnJoinRoom" style="width: 120px;">参加する</button>
       </div>
+      <div id="cpuBox" style="display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px;">
+        <span style="font-size:.85rem;font-weight:700">COMと対戦</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;">
+          <label for="cpuLevel" style="font-size:.8rem;color:var(--sub);white-space:nowrap">強さ</label>
+          <select id="cpuLevel" style="width:auto;flex:0 1 auto;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"></select>
+          <label for="cpuCount" style="font-size:.8rem;color:var(--sub);white-space:nowrap">人数</label>
+          <select id="cpuCount" style="width:auto;flex:0 0 auto;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="1">1体</option><option value="2">2体</option><option value="3">3体</option></select>
+        </div>
+        <button id="btnCpuMatch" class="alt" style="white-space:nowrap">COMと対戦開始</button>
+      </div>
       <div id="roomListBox" style="display:flex;flex-direction:column;gap:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="font-size:.85rem;font-weight:700">公開中の部屋</span>
@@ -220,6 +231,7 @@
       <div id="roomPanel" style="display:none;flex-direction:column;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:.85rem">
         <div id="roomCodeLabel" style="font-weight:700"></div>
         <div id="roomCount" style="color:var(--sub)"></div>
+        <div id="roomCpuRow" style="display:none;align-items:center;gap:6px;flex-wrap:wrap"><select id="roomCpuLevel" style="width:auto;flex:0 0 auto;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 6px"></select><button id="btnAddCpu" class="alt" style="width:auto;min-width:0;padding:6px 12px;white-space:nowrap">COMを追加</button></div>
         <label id="roomPublicRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><input id="roomPublicToggle" type="checkbox" style="width:auto"> 部屋一覧に公開する</label>
         <div id="roomRoster" style="display:flex;flex-direction:column;gap:2px"></div>
         <div id="roomHint" style="font-size:.75rem;color:var(--sub)"></div>
@@ -398,6 +410,20 @@
       <div class="muted" style="font-size:.78rem">保存先のGistがSecretでないもの（公開）を探し、Secretで作り直します。GitHubは公開設定を後から変更できないため、作り直し後は古いGistを削除します。</div>
       <div id="gistFixStatus" style="font-size:.85rem"></div>
       <div style="display:flex;gap:8px"><button id="btnGistAudit" class="alt" style="flex:1">点検だけ行う</button><button id="btnGistFix" class="danger" style="flex:1">公開のものをSecretに直す</button></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">COMの性能設定</div>
+      <div class="muted" style="font-size:.78rem">レベルごとに、速さ・先読み・最善手率・T-spin・パフェ・派生などを変更できます。「保存」すると、全員のCOMに反映されます。保存前に「試運転」で目安を確認できます。</div>
+      <select id="cpuDevLevel"></select>
+      <div id="cpuDevParams" style="display:grid;grid-template-columns:1fr 96px;gap:6px 10px;align-items:center;font-size:.8rem"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btnCpuSave" style="flex:1;min-width:8em">保存（全員に反映）</button>
+        <button id="btnCpuTest" class="alt" style="flex:1;min-width:6em">試運転</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btnCpuResetLv" class="alt" style="flex:1;min-width:8em">このレベルを初期値に</button>
+        <button id="btnCpuResetAll" class="danger" style="flex:1;min-width:8em">すべて初期値に（保存も消す）</button>
+      </div>
+      <div id="cpuDevStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
     </section>
 
     <section id="adminTabReplays" class="admin-section">
@@ -459,6 +485,7 @@
 ....T.....
 ..TTT....." style="width:100%;box-sizing:border-box;font-family:monospace"></textarea>
       <label style="display:flex;align-items:center;gap:8px"><input id="templateMirror" type="checkbox" checked style="width:auto"> 左右反転パターンも自動生成</label>
+      <label style="display:flex;align-items:center;gap:8px"><input id="templatePc" type="checkbox" style="width:auto"> パフェ積み（COMは「パフェができる時だけ」組む）</label>
       <label for="templatePriority" style="display:flex;align-items:center;gap:8px">優先度（大きいほど選ばれやすい）<input id="templatePriority" type="number" min="-999" max="999" step="1" value="10" style="width:80px"></label>
       <div style="display:flex;gap:8px"><button id="btnAddTemplate" style="flex:1 1 auto;width:auto;min-width:0">テンプレ追加</button><button id="btnCancelTemplateEdit" class="alt" style="display:none;flex:0 0 auto;width:auto;white-space:nowrap">編集をやめる</button></div>
     </section>
@@ -481,6 +508,19 @@
         <select id="replaySpeed"><option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="2">2倍</option><option value="4">4倍</option></select>
       </div>
     </section>
+  </div>
+
+  <!-- 共有URLで開くリプレイ再生ページ（ログイン不要） -->
+  <div id="watchScreen" class="screen">
+    <div class="lobby-card" style="max-width:100%">
+      <h2 id="watchTitle">リプレイ</h2>
+      <div id="watchInfo" style="font-size:.8rem;color:var(--sub)"></div>
+      <div id="watchError" style="color:#f38ba8"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btnWatchVideo" class="alt" style="width:auto;min-width:0">動画に変換</button>
+        <button id="btnWatchSite" class="alt" style="width:auto;min-width:0">サイトを開く</button>
+      </div>
+    </div>
   </div>
 
   <!-- 対戦リプレイ画面（ホストのブラウザに保存） -->
@@ -552,7 +592,7 @@ let config = { das: 150, arr: 30, sd: 20 };
 let vsRule = { nextMode: 'common', holeChange: 0.3, seed: 12345, posInterval: 33 };
 let peer = null, conn = null, isHost = false, lastSendPosT = 0;
 let rematchRequested = false;
-let adminMode = false;
+let adminMode = false, watchMode = false, watchData = null;
 const ADMIN_MENU_PERMS = ['replay.view', 'replay.delete', 'player.manage', 'player.delete', 'password.reset', 'role.promote'];
 const ADMIN_FALLBACK = { 'replay.view': true, 'player.manage': true, 'password.reset': true };
 const hasPerm = k => isDeveloper() || !!(account && (account.perms ? account.perms[k] : (account.role === 'admin' && ADMIN_FALLBACK[k])));
@@ -565,7 +605,7 @@ function refreshAdminUi() {
   if (!canOpenAdminMenu()) { stopReplayPlayback(); switchScreen('lobbyScreen'); toast('管理者メニューの権限がなくなりました'); }
   else if (typeof applyAdminTabs === 'function') applyAdminTabs();
 }
-let maintOffset = 0, maintTimer = null;
+let maintOffset = 0, maintTimer = null, maintWasBlocked = false;
 function fmtMaint(iso) {
   const d = new Date(iso), now = new Date(Date.now() + maintOffset);
   const t = d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
@@ -587,23 +627,31 @@ function updateNoticeVisibility() {
   const banner = document.getElementById('maintenanceBanner');
   const h = n.style.display === 'block' ? n.offsetHeight : (banner.style.display === 'block' ? banner.offsetHeight : 0);
   document.getElementById('noticeSpacer').style.height = h + 'px';
+  document.documentElement.style.setProperty('--notice-h', h + 'px');
 }
 window.addEventListener('resize', () => { if (typeof updateNoticeVisibility === 'function') updateNoticeVisibility(); });
 function applyMaintenance(m) {
+  if (watchMode) return;   // 共有リプレイを見るだけのページではメンテ表示を出さない
   lastMaint = m;
   if (m && m.serverNow) maintOffset = m.serverNow - Date.now();
   const on = !!(m && m.on), bypass = isDeveloper() || !!(m && m.bypass) || hasPerm('maintenance.bypass');
   const block = on && !bypass;
-  document.getElementById('maintenanceMessage').textContent = (m && m.message) || '';
-  document.getElementById('maintenanceEnd').textContent = on ? (m && m.endAt ? `終了予定: ${fmtMaint(m.endAt)}` : '終了時刻は未定です') : '';
+  if (block) maintWasBlocked = true;
+  // メンテが終わっても自動では戻さない: GitHub Pages の新しい版は再読み込みしないと反映されないため
+  const ended = maintWasBlocked && !block && !bypass;
+  document.getElementById('maintenanceTitle').textContent = ended ? 'メンテナンスが終了しました' : 'メンテナンス中です';
+  document.getElementById('maintenanceBody').textContent = ended ? 'ページを再読み込みすると、最新の状態で続けられます。' : '現在プレイできません。終了までしばらくお待ちください。';
+  document.getElementById('btnMaintenanceReload').style.display = ended ? '' : 'none';
+  document.getElementById('maintenanceMessage').textContent = ended ? '' : ((m && m.message) || '');
+  document.getElementById('maintenanceEnd').textContent = ended ? '' : (on ? (m && m.endAt ? `終了予定: ${fmtMaint(m.endAt)}` : '終了時刻は未定です') : '');
   document.getElementById('maintenanceBanner').style.display = on && bypass ? 'block' : 'none';
   const sch = m && !m.on ? m.schedule : null, notice = document.getElementById('maintenanceNotice');
   notice.textContent = maintNoticeText(sch); notice.dataset.has = sch ? '1' : '';
   const onLoginScreen = document.getElementById('accountScreen').classList.contains('active');
-  const show = block && !(maintenancePeek && onLoginScreen && !account);
-  document.getElementById('btnMaintenanceDev').style.display = account ? 'none' : '';
+  const show = ended || (block && !(maintenancePeek && onLoginScreen && !account));
+  document.getElementById('btnMaintenanceDev').style.display = (account || ended) ? 'none' : '';
   if (block && !maintenanceActive && document.getElementById('gameScreen').classList.contains('active')) document.getElementById('btnBackToLobby').onclick();
-  maintenanceActive = block;
+  maintenanceActive = block || ended;
   document.getElementById('maintenanceOverlay').style.display = show ? 'flex' : 'none';
   updateNoticeVisibility();
   // Re-check right when the schedule starts/ends so the switch happens on time, not up to 30s late.
@@ -614,6 +662,7 @@ function applyMaintenance(m) {
 let eventToken = '', eventLoopRunning = false;
 function applySessionLabels() {
   if (!account) return;
+  if (!cpuParamsLoaded && typeof loadCpuParams === 'function') loadCpuParams();
   document.getElementById('playerLabel').textContent = `ログイン中: ${account.id}${account.role === 'developer' ? '（開発者）' : account.role === 'admin' ? '（管理者）' : ''}`;
   document.getElementById('adminTemplateControls').style.display = canUseDevTools() ? 'flex' : 'none';
   document.getElementById('adminAutoControls').style.display = canUseDevTools() ? 'flex' : 'none';
@@ -660,6 +709,8 @@ async function pollMaintenance() {
     else { const d = await api('/status', undefined, 'GET'); applyMaintenance(d.maintenance); }
   } catch (_) {}
 }
+function pageReload() { location.reload(); }
+document.getElementById('btnMaintenanceReload').onclick = () => pageReload();
 document.getElementById('btnMaintenanceDev').onclick = () => { if (account) return; maintenancePeek = true; applyMaintenance(lastMaint); };
 setInterval(pollMaintenance, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) pollMaintenance(); });
@@ -690,7 +741,7 @@ function normalizeTemplates(arr) {
   for (const t of arr) {
     if (!t || typeof t.name !== 'string' || !Array.isArray(t.pattern) || !t.pattern.length || t.pattern.some(r => typeof r !== 'string' || !/^[IJLOSTZ.]{10}$/.test(r))) return null;
     const p = Number(t.priority);
-    out.push({ name: t.name.trim().slice(0, 60) || 'テンプレ', priority: Number.isFinite(p) ? Math.max(-999, Math.min(999, Math.round(p))) : 10, pattern: t.pattern.slice(0, 40), enabled: t.enabled !== false, mirror: t.mirror !== false });
+    out.push({ name: t.name.trim().slice(0, 60) || 'テンプレ', priority: Number.isFinite(p) ? Math.max(-999, Math.min(999, Math.round(p))) : 10, pattern: t.pattern.slice(0, 40), enabled: t.enabled !== false, mirror: t.mirror !== false, pc: t.pc === true });
   }
   return out;
 }
@@ -729,7 +780,7 @@ function apiConfigured() { return API_BASE.startsWith('https://') && !API_BASE.i
 function setAccountStatus(message) { document.getElementById('accountStatus').textContent = message; }
 function readSavedAuth() { try { const v = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); if (v?.token) { authToken = v.token; account = v.account || null; } } catch (_) {} }
 function saveAuth(data) { authToken = data.token; account = { id: data.id, role: data.role || 'player' }; try { localStorage.setItem(AUTH_KEY, JSON.stringify({ token: authToken, account })); } catch (_) {} }
-function clearAuth() { authToken = ''; account = null; devToolsUnlocked = false; if (typeof refreshAdminUi === 'function') refreshAdminUi(); try { localStorage.removeItem(AUTH_KEY); } catch (_) {} }
+function clearAuth() { authToken = ''; account = null; devToolsUnlocked = false; cpuParamsLoaded = false; if (typeof refreshAdminUi === 'function') refreshAdminUi(); try { localStorage.removeItem(AUTH_KEY); } catch (_) {} }
 async function api(path, body, method='POST') {
   if (!apiConfigured()) throw new Error('API_BASEにCloudflare WorkersのURLを設定してください。');
   const res = await fetch(API_BASE.replace(/\/$/, '') + path, { method, headers: { 'Content-Type':'application/json', ...(authToken ? {Authorization:'Bearer '+authToken} : {}) }, ...(body === undefined ? {} : {body:JSON.stringify(body)}) });
@@ -863,17 +914,28 @@ function answerReplayPrompt(wantSave) {
   p.answered = true;
   p.wantSave = wantSave;
   if (p.mode === 'solo' || (p.mode === 'vs' && !wantSave) || haveAllGuestReplays(p) || !vsHasPeers()) finalizeReplay(p, true);
-  else p.timer = setTimeout(() => finalizeReplay(p, true), VS_GUEST_WAIT_MS);
+  else armReplayTimer(p);
+}
+// 対戦中に答えた時は、試合が終わってから最大4秒だけ他の参加者のデータを待つ
+function armReplayTimer(p) {
+  if (!p || p.finalized || p.timer || !p.answered || !p.wantSave) return;
+  if (p.mode === 'vs' && roomState !== 'result' && vsHasPeers()) return;
+  p.timer = setTimeout(() => finalizeReplay(p, true), VS_GUEST_WAIT_MS);
 }
 document.getElementById('btnReplayDiscard').onclick = () => answerReplayPrompt(false);
 document.getElementById('btnReplaySave').onclick = () => answerReplayPrompt(true);
 function loadVsReplays() {
   try { const a = JSON.parse(localStorage.getItem(VS_REPLAY_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; }
 }
+function setLocalReplayId(localId, replayId) {
+  const list = loadVsReplays().map(x => x.id === localId ? { ...x, replayId } : x);
+  try { localStorage.setItem(VS_REPLAY_KEY, JSON.stringify(list)); } catch (_) {}
+}
 function saveReplayLocal(p) {
   if (p.localSaved || !p.packed) return;
   p.localSaved = true;
   const entry = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), savedAt: new Date(p.startedAt).toISOString(), mode: p.mode, names: p.players.map(x => x.name), results: p.players.map(x => x.result), durationMs: p.durationMs, data: p.packed };
+  p.localEntryId = entry.id;
   let list = [entry, ...loadVsReplays()].slice(0, VS_REPLAY_MAX);
   while (list.length) {
     try { localStorage.setItem(VS_REPLAY_KEY, JSON.stringify(list)); return; }
@@ -896,8 +958,10 @@ async function finalizeReplay(p, force = false) {
   const bytes = new TextEncoder().encode(p.packed).length;
   if (bytes > REPLAY_CLOUD_MAX_BYTES) return;
   const body = { replayData:p.packed, durationMs:p.durationMs, byteSize:bytes, endedAt:new Date().toISOString(), mode:p.mode, players:p.players.map(x => x.name) };
-  try { await api('/replays', body); }
-  catch (_) { await new Promise(r => setTimeout(r, 2000)); try { await api('/replays', body); } catch (_) {} }
+  let res = null;
+  try { res = await api('/replays', body); }
+  catch (_) { await new Promise(r => setTimeout(r, 2000)); try { res = await api('/replays', body); } catch (_) {} }
+  if (res && res.replayId && p.localEntryId) setLocalReplayId(p.localEntryId, res.replayId);
 }
 async function requireLogin() {
   readSavedAuth();
@@ -993,24 +1057,627 @@ document.getElementById('btnSetupAdmin').onclick = async () => {
 };
 
 // ==========================================
+// COM（CPU）— レベル1〜10
+// ==========================================
+// 人間用のゲーム状態（グローバル変数）とは別に、COM専用の小さなエンジンを持ちます。
+// 回転・キック・T-spin判定・攻撃表・7バッグは人間用と同じルール（同じ結果になることをテストで確認）。
+const CPU_TYPES = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
+const CPU_FULL = (1 << COLS) - 1;
+const CPU_POP = new Uint8Array(1 << COLS);
+for (let i = 1; i < CPU_POP.length; i++) CPU_POP[i] = CPU_POP[i >> 1] + (i & 1);
+const CPU_CELLS = {};
+for (const t of CPU_TYPES) CPU_CELLS[t] = [0, 1, 2, 3].map(r => { const m = getShapeMatrix(t, r), cells = []; m.forEach((row, y) => row.forEach((v, x) => { if (v) cells.push([x, y]); })); return cells; });
+
+// ---- 性能パラメータ（開発者が変更できる）----
+const CPU_PARAM_DEFS = [
+  { key: 'minMs', label: '設置間隔 最短(ms)', min: 20, max: 10000, step: 10 },
+  { key: 'maxMs', label: '設置間隔 最長(ms)', min: 20, max: 10000, step: 10 },
+  { key: 'nextSight', label: '先読みNEXT数（0=見ない）', min: 0, max: 5, step: 1 },
+  { key: 'depth', label: '探索の深さ（手数）', min: 1, max: 6, step: 1 },
+  { key: 'beam', label: 'ビーム幅（探索の広さ）', min: 1, max: 16, step: 1 },
+  { key: 'budgetMs', label: '1手の思考時間の上限(ms)', min: 1, max: 100, step: 1 },
+  { key: 'useHold', label: 'ホールド使用率', min: 0, max: 1, step: 0.05 },
+  { key: 'bestMoveRate', label: '最善手を選ぶ確率', min: 0, max: 1, step: 0.01 },
+  { key: 'missRank', label: 'ミス時に選ぶ候補の数', min: 2, max: 8, step: 1 },
+  { key: 'missTol', label: 'ミスで許す悪さ（評価点）', min: 0, max: 60, step: 0.5 },
+  { key: 'noise', label: '評価のブレ（ノイズ）', min: 0, max: 100, step: 0.5 },
+  { key: 'stackShape', label: '6-3積み（1=する）', min: 0, max: 1, step: 1 },
+  { key: 'holeCare', label: '穴を避ける度合い', min: 0, max: 3, step: 0.05 },
+  { key: 'templateRate', label: '開幕テンプレを組む確率', min: 0, max: 1, step: 0.05 },
+  { key: 'templateSight', label: 'テンプレ探索で見る手数', min: 0, max: 30, step: 1 },
+  { key: 'derivRate', label: '派生を使う確率', min: 0, max: 1, step: 0.05 },
+  { key: 'spinUse', label: 'T-spinを使う度合い', min: 0, max: 1, step: 0.05 },
+  { key: 'spinBuild', label: 'TSDを作りに行く度合い', min: 0, max: 1, step: 0.05 },
+  { key: 'tstBuild', label: 'TSTを作りに行く度合い', min: 0, max: 1, step: 0.05 },
+  { key: 'attackWeight', label: '火力重視（攻撃の重み）', min: 0, max: 30, step: 0.5 },
+  { key: 'pcRate', label: 'パフェを狙う確率', min: 0, max: 1, step: 0.05 },
+  { key: 'pcNodes', label: 'パフェ探索の上限ノード数', min: 0, max: 50000, step: 500 },
+  { key: 'digSkill', label: 'おじゃま掘りの上手さ', min: 0, max: 1, step: 0.05 }
+];
+const CPU_LEVEL_LABELS = ['', '超初心者', '初心者', '初級', '初中級', '普通', '中上級', '上級', '強い', 'かなり強い', '最強（神速）'];
+const CPU_DEFAULT_PARAMS = [null,
+  { minMs: 1500, maxMs: 2000, nextSight: 0, depth: 1, beam: 1, budgetMs: 4, useHold: 0,   bestMoveRate: 0.25, missTol: 8, missRank: 3, noise: 6, stackShape: 1, holeCare: 0.7,  templateRate: 0,    templateSight: 0,  derivRate: 0,    spinUse: 0,   spinBuild: 0,    tstBuild: 0,    attackWeight: 0.5, pcRate: 0,   pcNodes: 0,     digSkill: 0.1 },
+  { minMs: 1200, maxMs: 1600, nextSight: 0, depth: 1, beam: 1, budgetMs: 4, useHold: 0,   bestMoveRate: 0.4,  missTol: 7, missRank: 3, noise: 5, stackShape: 1, holeCare: 0.8,  templateRate: 0,    templateSight: 0,  derivRate: 0,    spinUse: 0,   spinBuild: 0,    tstBuild: 0,    attackWeight: 1,   pcRate: 0,   pcNodes: 0,     digSkill: 0.2 },
+  { minMs: 1000, maxMs: 1300, nextSight: 1, depth: 2, beam: 2, budgetMs: 5, useHold: 0.3, bestMoveRate: 0.55, missTol: 6, missRank: 3, noise: 4, stackShape: 0, holeCare: 0.9,  templateRate: 0.15, templateSight: 8,  derivRate: 0,    spinUse: 0,   spinBuild: 0,    tstBuild: 0,    attackWeight: 1.5, pcRate: 0,   pcNodes: 0,     digSkill: 0.3 },
+  { minMs: 800,  maxMs: 1050, nextSight: 2, depth: 3, beam: 3, budgetMs: 6, useHold: 0.6, bestMoveRate: 0.65, missTol: 5, missRank: 3, noise: 3, stackShape: 0, holeCare: 1, templateRate: 0.4,  templateSight: 9,  derivRate: 0,    spinUse: 0.2, spinBuild: 0,    tstBuild: 0,    attackWeight: 2,   pcRate: 0,   pcNodes: 0,     digSkill: 0.4 },
+  { minMs: 600,  maxMs: 800,  nextSight: 3, depth: 3, beam: 3, budgetMs: 6, useHold: 0.9, bestMoveRate: 0.75, missTol: 4, missRank: 3, noise: 2, stackShape: 0, holeCare: 1.05,    templateRate: 0.85, templateSight: 11, derivRate: 0,    spinUse: 0.5, spinBuild: 0,    tstBuild: 0,    attackWeight: 3,   pcRate: 0,   pcNodes: 0,     digSkill: 0.5 },
+  { minMs: 450,  maxMs: 620,  nextSight: 4, depth: 4, beam: 3, budgetMs: 7, useHold: 1,   bestMoveRate: 0.82, missTol: 3, missRank: 3, noise: 1.5, stackShape: 0, holeCare: 1.1, templateRate: 0.95, templateSight: 12, derivRate: 0.1,  spinUse: 0.7, spinBuild: 0.2,  tstBuild: 0,    attackWeight: 5,   pcRate: 0.1, pcNodes: 400,   digSkill: 0.6 },
+  { minMs: 320,  maxMs: 450,  nextSight: 5, depth: 4, beam: 4, budgetMs: 8, useHold: 1,   bestMoveRate: 0.9,  missTol: 2.5, missRank: 2, noise: 1, stackShape: 0, holeCare: 1.15,  templateRate: 1,    templateSight: 14, derivRate: 0.4,  spinUse: 0.85, spinBuild: 0.45, tstBuild: 0.15, attackWeight: 7,   pcRate: 0.3, pcNodes: 700,   digSkill: 0.7 },
+  { minMs: 220,  maxMs: 320,  nextSight: 5, depth: 5, beam: 4, budgetMs: 8, useHold: 1,   bestMoveRate: 0.95, missTol: 2, missRank: 2, noise: 0.5, stackShape: 0, holeCare: 1.2,  templateRate: 1,    templateSight: 16, derivRate: 0.65, spinUse: 1,   spinBuild: 0.7,  tstBuild: 0.4,  attackWeight: 9,   pcRate: 0.55, pcNodes: 1100, digSkill: 0.8 },
+  { minMs: 130,  maxMs: 200,  nextSight: 5, depth: 5, beam: 4, budgetMs: 9,  useHold: 1,  bestMoveRate: 0.98, missTol: 1, missRank: 2, noise: 0.2, stackShape: 0, holeCare: 1.3,  templateRate: 1,    templateSight: 18, derivRate: 0.85, spinUse: 1,   spinBuild: 0.9,  tstBuild: 0.7,  attackWeight: 11,  pcRate: 0.8, pcNodes: 1600,  digSkill: 0.9 },
+  { minMs: 50,   maxMs: 100,  nextSight: 5, depth: 6, beam: 4, budgetMs: 10, useHold: 1,  bestMoveRate: 1,    missTol: 0, missRank: 2, noise: 0,  stackShape: 0, holeCare: 1.4,  templateRate: 1,    templateSight: 20, derivRate: 1,    spinUse: 1,   spinBuild: 1,    tstBuild: 1,    attackWeight: 13,  pcRate: 1,   pcNodes: 2500, digSkill: 1 }
+];
+let cpuParams = CPU_DEFAULT_PARAMS.map(p => p && { ...p });   // 現在の設定（サーバーの設定で上書きされる）
+function cpuClampParams(p) {
+  const out = {};
+  for (const d of CPU_PARAM_DEFS) { let v = Number(p && p[d.key]); if (!Number.isFinite(v)) v = NaN; out[d.key] = v; }
+  return out;
+}
+function cpuApplyParamOverrides(over) {
+  cpuParams = CPU_DEFAULT_PARAMS.map(p => p && { ...p });
+  if (!over || typeof over !== 'object') return;
+  for (let lv = 1; lv <= 10; lv++) {
+    const o = over[lv] || over[String(lv)];
+    if (!o) continue;
+    for (const d of CPU_PARAM_DEFS) { const v = Number(o[d.key]); if (Number.isFinite(v)) cpuParams[lv][d.key] = Math.min(d.max, Math.max(d.min, v)); }
+    if (cpuParams[lv].maxMs < cpuParams[lv].minMs) cpuParams[lv].maxMs = cpuParams[lv].minMs;
+  }
+}
+const cpuLevelOf = lv => Math.min(10, Math.max(1, Math.round(Number(lv)) || 1));
+
+// ---- 盤面ビットマスク演算（行ごとの整数。bit x = x列が埋まっている）----
+function cpuHit(rows, type, x, y, r) {
+  const cells = CPU_CELLS[type][r];
+  for (let i = 0; i < 4; i++) {
+    const nx = x + cells[i][0], ny = y + cells[i][1];
+    if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+    if (ny >= 0 && ((rows[ny] >> nx) & 1)) return true;
+  }
+  return false;
+}
+// 人間用 isTSpin() と同じ判定（ミノを置く前の盤面で判定）。f: 0=直前が回転でない / 1=回転 / 2=回転でキック4番
+function cpuSpinKind(rows, x, y, r, f) {
+  if (f === 0) return null;
+  const cx = x + 1, cy = y + 1;
+  const occ = (dx, dy) => { const xx = cx + dx, yy = cy + dy; if (xx < 0 || xx >= COLS || yy >= ROWS) return true; return yy >= 0 && ((rows[yy] >> xx) & 1) === 1; };
+  let filled = 0;
+  for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) if (occ(dx, dy)) filled++;
+  if (filled < 3) return null;
+  const front = [[[-1, -1], [1, -1]], [[1, -1], [1, 1]], [[-1, 1], [1, 1]], [[-1, -1], [-1, 1]]][r];
+  const frontCount = front.filter(([dx, dy]) => occ(dx, dy)).length;
+  return (frontCount === 2 || f === 2) ? 'full' : 'mini';
+}
+const CPU_REN_TABLE = [0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 4, 4, 4, 5];
+// 人間用 lockPiece() と同じ攻撃計算
+function cpuAttackCalc(cleared, spin, pc, b2bPrev, renPrev) {
+  if (cleared <= 0) return { attack: 0, b2b: b2bPrev, ren: -1 };
+  const ren = renPrev + 1;
+  const renBonus = CPU_REN_TABLE[Math.min(ren, CPU_REN_TABLE.length - 1)] || 0;
+  const base = spin === 'full' ? [0, 2, 4, 6, 0][cleared] : spin === 'mini' ? (cleared === 1 ? 0 : cleared === 2 ? 1 : 0) : ([0, 0, 1, 2, 4, 0][cleared] || 0);
+  const difficult = cleared === 4 || spin !== null;
+  let attack = base + renBonus;
+  if (difficult && b2bPrev) attack += 1;
+  if (pc) attack += 10;
+  return { attack, b2b: difficult, ren };
+}
+// ミノを固定して行消し。ロックアウト（盤面の上に出る）なら null
+function cpuLockRows(rows, type, x, y, r) {
+  const cells = CPU_CELLS[type][r], nr = rows.slice();
+  for (let i = 0; i < 4; i++) { const ny = y + cells[i][1]; if (ny < 0) return null; nr[ny] |= 1 << (x + cells[i][0]); }
+  let cleared = 0;
+  for (let k = ROWS - 1; k >= 0; k--) if (nr[k] === CPU_FULL) { nr.splice(k, 1); nr.unshift(0); cleared++; k++; }
+  return { rows: nr, cleared };
+}
+
+// 実際のルール（回転・キック）で到達できる設置位置をすべて列挙
+const CPU_VIS = new Uint32Array(4 * 40 * 24 * 3);
+let cpuVisGen = 0;
+function cpuPlacements(rows, type) {
+  const out = [];
+  if (cpuHit(rows, type, 3, 0, 0)) return out;
+  if (++cpuVisGen > 4000000000) { CPU_VIS.fill(0); cpuVisGen = 1; }
+  const enc = (x, y, r, f) => (((r * 40 + (y + 4)) * 24 + (x + 4)) * 3 + f);
+  const isT = type === 'T', canRot = type !== 'O', kicks = type === 'I' ? KICK_I : KICK_STD;
+  const stack = [[3, 0, 0, 0]], seenCells = new Set();
+  CPU_VIS[enc(3, 0, 0, 0)] = cpuVisGen;
+  const push = (x, y, r, f) => { const k = enc(x, y, r, f); if (CPU_VIS[k] !== cpuVisGen) { CPU_VIS[k] = cpuVisGen; stack.push([x, y, r, f]); } };
+  while (stack.length) {
+    const [x, y, r, f] = stack.pop();
+    if (cpuHit(rows, type, x, y + 1, r)) {
+      const cs = CPU_CELLS[type][r];
+      let key = isT ? f + ':' : '';
+      const idx = []; for (let i = 0; i < 4; i++) idx.push((y + cs[i][1] + 4) * 16 + (x + cs[i][0] + 4));
+      idx.sort((a, b) => a - b); key += idx.join(',');
+      if (!seenCells.has(key)) { seenCells.add(key); out.push({ x, y, r, f }); }
+    } else push(x, y + 1, r, 0);
+    if (!cpuHit(rows, type, x - 1, y, r)) push(x - 1, y, r, 0);
+    if (!cpuHit(rows, type, x + 1, y, r)) push(x + 1, y, r, 0);
+    if (canRot) for (const dir of [1, -1]) {
+      const nr = (r + dir + 4) % 4, ks = kicks[r + '-' + nr];
+      for (let i = 0; i < ks.length; i++) {
+        const nx = x + ks[i][0], ny = y - ks[i][1];
+        if (!cpuHit(rows, type, nx, ny, nr)) { push(nx, ny, nr, isT ? (i === 4 ? 2 : 1) : 0); break; }
+      }
+    }
+  }
+  return out;
+}
+
+// ---- 盤面の評価 ----
+const CPU_H = new Int8Array(COLS);
+function cpuFeatures(rows, wantSlots) {
+  let seen = 0, holes = 0, rowsWithHoles = 0, maxH = 0, sumH = 0, cells = 0;
+  CPU_H.fill(0);
+  for (let r = 0; r < ROWS; r++) {
+    const m = rows[r];
+    if (m === 0 && seen === 0) continue;
+    const newTop = m & ~seen;
+    if (newTop) for (let c = 0; c < COLS; c++) if ((newTop >> c) & 1) CPU_H[c] = ROWS - r;
+    const hm = (~m) & seen & CPU_FULL;
+    if (hm) { holes += CPU_POP[hm]; rowsWithHoles++; }
+    seen |= m; cells += CPU_POP[m];
+  }
+  let bump = 0, wells = 0;
+  for (let c = 0; c < COLS; c++) {
+    const h = CPU_H[c]; sumH += h; if (h > maxH) maxH = h;
+    if (c < COLS - 1) bump += Math.abs(h - CPU_H[c + 1]);
+    const l = c > 0 ? CPU_H[c - 1] : 99, rr = c < COLS - 1 ? CPU_H[c + 1] : 99;
+    const d = Math.min(l, rr) - h;
+    if (c > 0 && c < COLS - 1) { if (d >= 3) wells += d - 2; } else if (d >= 5 && d < 90) wells += (d - 4) * 0.5;
+  }
+  let tsd = 0, tst = 0;
+  if (wantSlots) {
+    for (let y = 0; y + 2 < ROWS; y++) for (let x = 0; x + 2 < COLS; x++) {
+      const r0 = rows[y], r1 = rows[y + 1], r2 = rows[y + 2];
+      // 平らなTSDの穴（T字の頭が下向き）。片側にだけ庇がある形
+      if (r1 === (CPU_FULL & ~(7 << x)) && r2 === (CPU_FULL & ~(1 << (x + 1)))) {
+        const a = (r0 >> x) & 1, b = (r0 >> (x + 2)) & 1, mid = (r0 >> (x + 1)) & 1;
+        if (!mid && (a ^ b) === 1) tsd++;
+      }
+      // TSTの穴（縦3段の穴の途中に出っ張り）。右向き・左向き
+      if (r0 === (CPU_FULL & ~(1 << (x + 1))) && r1 === (CPU_FULL & ~(3 << (x + 1))) && r2 === (CPU_FULL & ~(1 << (x + 1)))) tst++;
+      if (r0 === (CPU_FULL & ~(1 << (x + 1))) && r1 === (CPU_FULL & ~(3 << x)) && r2 === (CPU_FULL & ~(1 << (x + 1)))) tst++;
+    }
+  }
+  return { holes, rowsWithHoles, maxH, sumH, bump, wells, tsd, tst, cells };
+}
+function cpuEval(rows, P) {
+  const f = cpuFeatures(rows, P.spinBuild > 0 || P.tstBuild > 0);
+  const slotHoles = Math.min(f.holes, Math.min(2, f.tsd) * (P.spinBuild > 0 ? 1 : 0)), slotRows = Math.min(f.rowsWithHoles, slotHoles);
+  f.holes -= slotHoles; f.rowsWithHoles -= slotRows;
+  let s = -f.holes * 9 * P.holeCare - f.rowsWithHoles * 2 * P.holeCare - f.bump * 1.2 - f.sumH * 0.1 - f.wells * 2.5;
+  const over = Math.max(0, f.maxH - 9); s -= over * over * 0.6;
+  if (f.maxH >= 15) s -= 80 + (f.maxH - 14) * 30;
+  if (P.stackShape >= 1 && f.maxH < 9) {
+    // 6-3積み: 右の3列を低めに保ち、左側を先に積む（高くなりすぎたら通常の積み方に戻る）
+    let left = 0; for (let c = 0; c < 7; c++) left += CPU_H[c];
+    const leftAvg = left / 7;
+    for (let c = 7; c < COLS; c++) { const ex = CPU_H[c] - Math.max(0, leftAvg - 1); if (ex > 0) s -= Math.min(ex, 3) * 2; }
+  }
+  s += Math.min(2, f.tsd) * 10 * P.spinBuild + Math.min(1, f.tst) * 13 * P.tstBuild;
+  return s;
+}
+
+// ---- 完全クリア（パフェ）探索 ----
+function cpuFindPC(rows, seq, hold, canHold, maxPieces, nodeBudget, timeMs = 30) {
+  let n0 = 0; for (const m of rows) n0 += CPU_POP[m];
+  if (n0 % 2 !== 0) return null;
+  let nodes = 0; const tEnd = performance.now() + timeMs;
+  const feasible = (cells, remaining) => { for (let k = 0; k <= remaining; k++) if (k > 0 && (cells + 4 * k) % 10 === 0) return true; return cells === 0; };
+  function rec(rs, idx, h, ch, depth, cells) {
+    if (nodes++ > nodeBudget || performance.now() > tEnd) return null;
+    const remaining = maxPieces - depth;
+    if (remaining <= 0 || idx >= seq.length && !h) return null;
+    if (!feasible(cells, remaining)) return null;
+    const options = [];
+    if (idx < seq.length) options.push({ piece: seq[idx], nh: h, nidx: idx + 1, hold: false });
+    if (ch) { if (h) options.push({ piece: h, nh: seq[idx] ?? null, nidx: idx + 1, hold: true }); else if (idx + 1 < seq.length) options.push({ piece: seq[idx + 1], nh: seq[idx], nidx: idx + 2, hold: true }); }
+    for (const o of options) {
+      if (!o.piece) continue;
+      const cands = [];
+      for (const p of cpuPlacements(rs, o.piece)) {
+        if (performance.now() > tEnd) return null;
+        const res = cpuLockRows(rs, o.piece, p.x, p.y, p.r);
+        if (!res) continue;
+        const nc = cells + 4 - res.cleared * COLS;
+        if (nc === 0) return [{ hold: o.hold, type: o.piece, x: p.x, y: p.y, r: p.r, f: p.f }];
+        const ft = cpuFeatures(res.rows, false);
+        if (ft.maxH > Math.ceil((nc + 4 * (remaining - 1)) / COLS) + 1) continue;
+        cands.push({ p, res, nc, key: ft.holes * 10 + ft.maxH * 2 + ft.bump });
+      }
+      cands.sort((a, b) => a.key - b.key);
+      for (const c of cands.slice(0, 10)) {
+        const rest = rec(c.res.rows, o.nidx, o.nh, true, depth + 1, c.nc);
+        if (rest) return [{ hold: o.hold, type: o.piece, x: c.p.x, y: c.p.y, r: c.p.r, f: c.p.f }, ...rest];
+        if (nodes > nodeBudget) return null;
+      }
+    }
+    return null;
+  }
+  return rec(rows, 0, hold, canHold, 0, n0);
+}
+
+// ---- COM専用エンジン（人間用とは独立した盤面・ツモ・おじゃま）----
+class CpuEngine {
+  constructor(seed) {
+    this.seed = seed >>> 0; this.rng = seededRandom(this.seed); this.rngCalls = 0;
+    this.rows = Array(ROWS).fill(0);
+    this.grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+    this.queue = []; this.bag = [];
+    this.hold = null; this.canHold = true; this.cur = null; this.alive = true;
+    this.b2b = false; this.ren = -1; this.pending = 0; this.pendingHoles = [];
+    this.events = []; this.lastT = 0;
+    this.stats = { pieces: 0, lines: 0, sent: 0, received: 0, tsd: 0, tst: 0, tspin: 0, pc: 0, b2b: 0, holesMade: 0 };
+  }
+  _ev(e) { e[0] = Math.round(e[0]); if (e[0] < this.lastT) e[0] = this.lastT; this.lastT = e[0]; this.events.push(e); }
+  _refill() { const p = CPU_TYPES.slice(); for (let i = 6; i > 0; i--) { this.rngCalls++; const j = Math.floor(this.rng() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; } this.bag.push(...p); }
+  _fillQueue() { while (this.queue.length < 6) { if (!this.bag.length) this._refill(); this.queue.push(this.bag.shift()); } }
+  // 現在のミノの次から n 個（7バッグの順序）
+  peek(n) {
+    const fut = this.queue.concat(this.bag);
+    if (fut.length >= n) return fut.slice(0, n);
+    const r = seededRandom(this.seed); for (let i = 0; i < this.rngCalls; i++) r();
+    const out = fut.slice();
+    while (out.length < n) { const p = CPU_TYPES.slice(); for (let i = 6; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; } out.push(...p); }
+    return out.slice(0, n);
+  }
+  spawn(t) {
+    this._fillQueue();
+    const type = this.queue.shift();
+    this.cur = { type, x: 3, y: 0, r: 0 }; this.canHold = true;
+    this._ev([t, type, 3, 0, 0]);
+    if (cpuHit(this.rows, type, 3, 0, 0)) { this.alive = false; return false; }
+    return true;
+  }
+  doHold(t) {
+    if (!this.canHold || !this.cur || !this.alive) return false;
+    const out = this.cur.type;
+    if (!this.hold) { this.hold = out; this.spawn(t); }
+    else { const h = this.hold; this.hold = out; this.cur = { type: h, x: 3, y: 0, r: 0 }; this._ev([t, h, 3, 0, 0]); if (cpuHit(this.rows, h, 3, 0, 0)) this.alive = false; }
+    this.canHold = false;
+    return this.alive;
+  }
+  // 位置を表示用に記録（途中経過）
+  pose(t, x, y, r) { if (this.cur) { this.cur.x = x; this.cur.y = y; this.cur.r = r; this._ev([t, this.cur.type, x, y, r]); } }
+  cells() { let n = 0; for (const m of this.rows) n += CPU_POP[m]; return n; }
+  garbageRows() { let n = 0; for (const row of this.grid) if (row.includes('X')) n++; return n; }
+  receive(holes) {
+    const safe = holes.filter(h => Number.isInteger(h) && h >= 0 && h < COLS);
+    this.pending += safe.length; this.pendingHoles.push(...safe); this.stats.received += safe.length;
+  }
+  // 固定。戻り値: { dead, cleared, spin, pc, sent }
+  lock(x, y, r, f, t) {
+    const type = this.cur.type;
+    const spin = type === 'T' ? cpuSpinKind(this.rows, x, y, r, f) : null;
+    this._ev([t, type, x, y, r]); this._ev([t, 'L']);
+    const cs = CPU_CELLS[type][r];
+    for (let i = 0; i < 4; i++) { if (y + cs[i][1] < 0) { this.alive = false; return { dead: true }; } }
+    for (let i = 0; i < 4; i++) { const yy = y + cs[i][1], xx = x + cs[i][0]; this.rows[yy] |= 1 << xx; this.grid[yy][xx] = type; }
+    let cleared = 0;
+    for (let k = ROWS - 1; k >= 0; k--) if (this.rows[k] === CPU_FULL) { this.rows.splice(k, 1); this.rows.unshift(0); this.grid.splice(k, 1); this.grid.unshift(Array(COLS).fill(null)); cleared++; k++; }
+    const pc = cleared > 0 && this.rows.every(m => m === 0);
+    const calc = cpuAttackCalc(cleared, spin, pc, this.b2b, this.ren);
+    this.ren = calc.ren; if (cleared > 0) this.b2b = calc.b2b;
+    this.stats.pieces++; this.stats.lines += cleared;
+    if (spin === 'full' && cleared === 2) this.stats.tsd++;
+    if (spin === 'full' && cleared === 3) this.stats.tst++;
+    if (spin && cleared > 0) this.stats.tspin++;
+    if (pc) this.stats.pc++;
+    let sent = calc.attack;
+    if (cleared > 0 && this.pending > 0) {
+      if (sent >= this.pending) { sent -= this.pending; this.pending = 0; this.pendingHoles = []; }
+      else { this.pending -= sent; this.pendingHoles.splice(0, sent); sent = 0; }
+    }
+    this.stats.sent += sent;
+    const garbage = this.pending > 0;
+    if (garbage) this._applyGarbage(t);
+    return { dead: !this.alive, cleared, spin, pc, sent, garbage };
+  }
+  _applyGarbage(t) {
+    const n = this.pending, applied = []; let topped = false;
+    for (let i = n - 1; i >= 0; i--) {
+      const hole = this.pendingHoles[i] ?? Math.floor(Math.random() * COLS);
+      const removed = this.rows.shift(); this.grid.shift();
+      if (removed) topped = true;
+      this.rows.push(CPU_FULL & ~(1 << hole));
+      const row = Array(COLS).fill('X'); row[hole] = null; this.grid.push(row);
+      applied.push(hole);
+    }
+    if (applied.length) this._ev([t, 'G', applied]);
+    this.pending = 0; this.pendingHoles = [];
+    if (topped) this.alive = false;
+  }
+}
+
+// パフェ積みテンプレかどうか（名前に「パフェ」「PC」を含む、またはテンプレ設定で pc を指定）
+function cpuIsPcVariant(v) { return !!(v && (v.pc || /パフェ|ﾊﾟﾌｪ|ＰＣ|\bPC\b|perfect/i.test(v.name || ''))) ? 1 : 0; }
+// テンプレを組み終えた盤面から、残りのツモ（ホールド含む）でパフェできるか調べて、その手順を返す
+function cpuPcTail(eng, seq, plan, nodeBudget) {
+  let rows = eng.rows.slice(), hold = eng.hold, idx = 0;
+  for (const st of plan.steps) {
+    if (st.hold) { if (!hold) { hold = seq[idx]; idx += 2; } else { const h = hold; hold = seq[idx]; idx += 1; } } else idx += 1;
+    const res = cpuLockRows(rows, st.type, st.x, st.y, st.rot);
+    if (!res) return null;
+    rows = res.rows;
+  }
+  const rest = seq.slice(idx);
+  if (!rest.length) return null;
+  const maxPieces = Math.min(7, rest.length + (hold ? 1 : 0));
+  return cpuFindPC(rows, rest, hold, true, maxPieces, Math.min(nodeBudget, 3000), 40);
+}
+
+// ---- 思考（TetrisAI）----
+function cpuGauss() { return (Math.random() + Math.random() + Math.random() + Math.random() - 2) * 1.7; }
+const cpuPlanCache = new Map();
+let templateSolveDeadline = Infinity;
+class TetrisAI {
+  constructor(level, params) {
+    this.level = cpuLevelOf(level);
+    this.p = { ...cpuParams[this.level], ...(params || {}) };
+    this.plan = null; this.planIdx = 0; this.planKind = ''; this.planned = 0; this.lastPlanAt = -99; this.planFailures = 0;
+    this.pcPlan = null;
+    this.thinkMs = []; this.kinds = { template: 0, pc: 0, search: 0 };
+  }
+  invalidate() { this.plan = null; this.pcPlan = null; }
+  // テンプレ候補（「派生」を含む名前は derivRate で許可）
+  _variants(allowDeriv) {
+    let v = getTemplateVariants().filter(variantIsValid);
+    if (!allowDeriv) v = v.filter(x => !/派生/.test(x.name));
+    return v.sort((a, b) => (fireScore(b.name) - fireScore(a.name)) || (b.priority - a.priority));
+  }
+  _tryTemplate(eng) {
+    const P = this.p;
+    if (P.templateRate <= 0 || P.templateSight <= 0) return null;
+    const first = this.planned === 0;
+    if (first ? Math.random() >= P.templateRate : Math.random() >= P.derivRate) { if (!first) this.planned++; else this.planned++; return null; }
+    const allowDeriv = !first || Math.random() < P.derivRate;
+    const canPc = P.pcRate > 0 && P.pcNodes > 0;
+    // パフェ積みは「パフェができる時だけ」。できない時は山岳積み2号など普通のテンプレを組み、パフェは後から探索で狙う
+    const variants = this._variants(allowDeriv).filter(v => canPc || !cpuIsPcVariant(v)).sort((a, b) => (cpuIsPcVariant(b) - cpuIsPcVariant(a)));
+    const sight = Math.max(6, Math.round(P.templateSight));
+    const t0 = performance.now(), budget = first ? 90 + P.templateSight * 4 : 45;
+    this.planned++;
+    for (const variant of variants) {
+      if (performance.now() - t0 > budget) break;
+      const isPc = cpuIsPcVariant(variant);
+      const seq = [eng.cur.type, ...eng.peek(isPc ? Math.max(sight, templatePieceCount(variant) + 8) : Math.min(sight, templatePieceCount(variant) + 4))];
+      const key = eng.seed + '|' + eng.rngCalls + '|' + variant.name + '|' + variant.pattern.join('') + '|' + (eng.hold || '-') + (eng.canHold ? 1 : 0) + '|' + eng.rows.join(',');
+      let plan = cpuPlanCache.get(key);
+      if (plan === undefined) { templateSolveDeadline = t0 + budget; plan = solveTemplate(eng.grid, seq, eng.hold, eng.canHold, variant, AUTO_SPAWN, 3000 + sight * 100); templateSolveDeadline = Infinity; cpuPlanCache.set(key, plan || null); if (cpuPlanCache.size > 200) cpuPlanCache.delete(cpuPlanCache.keys().next().value); }
+      if (!plan) continue;
+      if (isPc) {
+        const tail = cpuPcTail(eng, seq, plan, Math.max(4000, P.pcNodes));
+        if (!tail) continue;                       // このツモ順ではパフェに届かない → このテンプレは組まない
+        return { ...plan, pcTail: tail };
+      }
+      return plan;
+    }
+    return null;
+  }
+  _followPlan(eng) {
+    const step = this.plan.steps[this.planIdx];
+    if (!step || step.boardBefore !== autoBoardKey(eng.grid)) { this.plan = null; return null; }
+    const pieceNow = step.hold ? (eng.hold || eng.queue[0]) : eng.cur.type;
+    if (pieceNow !== step.type || (step.hold && !eng.canHold) || cpuHit(eng.rows, step.type, step.x, step.y, step.rot)) { this.plan = null; return null; }
+    this.planIdx++;
+    if (this.planIdx >= this.plan.steps.length) { this.pcPlan = this.plan.pcTail || null; this.plan = null; }
+    // 到達できる設置位置のうち、プランの位置と一致するものから f（回転状態）を取得
+    const match = cpuPlacements(eng.rows, step.type).find(p => p.x === step.x && p.y === step.y && p.r === step.rot);
+    return { hold: !!step.hold, x: step.x, y: step.y, r: step.rot, f: match ? match.f : 0, kind: 'template' };
+  }
+  decide(eng) {
+    const t0 = performance.now(), P = this.p;
+    let res = null;
+    // 1) パフェ（残りが少ないとき）
+    if (!res && P.pcRate > 0 && P.pcNodes > 0) res = this._pc(eng);
+    // 2) 開幕テンプレ／派生
+    if (!res && this.plan) res = this._followPlan(eng);
+    if (!res && !this.plan && P.templateRate > 0 && eng.pending === 0) {
+      const early = this.planned === 0;
+      const canRetry = !early && P.derivRate > 0 && eng.stats.pieces - this.lastPlanAt >= 5 && eng.cells() <= 28 && this.planned < 3 + Math.round(P.derivRate * 6);
+      if (early || canRetry) { this.lastPlanAt = eng.stats.pieces; const plan = this._tryTemplate(eng); if (plan) { this.plan = plan; this.planIdx = 0; res = this._followPlan(eng); } }
+    }
+    if (res) { this.kinds[res.kind === 'pc' ? 'pc' : 'template']++; } else { res = this._search(eng); this.kinds.search++; }
+    this.thinkMs.push(performance.now() - t0);
+    return res;
+  }
+  _pc(eng) {
+    const P = this.p;
+    if (this.pcPlan) {
+      const step = this.pcPlan[0];
+      const pieceNow = step.hold ? (eng.hold || eng.queue[0]) : eng.cur.type;
+      if (pieceNow === step.type && (!step.hold || eng.canHold) && !cpuHit(eng.rows, step.type, step.x, step.y, step.r)) {
+        this.pcPlan = this.pcPlan.slice(1); if (!this.pcPlan.length) this.pcPlan = null;
+        return { hold: step.hold, x: step.x, y: step.y, r: step.r, f: step.f, kind: 'pc' };
+      }
+      this.pcPlan = null;
+    }
+    const cells = eng.cells();
+    if (cells > 16 || eng.pending > 0 || eng.stats.pieces < (this.pcCooldown | 0)) return null;
+    if (Math.random() >= P.pcRate) return null;
+    const pcKey = eng.rngCalls + '|' + eng.rows.join(',') + '|' + (eng.hold || '-');
+    if (this.pcFailKey === pcKey) return null;
+    const seq = [eng.cur.type, ...eng.peek(Math.min(6, Math.max(1, P.nextSight)))];
+    const maxPieces = Math.min(7, seq.length + (eng.hold ? 1 : 0) + (eng.canHold ? 0 : 0));
+    const steps = cpuFindPC(eng.rows, seq, eng.hold, eng.canHold, maxPieces, P.pcNodes, 8 + P.pcRate * 14);
+    if (!steps) { this.pcFailKey = pcKey; this.pcCooldown = eng.stats.pieces + 2; return null; }
+    this.pcPlan = steps.slice(1); if (!this.pcPlan.length) this.pcPlan = null;
+    const s = steps[0];
+    return { hold: s.hold, x: s.x, y: s.y, r: s.r, f: s.f, kind: 'pc' };
+  }
+  // この盤面にTが来たら、スピンでどれだけ攻撃できるか（実際の回転ルールで探索）
+  _tPot(rows) {
+    let best = 0;
+    for (const pl of cpuPlacements(rows, 'T')) {
+      if (pl.f === 0) continue;
+      const spin = cpuSpinKind(rows, pl.x, pl.y, pl.r, pl.f);
+      if (!spin) continue;
+      const res = cpuLockRows(rows, 'T', pl.x, pl.y, pl.r);
+      if (!res || res.cleared < 2) continue;
+      const a = cpuAttackCalc(res.cleared, spin, false, true, 0).attack;
+      if (a > best) best = a;
+    }
+    return best;
+  }
+  // ビーム探索。NEXTを見ない（nextSight=0）低レベルは「今のミノだけ」を見る
+  _search(eng) {
+    const P = this.p, sight = Math.min(5, Math.max(0, P.nextSight | 0));
+    const known = [eng.cur.type, ...eng.queue.slice(0, sight)];
+    const maxDepth = Math.max(1, Math.min(P.depth | 0, known.length));
+    const deadline = performance.now() + P.budgetMs;
+    const panicBase = 0;
+    const garbageRows = eng.garbageRows();
+    const holdOk = P.useHold > 0 && Math.random() < P.useHold;
+    const placeCache = new Map();
+    const placementsOf = (rows, piece) => { const k = piece + rows.join(','); let v = placeCache.get(k); if (!v) { v = cpuPlacements(rows, piece); placeCache.set(k, v); } return v; };
+    const root = { rows: eng.rows, hold: eng.hold, canHold: eng.canHold, idx: 0, b2b: eng.b2b, ren: eng.ren, acc: 0, rootId: -1 };
+    const roots = [];
+    let level = [root];
+    let finalVals = null;
+    for (let depth = 1; depth <= maxDepth; depth++) {
+      const children = [];
+      const maxH = (rows) => { for (let r = 0; r < ROWS; r++) if (rows[r]) return ROWS - r; return 0; };
+      let aborted = false;
+      for (const st of level) {
+        if (depth > 1 && performance.now() > deadline) { aborted = true; break; }
+        const options = [];
+        if (st.idx < known.length) options.push({ piece: known[st.idx], hold: st.hold, nidx: st.idx + 1, usedHold: false });
+        if (st.canHold && ((depth === 1 && holdOk) || (depth > 1 && st.hold === 'T'))) {
+          if (st.hold) options.push({ piece: st.hold, hold: known[st.idx] ?? null, nidx: st.idx + 1, usedHold: true });
+          else if (st.idx + 1 < known.length) options.push({ piece: known[st.idx + 1], hold: known[st.idx], nidx: st.idx + 2, usedHold: true });
+        }
+        for (const o of options) {
+          if (!o.piece) continue;
+          for (const pl of placementsOf(st.rows, o.piece)) {
+            const spin = o.piece === 'T' ? cpuSpinKind(st.rows, pl.x, pl.y, pl.r, pl.f) : null;
+            const res = cpuLockRows(st.rows, o.piece, pl.x, pl.y, pl.r);
+            if (!res) continue;
+            const pc = res.cleared > 0 && res.rows.every(m => m === 0);
+            const calc = cpuAttackCalc(res.cleared, spin, pc, st.b2b, st.ren);
+            let imm = calc.attack * P.attackWeight;
+            // T-spinを使う度合い: 実際にスピンで消した時の追加ボーナス／使わないなら無視
+            if (spin && res.cleared > 0) imm += (spin === 'full' ? res.cleared * 4 : 1) * P.spinUse * P.attackWeight * 0.5;
+            // Tをスピンなしで置くのは勿体ない（スロットを作る気がある時）
+            if (o.piece === 'T' && !(spin && res.cleared > 0) && P.spinBuild > 0) imm -= 4 * P.spinBuild;
+            const mh = maxH(st.rows);
+            const clearVal = [0, 0.6, 1.8, 3.4, 6][res.cleared] * (st.acc === 0 && eng.pending > 0 ? 2 : 1) * (mh >= 13 ? 3 : 1);
+            imm += clearVal;
+            if (garbageRows > 0 && res.cleared > 0) imm += res.cleared * P.digSkill * 4;
+            if (calc.b2b && P.spinBuild > 0) imm += 2 * P.spinBuild;
+            const child = { rows: res.rows, hold: o.hold, canHold: true, idx: o.nidx, b2b: calc.b2b, ren: calc.ren, acc: st.acc + imm, rootId: depth === 1 ? roots.length : st.rootId, val: 0 };
+            child.val = child.acc + cpuEval(child.rows, P);
+            if (depth === 1) roots.push({ hold: o.usedHold, x: pl.x, y: pl.y, r: pl.r, f: pl.f, val1: child.val, best: child.val, deepest: 1 });
+            children.push(child);
+          }
+        }
+      }
+      if (aborted || !children.length) break;
+      children.sort((a, b) => b.val - a.val);
+      if (P.spinBuild > 0 && performance.now() < deadline + 4) {
+        // 上位の候補だけ、T-spinの可能性を加点（Tをホールドして待てる／スロットがある盤面）
+        const top = children.slice(0, Math.max(4, (P.beam | 0) * 2));
+        for (const ch of top) { const pot = this._tPot(ch.rows); ch.val += pot * P.spinBuild * Math.max(1, P.attackWeight * 0.3); if (ch.hold === 'T') ch.val += 2 * P.spinBuild; }
+        children.sort((a, b) => b.val - a.val);
+      }
+      if (depth > 1) for (const ch of children) { const r = roots[ch.rootId]; if (depth > r.deepest) { r.deepest = depth; r.best = ch.val; } else if (depth === r.deepest && ch.val > r.best) r.best = ch.val; }
+      level = children.slice(0, Math.max(1, P.beam | 0));
+      if (performance.now() > deadline) break;
+    }
+    if (!roots.length) { // 置ける場所が無い
+      const pl = cpuPlacements(eng.rows, eng.cur.type)[0];
+      return pl ? { hold: false, x: pl.x, y: pl.y, r: pl.r, f: pl.f, kind: 'search' } : { hold: false, x: 3, y: 0, r: 0, f: 0, kind: 'search' };
+    }
+    // 最も深く読めた候補どうしで比較（読み切れなかった候補は一段低く扱う）
+    const maxDeep = Math.max(...roots.map(r => r.deepest));
+    for (const r of roots) { r.true = r.deepest === maxDeep ? r.best : r.val1 - 400; r.score = r.true + P.noise * cpuGauss(); }
+    const trueTop = Math.max(...roots.map(r => r.true));
+    roots.sort((a, b) => b.score - a.score);
+    let pick = 0;
+    if (roots.length > 1 && Math.random() >= P.bestMoveRate) {
+      // ミス = 最善に近い別の手（許容幅 missTol 以内）。完全なランダム配置はしない
+      const alts = [];
+      for (let i = 1; i < roots.length && alts.length < Math.max(1, (P.missRank | 0) - 1); i++) if (roots[i].true >= trueTop - P.missTol) alts.push(i);
+      if (alts.length) pick = alts[Math.floor(Math.random() * alts.length)];
+    }
+    const c = roots[pick];
+    return { hold: c.hold, x: c.x, y: c.y, r: c.r, f: c.f, kind: 'search' };
+  }
+}
+
+// ---- 1人分のCOM（時間で動くドライバ）----
+class CpuPlayer {
+  constructor({ seat, name, level, seed, hooks, params }) {
+    this.seat = seat; this.name = name; this.level = cpuLevelOf(level); this.seed = seed; this.hooks = hooks || {};
+    this.engine = new CpuEngine(seed); this.ai = new TetrisAI(this.level, params);
+    this.dead = false; this.plan = null; this.stage = 0; this.spawnAt = 0; this.thinkAt = 0; this.lockAt = 0; this.submitted = false; this.startedAt = 0;
+  }
+  _delay() { const P = this.ai.p; return P.minMs + Math.random() * Math.max(0, P.maxMs - P.minMs); }
+  _snapshot() { return this.engine.grid.map(r => r.slice()); }
+  start(now) {
+    this.startedAt = now;
+    if (!this.engine.spawn(now)) { this._die(now); return; }
+    this._scheduled(now);
+    this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { ...this.engine.cur });
+  }
+  _scheduled(now) { const d = this._delay(); this.spawnAt = now; this.thinkAt = now + d * 0.35; this.lockAt = now + d; this.plan = null; }
+  receive(holes) { if (!this.dead) this.engine.receive(holes); }
+  _die(now) { if (this.dead) return; this.dead = true; this.hooks.onDead && this.hooks.onDead(this.seat, now); }
+  run(now) { return { name: this.name, durationMs: Math.max(this.engine.lastT, 1), events: this.engine.events }; }
+  tick(now) {
+    if (this.dead) return;
+    const eng = this.engine;
+    if (!this.plan && now >= this.thinkAt) {
+      this.plan = this.ai.decide(eng);
+      if (this.plan.hold) { eng.doHold(now); if (!eng.alive) { this._die(now); return; } this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { ...eng.cur }); }
+      // 途中経過（向きと横位置）。遅いレベルだけ見せる
+      if (this.lockAt - now > 120) { eng.pose(now, this.plan.x, 0, this.plan.r); this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { ...eng.cur }); }
+    }
+    if (now < this.lockAt) return;
+    if (!this.plan) this.plan = this.ai.decide(eng);
+    const p = this.plan;
+    if (!eng.cur || cpuHit(eng.rows, eng.cur.type, p.x, p.y, p.r)) {
+      // 計画した位置が使えない（おじゃま等）: 置ける所に置き直す
+      const alt = this.ai._search(eng); this.plan = alt;
+      if (alt.hold && eng.canHold) { eng.doHold(now); }
+      Object.assign(p, alt);
+    }
+    this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { type: eng.cur.type, x: p.x, y: p.y, r: p.r });
+    const res = eng.lock(p.x, p.y, p.r, p.f, now);
+    if (res.dead || !eng.alive) { this.hooks.onLock && this.hooks.onLock(this.seat, this._snapshot()); this._die(now); return; }
+    if (res.sent > 0 && this.hooks.onAttack) this.hooks.onAttack(this.seat, generateHoles(res.sent, vsRule.holeChange));
+    this.hooks.onLock && this.hooks.onLock(this.seat, this._snapshot());
+    if (res.garbage) this.ai.invalidate();
+    if (!eng.spawn(now)) { this._die(now); return; }
+    this._scheduled(now);
+    this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { ...eng.cur });
+  }
+}
+
+// ==========================================
 // オンライン対戦（最大4人・ホスト中心のスター型）
 // ==========================================
 // ゲスト同士は直接つながらず、全員がホストに接続します。ホストが盤面・攻撃・脱落・結果を中継します。
 // おじゃまは「全員に均等」: 攻撃ラインは、生き残っている自分以外の全員にそのまま届きます。
 const MAX_ROOM = 4;
 let roomPublic = false, roomAnnounceTimer = null, roomListToken = '', roomListRunning = false;
+let cpuPlayers = [], cpuTimer = null;   // host only: COM seats [{level,name,seat,runner,submitted}]
 let guests = [];                 // host only: [{conn, seat, name, alive, wantsRematch}]
 let mySeat = 0, myPlace = 0, roomMax = 2, roomState = 'idle', roomCode = '';
 let vsRoster = [], waitingRoster = [], rematchReady = [], rematchTotal = 0, rankingSummary = '';
 const oppView = new Map();       // seat -> {ctx, canvas, title, name, dead}
 const myName = () => (account && account.id) || 'ゲスト';
 const cleanName = v => String(v == null ? '?' : v).replace(/[\u0000-\u001f]/g, '').slice(0, 24) || '?';
-const vsHasPeers = () => isHost ? guests.some(g => g.conn && g.conn.open) : !!(conn && conn.open);
+const vsHasPeers = () => isHost ? (guests.some(g => g.conn && g.conn.open) || cpuPlayers.length > 0) : !!(conn && conn.open);
+const cpuBySeat = seat => cpuPlayers.find(c => c.seat === seat);
+const cpuNameFor = (level, idx) => `COM Lv${level}${cpuPlayers.some((c, i) => i !== idx && c.level === level) ? String.fromCharCode(65 + idx) : ''}`;
 function safeSend(c, msg) { try { if (c && c.open) c.send(msg); } catch (_) {} }
 function sendTo(seat, msg) { const g = guests.find(x => x.seat === seat); if (g) safeSend(g.conn, msg); }
 function broadcast(msg, exceptSeat = -1) { for (const g of guests) if (g.seat !== exceptSeat) safeSend(g.conn, msg); }
 const assignSeats = () => guests.forEach((g, i) => { g.seat = i + 1; });
-const makeRoster = () => [{ seat: 0, name: myName(), alive: true, place: 0, left: false }, ...guests.map(g => ({ seat: g.seat, name: g.name, alive: true, place: 0, left: false }))];
+const makeRoster = () => {
+  cpuPlayers.forEach((c, i) => { c.seat = guests.length + 1 + i; });
+  return [{ seat: 0, name: myName(), alive: true, place: 0, left: false }, ...guests.map(g => ({ seat: g.seat, name: g.name, alive: true, place: 0, left: false })), ...cpuPlayers.map(c => ({ seat: c.seat, name: c.name, alive: true, place: 0, left: false, cpu: true }))];
+};
 
 // ---- lobby: waiting room ----
 function renderRoomPanel() {
@@ -1018,14 +1685,21 @@ function renderRoomPanel() {
   const inRoom = !!peer && roomState === 'waiting';
   panel.style.display = inRoom ? 'flex' : 'none';
   document.getElementById('roomListBox').style.display = peer ? 'none' : 'flex';
+  document.getElementById('cpuBox').style.display = peer ? 'none' : 'flex';
   for (const id of ['btnCreateRoom', 'btnJoinRoom', 'roomMax', 'roomVisibility', 'roomInput']) document.getElementById(id).disabled = !!peer;
   if (!inRoom) return;
-  const list = isHost ? [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name }))] : waitingRoster;
+  const list = isHost ? [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name })), ...cpuPlayers.map((c, i) => ({ seat: guests.length + 1 + i, name: c.name, cpuIndex: i }))] : waitingRoster;
   document.getElementById('roomCodeLabel').textContent = `部屋コード: ${roomCode}`;
   document.getElementById('roomCount').textContent = `参加者 ${list.length} / ${roomMax}人${isHost ? (roomPublic ? '・公開中' : '・非公開') : ''}`;
   const pubRow = document.getElementById('roomPublicRow'); pubRow.style.display = isHost ? 'flex' : 'none';
   document.getElementById('roomPublicToggle').checked = roomPublic;
-  document.getElementById('roomRoster').replaceChildren(...list.map(p => { const d = document.createElement('div'); d.textContent = `${p.name}${p.seat === 0 ? '（ホスト）' : ''}${p.seat === mySeat && !isHost ? '（あなた）' : ''}`; return d; }));
+  document.getElementById('roomRoster').replaceChildren(...list.map(p => {
+    const d = document.createElement('div'); d.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:6px';
+    const label = document.createElement('span'); label.textContent = `${p.name}${p.seat === 0 ? '（ホスト）' : ''}${p.seat === mySeat && !isHost ? '（あなた）' : ''}`; d.append(label);
+    if (isHost && p.cpuIndex !== undefined) { const b = document.createElement('button'); b.className = 'alt'; b.textContent = '外す'; b.style.cssText = 'width:auto;min-width:0;padding:2px 10px;font-size:.72rem'; b.onclick = () => { cpuPlayers.splice(p.cpuIndex, 1); cpuPlayers.forEach((c, k) => { c.name = cpuNameFor(c.level, k); }); sendRoster(); }; d.append(b); }
+    return d;
+  }));
+  document.getElementById('roomCpuRow').style.display = isHost && roomState === 'waiting' ? 'flex' : 'none';
   const start = document.getElementById('btnStartMatch');
   start.style.display = isHost ? '' : 'none';
   start.disabled = list.length < 2;
@@ -1037,7 +1711,7 @@ function renderRoomPanel() {
 }
 function leaveRoom() {
   const p = peer;
-  stopRoomAnnounce();
+  stopRoomAnnounce(); stopCpus(); cpuPlayers = [];
   peer = null; conn = null; guests = []; isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = '';
   if (p) { try { p.destroy(); } catch (_) {} }
   oppView.clear();
@@ -1046,7 +1720,7 @@ function leaveRoom() {
   document.getElementById('netStatus').textContent = 'オフライン待機中';
 }
 // ---- public room directory (host side): announce while waiting, remove when the match starts or the room closes ----
-function roomCountNow() { return 1 + guests.filter(g => g.conn && g.conn.open).length; }
+function roomCountNow() { return 1 + guests.filter(g => g.conn && g.conn.open).length + cpuPlayers.length; }
 function announceRoom() {
   if (!isHost || !roomPublic || roomState !== 'waiting' || !authToken) return;
   api('/rooms/announce', { code: roomCode, max: roomMax, count: roomCountNow(), state: 'waiting' }).catch(() => {});
@@ -1191,7 +1865,7 @@ function onHostClosed() {
 
 // ---- host side ----
 function onGuestConnection(c) {
-  if (roomState !== 'waiting' || guests.length >= roomMax - 1) {
+  if (roomState !== 'waiting' || guests.length + cpuPlayers.length >= roomMax - 1) {
     const reason = roomState !== 'waiting' ? '対戦中のため参加できません' : '満員です';
     c.on('open', () => { safeSend(c, { type: 'FULL', reason }); setTimeout(() => { try { c.close(); } catch (_) {} }, 400); });
     return;
@@ -1204,7 +1878,7 @@ function onGuestConnection(c) {
   c.on('error', () => {});
 }
 function sendRoster() {
-  const players = [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name }))];
+  const players = [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name })), ...cpuPlayers.map((c, i) => ({ seat: guests.length + 1 + i, name: c.name }))];
   for (const g of guests) safeSend(g.conn, { type: 'ROSTER', max: roomMax, players, you: g.seat });
   renderRoomPanel();
   announceRoom();
@@ -1213,10 +1887,62 @@ function newRound() {
   vsRule.seed = Math.floor(Math.random() * 1000000);
   vsRule.round = Math.random().toString(36).slice(2, 10);
 }
+// ---- COM runtime (host only) ----
+function startCpus() {
+  stopCpus();
+  if (!isHost || !cpuPlayers.length) return;
+  const common = vsRule.nextMode === 'common';
+  const hooks = {
+    onPos: (seat, board, cur) => { broadcast({ type: 'POS', p: seat, board, cur }); drawOpp(seat, board, cur); },
+    onLock: (seat, board) => { broadcast({ type: 'LOCK', p: seat, board }); drawOpp(seat, board, null); },
+    onAttack: (seat, holes) => distributeAttack(seat, holes),
+    onDead: (seat) => { const c = cpuBySeat(seat); if (c) submitCpuReplay(c, 'lose'); handlePlayerOut(seat); }
+  };
+  const t0 = replayNow();
+  cpuPlanCache.clear();
+  for (const c of cpuPlayers) { c.submitted = false; c.runner = new CpuPlayer({ seat: c.seat, name: c.name, level: c.level, seed: common ? vsRule.seed : Math.floor(Math.random() * 1000000), hooks }); }
+  for (const c of cpuPlayers) c.runner.start(t0);
+  cpuTimer = setInterval(() => { const now = replayNow(); for (const c of cpuPlayers) if (c.runner && !c.runner.dead && roomState === 'playing') c.runner.tick(now); }, 16);
+}
+function stopCpus() { clearInterval(cpuTimer); cpuTimer = null; }
+function submitCpuReplay(c, result) {
+  if (!c || c.submitted || !c.runner || !isHost) return;
+  c.submitted = true;
+  const run = c.runner.run(); run.result = result;
+  receiveVsReplay(vsRule.round, run, c.seat);
+}
+function submitCpuReplays(winner) { for (const c of cpuPlayers) submitCpuReplay(c, winner === c.seat ? 'win' : 'lose'); }
+// ネットワークなしで COM とだけ対戦する
+function startCpuMatch(levels) {
+  if (peer) return;
+  leaveRoom();
+  isHost = true; roomState = 'waiting'; roomMax = 1 + levels.length; mySeat = 0;
+  cpuPlayers = levels.map((lv, i) => ({ level: cpuLevelOf(lv), name: '', seat: 0, runner: null, submitted: false }));
+  cpuPlayers.forEach((c, i) => { c.name = cpuNameFor(c.level, i); });
+  startMatchAsHost();
+}
+function fillCpuLevelSelect(el, def) {
+  el.replaceChildren(...Array.from({ length: 10 }, (_, k) => new Option(`Lv${k + 1}（${CPU_LEVEL_LABELS[k + 1]}）`, String(k + 1))));
+  el.value = String(def);
+}
+fillCpuLevelSelect(document.getElementById('cpuLevel'), 5);
+fillCpuLevelSelect(document.getElementById('roomCpuLevel'), 5);
+document.getElementById('btnCpuMatch').onclick = () => {
+  const lv = cpuLevelOf(document.getElementById('cpuLevel').value), n = Math.max(1, Math.min(3, parseInt(document.getElementById('cpuCount').value, 10) || 1));
+  startCpuMatch(Array(n).fill(lv));
+};
+document.getElementById('btnAddCpu').onclick = () => {
+  if (!isHost || roomState !== 'waiting') return;
+  if (roomCountNow() >= roomMax) { toast('満員です（人数を増やして部屋を作り直してください）'); return; }
+  const lv = cpuLevelOf(document.getElementById('roomCpuLevel').value);
+  cpuPlayers.push({ level: lv, name: '', seat: 0, runner: null, submitted: false });
+  cpuPlayers.forEach((c, i) => { c.name = cpuNameFor(c.level, i); });
+  sendRoster();
+};
 function startMatchAsHost() {
   if (!isHost || roomState !== 'waiting') return;
   guests = guests.filter(g => g.conn && g.conn.open); assignSeats();
-  if (!guests.length) { toast('2人以上で開始できます'); sendRoster(); return; }
+  if (!guests.length && !cpuPlayers.length) { toast('2人以上で開始できます'); sendRoster(); return; }
   stopRoomAnnounce();   // a started match is no longer joinable: take it off the list
   newRound();
   vsRule.nextMode = document.getElementById('cfgNextMode').value;
@@ -1247,7 +1973,8 @@ function distributeAttack(fromSeat, holes) {
   if (!clean.length) return;
   for (const r of vsRoster) {
     if (!r.alive || r.seat === fromSeat) continue;
-    if (r.seat === 0) receiveAttack(clean); else sendTo(r.seat, { type: 'ATTACK', holes: clean, from: fromSeat });
+    if (r.seat === 0) receiveAttack(clean);
+    else { const c = cpuBySeat(r.seat); if (c && c.runner) c.runner.receive(clean); else sendTo(r.seat, { type: 'ATTACK', holes: clean, from: fromSeat }); }
   }
 }
 function onGuestClose(g) {
@@ -1323,10 +2050,12 @@ function applyEnd(d) {
   const rank = Array.isArray(d.ranking) ? d.ranking : [];
   for (const r of rank) { const v = vsRoster.find(x => x.seat === r.seat); if (v) v.place = r.place | 0; }
   if (autoBuildRunning) stopAutoBuild('');
+  if (isHost) { stopCpus(); submitCpuReplays(d.winner); }
   if (d.winner === mySeat) { if (!isEnded) finishRun('win'); isEnded = true; myPlace = 1; }
   rankingSummary = rank.slice().sort((a, b) => a.place - b.place).map(r => `${r.place}位 ${cleanName(r.name)}`).join(' / ');
   rematchReady = []; rematchTotal = isHost ? 1 + guests.length : vsRoster.length;
   showRematch(d.winner === mySeat ? 'WIN! 1位' : (myPlace ? `GAME OVER（${myPlace}位）` : 'GAME OVER'));
+  if (isHost && pendingReplay && pendingReplay.answered) armReplayTimer(pendingReplay);
 }
 
 function startVsGame() {
@@ -1338,6 +2067,7 @@ function startVsGame() {
   document.getElementById('matchModeLabel').textContent = `オンライン対戦中（${vsRoster.length}人）`;
   renderRoomPanel();
   switchScreen('gameScreen'); initGame();
+  if (isHost) startCpus();
 }
 function clearRematchArea() {
   document.getElementById('rematchArea').classList.remove('active');
@@ -1402,7 +2132,7 @@ function broadcastRematchStatus() {
 function tryStartRematch() {
   if (!isHost || roomState !== 'result' || !rematchRequested) return;
   guests = guests.filter(g => g.conn && g.conn.open);
-  if (!guests.length || !guests.every(g => g.wantsRematch)) return;
+  if ((!guests.length && !cpuPlayers.length) || !guests.every(g => g.wantsRematch)) return;
   newRound(); assignSeats();
   vsRoster = makeRoster(); roomState = 'playing';
   for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'REMATCH_START', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
@@ -1415,6 +2145,7 @@ function resetForRematch() {
   buildOppViews();
   document.getElementById('matchModeLabel').textContent = `オンライン対戦中（${vsRoster.length}人）`;
   initGame();
+  if (isHost) startCpus();
   toast('再戦スタート！');
   sendPosNow();
 }
@@ -1756,8 +2487,8 @@ function getTemplateVariants() {
   const variants = [];
   for (const t of templateData) {
     if (t.enabled === false || !Array.isArray(t.pattern) || !t.pattern.length) continue;
-    variants.push({ name: t.name, priority: Number(t.priority) || 0, pattern: t.pattern });
-    if (t.mirror) variants.push({ name: t.name + '（反転）', priority: Number(t.priority) || 0, pattern: mirrorTemplateRows(t.pattern) });
+    variants.push({ name: t.name, priority: Number(t.priority) || 0, pattern: t.pattern, pc: !!t.pc });
+    if (t.mirror) variants.push({ name: t.name + '（反転）', priority: Number(t.priority) || 0, pattern: mirrorTemplateRows(t.pattern), pc: !!t.pc });
   }
   return variants;
 }
@@ -2104,6 +2835,7 @@ function renderTemplateList() {
     meta.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;';
     const chip = (text) => { const el = document.createElement('span'); el.textContent = text; el.style.cssText = 'display:inline-block;font-size:.72rem;color:var(--sub);border:1px solid var(--border);border-radius:5px;padding:2px 6px;white-space:nowrap;'; return el; };
     meta.append(chip(`${count}行`));
+    if (t.pc === true || (typeof cpuIsPcVariant === 'function' && cpuIsPcVariant(t))) meta.append(chip('パフェ積み'));
     const pri = document.createElement('input');
     pri.type = 'number'; pri.min = '-999'; pri.max = '999'; pri.step = '1'; pri.value = String(Number(t.priority) || 0);
     pri.setAttribute('aria-label', `${t.name}の優先度`); pri.title = '優先度（大きいほど選ばれやすい）';
@@ -2146,6 +2878,7 @@ function resetTemplateForm() {
   document.getElementById('templateName').value = ''; document.getElementById('templatePattern').value = '';
   document.getElementById('templateMirror').checked = true;
   document.getElementById('templatePriority').value = '10';
+  document.getElementById('templatePc').checked = false;
   document.getElementById('btnAddTemplate').textContent = 'テンプレ追加';
   document.getElementById('btnCancelTemplateEdit').style.display = 'none';
 }
@@ -2156,6 +2889,7 @@ function startTemplateEdit(i) {
   document.getElementById('templatePattern').value = (t.pattern || []).join('\n');
   document.getElementById('templateMirror').checked = t.mirror !== false;
   document.getElementById('templatePriority').value = String(Number(t.priority) || 0);
+  document.getElementById('templatePc').checked = t.pc === true;
   document.getElementById('btnAddTemplate').textContent = 'テンプレ更新';
   document.getElementById('btnCancelTemplateEdit').style.display = '';
   renderTemplateList();
@@ -2173,10 +2907,10 @@ document.getElementById('btnAddTemplate').onclick = () => {
   const mirror = document.getElementById('templateMirror').checked;
   const priority = Math.max(-999, Math.min(999, Math.round(Number(document.getElementById('templatePriority').value) || 0)));
   if (editingTemplateIndex >= 0 && templateData[editingTemplateIndex]) {
-    Object.assign(templateData[editingTemplateIndex], { name, pattern: rows, mirror, priority });
+    Object.assign(templateData[editingTemplateIndex], { name, pattern: rows, mirror, priority, pc: document.getElementById('templatePc').checked });
     toast(`テンプレ「${name}」を更新しました`);
   } else {
-    templateData.push({ name, priority, pattern: rows, enabled: true, mirror });
+    templateData.push({ name, priority, pattern: rows, enabled: true, mirror, pc: document.getElementById('templatePc').checked });
   }
   resetTemplateForm();
   saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions(); render();
@@ -2420,7 +3154,7 @@ function solveTemplate(startBoard, seq, startHold, startCanHold, variant, firstS
   };
   function rec(b, i, hold, canHoldNow, filledNow, isFirst) {
     if (filledNow >= total) return [];
-    if (i >= seq.length || nodes > nodeLimit) return null;
+    if (i >= seq.length || nodes > nodeLimit || ((nodes & 31) === 0 && performance.now() > templateSolveDeadline)) return null;
     const key = autoBoardKey(b) + '|' + i + '|' + (hold || '-') + '|' + (canHoldNow ? 1 : 0);
     if (fail.has(key)) return null;
     nodes++;
@@ -2764,7 +3498,7 @@ function showAdminTab(name) {
   if (name === 'Players') refreshCloudPlayers();
   if (name === 'Replays') refreshCloudReplays();
   if (name === 'Templates') renderTemplateList();
-  if (name === 'Dev') renderDevPanel();
+  if (name === 'Dev') { renderDevPanel(); openCpuDev(); }
 }
 document.querySelectorAll('.admin-tab').forEach(t => t.addEventListener('click', () => showAdminTab(t.dataset.tab)));
 
@@ -2857,6 +3591,58 @@ async function gistScan(apply) {
     st.textContent = `完了: 確認 ${tot.checked}件、公開 ${tot.publicFound}件${apply ? `、Secretに修正 ${tot.fixed}件、失敗 ${tot.failed}件` : ''}${tot.missing ? `、GitHub上に見つからない ${tot.missing}件` : ''}`;
   } catch (e) { st.textContent = 'エラー: ' + e.message; }
 }
+// ---- COM performance editor (developer) ----
+let cpuDevDraft = null, cpuParamsLoaded = false;
+async function loadCpuParams() {
+  if (cpuParamsLoaded || !authToken) return;
+  cpuParamsLoaded = true;
+  try { const d = await api('/cpu-params', undefined, 'GET'); cpuApplyParamOverrides(d.levels); } catch (_) { cpuParamsLoaded = false; }
+}
+function cpuBenchmark(level, params, pieces = 60, capMs = 2500) {
+  const pl = new CpuPlayer({ seat: 1, name: 'test', level, seed: Math.floor(Math.random() * 1000000), params, hooks: {} });
+  let now = 0, guard = 0; const t0 = performance.now();
+  pl.start(0);
+  while (!pl.dead && pl.engine.stats.pieces < pieces && performance.now() - t0 < capMs && guard++ < 500000) { now += 10; pl.tick(now); }
+  const e = pl.engine, st = e.stats; let holes = 0, seen = 0;
+  for (let r = 0; r < ROWS; r++) { holes += CPU_POP[(~e.rows[r]) & seen & CPU_FULL]; seen |= e.rows[r]; }
+  const th = pl.ai.thinkMs;
+  return { pieces: st.pieces, dead: pl.dead, perPieceMs: now / Math.max(1, st.pieces), sentPerPiece: st.sent / Math.max(1, st.pieces), tsd: st.tsd, tst: st.tst, pc: st.pc, holes, thinkAvg: th.reduce((a, b) => a + b, 0) / Math.max(1, th.length), thinkMax: Math.max(0, ...th), kinds: pl.ai.kinds };
+}
+function renderCpuDev() {
+  const sel = document.getElementById('cpuDevLevel');
+  if (!sel.options.length) fillCpuLevelSelect(sel, 5);
+  const lv = cpuLevelOf(sel.value), box = document.getElementById('cpuDevParams');
+  box.replaceChildren();
+  for (const d of CPU_PARAM_DEFS) {
+    const l = document.createElement('label'); l.textContent = d.label; l.htmlFor = 'cpuDev_' + d.key;
+    const inp = document.createElement('input'); inp.type = 'number'; inp.id = 'cpuDev_' + d.key; inp.min = d.min; inp.max = d.max; inp.step = d.step; inp.style.cssText = 'width:96px;padding:4px';
+    inp.value = String(cpuDevDraft[lv][d.key]);
+    inp.onchange = () => { const v = Math.min(d.max, Math.max(d.min, Number(inp.value))); cpuDevDraft[lv][d.key] = Number.isFinite(v) ? v : cpuDevDraft[lv][d.key]; inp.value = String(cpuDevDraft[lv][d.key]); };
+    box.append(l, inp);
+  }
+}
+function openCpuDev() {
+  cpuDevDraft = JSON.parse(JSON.stringify(cpuParams));
+  renderCpuDev();
+}
+document.getElementById('cpuDevLevel').onchange = () => { if (cpuDevDraft) renderCpuDev(); };
+document.getElementById('btnCpuResetLv').onclick = () => { const lv = cpuLevelOf(document.getElementById('cpuDevLevel').value); cpuDevDraft[lv] = { ...CPU_DEFAULT_PARAMS[lv] }; renderCpuDev(); };
+document.getElementById('btnCpuSave').onclick = async () => {
+  const st = document.getElementById('cpuDevStatus');
+  try { const r = await api('/cpu-params', { levels: cpuDevDraft }); cpuApplyParamOverrides(r.levels); openCpuDev(); st.textContent = '保存しました。次の対戦から全員のCOMに反映されます。'; toast('COMの設定を保存しました'); }
+  catch (e) { st.textContent = '保存に失敗: ' + e.message; }
+};
+document.getElementById('btnCpuResetAll').onclick = async () => {
+  if (!confirm('COMの設定をすべて初期値に戻します（サーバーに保存した設定も消えます）。よろしいですか？')) return;
+  try { await api('/cpu-params', { reset: true }); cpuApplyParamOverrides(null); openCpuDev(); document.getElementById('cpuDevStatus').textContent = '初期値に戻しました。'; }
+  catch (e) { document.getElementById('cpuDevStatus').textContent = '失敗: ' + e.message; }
+};
+document.getElementById('btnCpuTest').onclick = async () => {
+  const lv = cpuLevelOf(document.getElementById('cpuDevLevel').value), st = document.getElementById('cpuDevStatus');
+  st.textContent = '試運転中…'; await new Promise(r => setTimeout(r, 30));
+  const r = cpuBenchmark(lv, { ...cpuDevDraft[lv] }, 60);
+  st.textContent = `Lv${lv}（編集中の設定）で${r.pieces}ミノ${r.dead ? '（途中で死亡）' : ''}\n平均設置間隔 ${r.perPieceMs.toFixed(0)}ms / 攻撃効率 ${r.sentPerPiece.toFixed(2)} / TSD ${r.tsd}・TST ${r.tst}・パフェ ${r.pc} / 残った穴 ${r.holes}\n1手の思考 平均${r.thinkAvg.toFixed(1)}ms・最大${r.thinkMax.toFixed(0)}ms（テンプレ ${r.kinds.template}手・パフェ ${r.kinds.pc}手）`;
+};
 document.getElementById('btnGistAudit').onclick = () => gistScan(false);
 document.getElementById('btnGistFix').onclick = () => gistScan(true);
 async function setMaintenance(on) {
@@ -3053,6 +3839,14 @@ async function convertReplayToVideo(text, baseName) {
 }
 
 function replayWho(r) { return r.mode === 'vs' ? `対戦 ${r.players.join(' vs ')}` : `ソロ ${r.playerId}`; }
+// ---- shareable replay URL ----
+const shareBase = () => location.origin + location.pathname.replace(/[^/]*$/, '') + 'watch?id=';
+async function copyShareUrl(id) {
+  const url = shareBase() + id;
+  try { await navigator.clipboard.writeText(url); toast('共有URLをコピーしました'); } catch (_) { prompt('このURLをコピーしてください', url); }
+  return url;
+}
+async function shareReplayCloud(id, on) { return api(`/replays/${encodeURIComponent(id)}/${on ? 'share' : 'unshare'}`, {}); }
 function makeReplayRow(r, showPlayer, onChanged) {
   const row = document.createElement('div');
   row.className = 'admin-row';
@@ -3070,6 +3864,10 @@ function makeReplayRow(r, showPlayer, onChanged) {
       try { const x = await api('/admin/replays/' + encodeURIComponent(r.replayId), undefined, 'GET'); await convertReplayToVideo(x.replayData, replayWho(r)); }
       catch (e) { alert(e.message); }
     }, 'alt'),
+    adminButton(r.shared ? '共有URLをコピー' : '共有URLを作る', async () => {
+      try { if (!r.shared) { await shareReplayCloud(r.replayId, true); r.shared = true; } await copyShareUrl(r.replayId); onChanged && onChanged(); } catch (e) { alert(e.message); }
+    }, 'alt'),
+    ...(r.shared ? [adminButton('共有を止める', async () => { try { await shareReplayCloud(r.replayId, false); r.shared = false; toast('共有を止めました'); onChanged && onChanged(); } catch (e) { alert(e.message); } }, 'alt')] : []),
     ...(hasPerm('replay.delete') ? [adminButton('削除', async () => { if (await deleteCloudReplay(r)) onChanged(); }, 'danger')] : [])
   );
   row.append(label, actions);
@@ -3390,6 +4188,7 @@ function renderVsReplayList() {
       },'alt'),
       adminButton('データをコピー',async()=>{try{await navigator.clipboard.writeText(r.data);toast('リプレイデータをコピーしました');}catch(e){alert(e.message);}},'alt'),
       adminButton('動画に変換',()=>convertReplayToVideo(r.data,r.title||kind),'alt'),
+      ...(r.replayId?[adminButton('共有URL',async()=>{try{await shareReplayCloud(r.replayId,true);await copyShareUrl(r.replayId);}catch(e){alert(e.message);}},'alt')]:[]),
       adminButton('削除',()=>{
         if(!confirm(`${r.names.join(' vs ')} のリプレイを削除しますか？`))return;
         localStorage.setItem(VS_REPLAY_KEY,JSON.stringify(loadVsReplays().filter(x=>x.id!==r.id)));
@@ -3410,8 +4209,36 @@ document.getElementById('btnVsReplayBack').onclick=()=>{stopReplayPlayback();swi
 
 
 requestAnimationFrame(gameLoop);
-// Require a server-validated account before entering the lobby.
-requireLogin();
+// ---- watch page: ?watch=ID (or /watch?id=ID served by watch.html) opens one shared replay without logging in ----
+function watchIdFromUrl() {
+  const q = new URLSearchParams(location.search);
+  const id = q.get('watch') || (/(^|\/)watch(\.html)?$/.test(location.pathname) ? q.get('id') : null);
+  return id && /^[a-f0-9]{24}$/.test(id) ? id : '';
+}
+async function startWatchMode(id) {
+  watchMode = true;
+  document.title = 'リプレイ';
+  switchScreen('watchScreen');
+  const screen = document.getElementById('watchScreen');
+  mountReplayPlayer('watchScreen');
+  screen.insertBefore(document.getElementById('replayPlayer'), screen.querySelector('.lobby-card'));
+  document.getElementById('btnWatchSite').onclick = () => { location.href = location.pathname.replace(/watch(\.html)?$/, '') || './'; };
+  try {
+    const d = await api('/watch/' + id, undefined, 'GET');
+    watchData = d;
+    await loadReplayText(d.replayData);
+    const names = (d.players || []).join(' vs ');
+    document.getElementById('watchTitle').textContent = d.mode === 'vs' ? `対戦リプレイ ${names}` : `ソロのリプレイ ${names}`;
+    document.getElementById('watchInfo').textContent = `${new Date(d.endedAt).toLocaleString()} · ${(d.durationMs / 1000).toFixed(1)}秒`;
+    document.getElementById('btnWatchVideo').onclick = () => convertReplayToVideo(d.replayData, names || 'replay');
+  } catch (e) {
+    document.getElementById('watchError').textContent = e.message || 'リプレイを読み込めませんでした';
+    document.getElementById('btnWatchVideo').style.display = 'none';
+  }
+}
+const watchId = watchIdFromUrl();
+// Require a server-validated account before entering the lobby (not needed to watch a shared replay).
+if (watchId) startWatchMode(watchId); else requireLogin();
 </script>
 </body>
 </html>
