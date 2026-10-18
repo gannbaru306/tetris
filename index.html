@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Web Tetris VS</title>
+  <title>Web Tetris VS Fixed</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -55,7 +55,10 @@
     canvas { background: #11111b; border: 2px solid var(--border); border-radius: 4px; display: block; }
     
     #mainCanvas { width: 200px; height: 400px; }
-    #aiGuideStatus { min-height: 18px; width: 100%; text-align: center; color: #a6e3a1; font-size: .72rem; font-weight: 700; margin-top: 3px; }
+    .board-box { flex: 0 0 auto; min-width: 0; }
+    /* 文字の長さが盤面ブロックの幅（=NEXTの折り返し）に影響しないよう、内在幅を0にして盤面幅に合わせる */
+    #aiGuideStatus { min-height: 18px; width: 0; min-width: 100%; text-align: center; color: #a6e3a1; font-size: .72rem; font-weight: 700; margin-top: 3px; overflow-wrap: anywhere; word-break: break-all; }
+    #adminTemplateControls, #adminAutoControls { width: 0 !important; min-width: min(100%, 200px); }
     #holdCanvas { width: 50px; height: 50px; }
     #nextCanvas { width: 50px; height: 250px; }
     .room-item { display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:.85rem; }
@@ -671,7 +674,7 @@ function applySessionLabels() {
 }
 async function refreshSession() {
   const d = await api('/me', undefined, 'GET');
-  if (!d.allowed) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('このアカウントは現在プレイできません。'); return; }
+  if (!d.allowed) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('このアカウントは現在プレイできません。'); return; }   // サーバーが明示した場合のみ
   account = { id: d.id, role: d.role, perms: d.perms || {} };
   if (d.rev) eventToken = d.rev;
   applySessionLabels();
@@ -697,7 +700,7 @@ async function eventLoop() {
         if (d.changed) await refreshSession();
         else if (Date.now() - t0 < 1000) await new Promise(r => setTimeout(r, 1000 - (Date.now() - t0))); // never spin if the server answers instantly
       } catch (e) {
-        if (/ログインしてください/.test(e.message)) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログイン状態が無効になりました。'); break; }
+        if (e.status === 401) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログイン状態が無効になりました。'); break; }
         fails++; await new Promise(r => setTimeout(r, Math.min(30000, 2000 * fails)));
       }
     }
@@ -786,7 +789,7 @@ async function api(path, body, method='POST') {
   const res = await fetch(API_BASE.replace(/\/$/, '') + path, { method, headers: { 'Content-Type':'application/json', ...(authToken ? {Authorization:'Bearer '+authToken} : {}) }, ...(body === undefined ? {} : {body:JSON.stringify(body)}) });
   const data = await res.json().catch(() => ({}));
   if (res.status === 503 && data.maintenance) { maintenancePeek = false; applyMaintenance({ on: true, message: data.error, bypass: false }); }
-  if (!res.ok) throw new Error(data.error || `通信エラー (${res.status})`);
+  if (!res.ok) { const err = new Error(data.error || `通信エラー (${res.status})`); err.status = res.status; throw err; }
   return data;
 }
 async function packReplay(data) {
@@ -803,7 +806,7 @@ function validateReplayEvents(events) {
   for (const e of events) {
     if (!Array.isArray(e) || typeof e[0] !== 'number' || !isFinite(e[0])) bad();
     if (e.length === 2) { if (e[1] !== 'L') bad(); }
-    else if (e.length === 3) { if (e[1] !== 'G' || !Array.isArray(e[2]) || e[2].length > 40 || !e[2].every(h => int(h, 0, COLS - 1))) bad(); }
+    else if (e.length === 3) { if (e[1] !== 'G' || !Array.isArray(e[2]) || e[2].length > 200 || !e[2].every(h => int(h, 0, COLS - 1))) bad(); }
     else if (e.length !== 5 || typeof e[1] !== 'string' || e[1].length !== 1 || !'IJLOSTZ'.includes(e[1]) || !int(e[2], -5, 15) || !int(e[3], -5, 25) || !int(e[4], 0, 3)) bad();
   }
   return events.length ? events[events.length - 1][0] : 0;
@@ -853,7 +856,8 @@ function recordReplayLock() {
 }
 function recordReplayGarbage(holes) {
   if (!runStartedAt || !holes.length) return;
-  replayEvents.push([Math.max(0, Math.round(replayNow())), 'G', holes]);
+  const t = Math.max(0, Math.round(replayNow()));
+  for (let i = 0; i < holes.length; i += 40) replayEvents.push([t, 'G', holes.slice(i, i + 40)]);   // 1イベント40ラインまで
 }
 // Each side records itself. In VS the guest sends its run to the host.
 // Solo: uploaded to the cloud silently whichever button is pressed (「保存する」 also keeps a local copy).
@@ -943,6 +947,21 @@ function saveReplayLocal(p) {
   }
 }
 // Packs the run once, uploads it silently (one retry), and keeps a local copy if the player asked for it.
+// 各ミノについて「出現(HOLD交換)時の位置」と「設置直前の位置」だけ残す（途中の移動・落下を間引く）
+function slimReplayEvents(ev) {
+  const out = []; let pend = null, lastType = null;
+  for (const e of ev || []) {
+    if (e.length === 5) {
+      if (e[1] !== lastType) { if (pend) { out.push(pend); pend = null; } out.push(e); lastType = e[1]; } else pend = e;
+    } else {
+      if (pend) { out.push(pend); pend = null; }
+      out.push(e);
+      if (e[1] === 'L') lastType = null;
+    }
+  }
+  if (pend) out.push(pend);
+  return out;
+}
 async function finalizeReplay(p, force = false) {
   if (!p || p.finalized || !p.host) return;
   if (p.mode === 'vs' && !p.wantSave) { p.finalized = true; clearTimeout(p.timer); return; } // 対戦: 「保存しない」/未回答ならクラウドにも保存しない
@@ -955,9 +974,17 @@ async function finalizeReplay(p, force = false) {
     p.packed = await packReplay(p.mode === 'vs' ? { version:3, mode:'vs', durationMs:p.durationMs, players:p.players } : { version:3, durationMs:p.durationMs, seed:p.seed, events:p.host.events });
   } catch (_) { return; }
   if (p.wantSave) saveReplayLocal(p);
-  const bytes = new TextEncoder().encode(p.packed).length;
+  let cloudPacked = p.packed, bytes = new TextEncoder().encode(cloudPacked).length;
+  if (bytes > REPLAY_CLOUD_MAX_BYTES && p.mode === 'vs') {
+    // 上限（50KB）を超える長い対戦は、ミノの途中の動き（移動・落下）を間引いたクラウド用データにする。盤面・攻撃・結果は変わらない
+    try {
+      const slim = await packReplay({ version:3, mode:'vs', durationMs:p.durationMs, players:p.players.map(x => ({ ...x, events: slimReplayEvents(x.events) })) });
+      const sb = new TextEncoder().encode(slim).length;
+      if (sb <= REPLAY_CLOUD_MAX_BYTES) { cloudPacked = slim; bytes = sb; }
+    } catch (_) {}
+  }
   if (bytes > REPLAY_CLOUD_MAX_BYTES) return;
-  const body = { replayData:p.packed, durationMs:p.durationMs, byteSize:bytes, endedAt:new Date().toISOString(), mode:p.mode, players:p.players.map(x => x.name) };
+  const body = { replayData:cloudPacked, durationMs:p.durationMs, byteSize:bytes, endedAt:new Date().toISOString(), mode:p.mode, players:p.players.map(x => x.name) };
   let res = null;
   try { res = await api('/replays', body); }
   catch (_) { await new Promise(r => setTimeout(r, 2000)); try { res = await api('/replays', body); } catch (_) {} }
@@ -968,7 +995,7 @@ async function requireLogin() {
   if (!authToken) { switchScreen('accountScreen'); return; }
   try {
     const data = await api('/me', undefined, 'GET');
-    if (!data.allowed) throw new Error('このアカウントは現在プレイできません。');
+    if (!data.allowed) { const ne = new Error('このアカウントは現在プレイできません。'); ne.notAllowed = true; throw ne; }
     account = { id:data.id, role:data.role, perms:data.perms || {} };
     eventToken = data.rev || '';
     applySessionLabels();
@@ -976,7 +1003,16 @@ async function requireLogin() {
     refreshAdminUi();
     switchScreen('lobbyScreen');
     eventLoop();
-  } catch(e) { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログイン状態を確認できません: '+e.message); }
+  } catch(e) {
+    // ログアウトするのは「サーバーがログインを無効と答えた時（401）」「プレイ不可と判定された時」だけ。
+    // 通信エラー・サーバーの一時的な不調（5xx/タイムアウト）では保存済みのログイン情報を消さず、そのままロビーへ進む。
+    if (e.status === 401 || e.notAllowed || !account) { clearAuth(); switchScreen('accountScreen'); setAccountStatus(e.notAllowed ? e.message : 'ログイン状態を確認できません: ' + e.message); return; }
+    applySessionLabels();
+    switchScreen('lobbyScreen');
+    toast('通信が不安定です。ログイン状態は保持しています');
+    setTimeout(() => { refreshSession().catch(() => {}); }, 5000);
+    eventLoop();
+  }
 }
 
 function seededRandom(s) {
@@ -1070,8 +1106,15 @@ for (const t of CPU_TYPES) CPU_CELLS[t] = [0, 1, 2, 3].map(r => { const m = getS
 
 // ---- 性能パラメータ（開発者が変更できる）----
 const CPU_PARAM_DEFS = [
-  { key: 'minMs', label: '設置間隔 最短(ms)', min: 20, max: 10000, step: 10 },
-  { key: 'maxMs', label: '設置間隔 最長(ms)', min: 20, max: 10000, step: 10 },
+  { key: 'minMs', label: '1ミノの所要時間 最短(ms)（出現→設置の目標）', min: 20, max: 10000, step: 10 },
+  { key: 'maxMs', label: '1ミノの所要時間 最長(ms)', min: 20, max: 10000, step: 10 },
+  { key: 'moveMinMs', label: '移動・回転の入力間隔 最短(ms)', min: 10, max: 2000, step: 5 },
+  { key: 'moveMaxMs', label: '移動・回転の入力間隔 最長(ms)', min: 10, max: 2000, step: 5 },
+  { key: 'gravityMs', label: '自由落下 1段あたり(ms)', min: 5, max: 3000, step: 5 },
+  { key: 'softMs', label: 'ソフトドロップ 1段あたり(ms)', min: 0, max: 500, step: 1 },
+  { key: 'softRate', label: 'ソフトドロップを使う確率', min: 0, max: 1, step: 0.05 },
+  { key: 'hardDropRate', label: 'ハードドロップを使う確率', min: 0, max: 1, step: 0.05 },
+  { key: 'lockDelayMs', label: '接地してから固定するまで(ms)', min: 0, max: 1500, step: 10 },
   { key: 'nextSight', label: '先読みNEXT数（0=見ない）', min: 0, max: 5, step: 1 },
   { key: 'depth', label: '探索の深さ（手数）', min: 1, max: 6, step: 1 },
   { key: 'beam', label: 'ビーム幅（探索の広さ）', min: 1, max: 16, step: 1 },
@@ -1094,18 +1137,18 @@ const CPU_PARAM_DEFS = [
   { key: 'pcNodes', label: 'パフェ探索の上限ノード数', min: 0, max: 50000, step: 500 },
   { key: 'digSkill', label: 'おじゃま掘りの上手さ', min: 0, max: 1, step: 0.05 }
 ];
-const CPU_LEVEL_LABELS = ['', '超初心者', '初心者', '初級', '初中級', '普通', '中上級', '上級', '強い', 'かなり強い', '最強（神速）'];
+const CPU_LEVEL_LABELS = ['', '超初心者', '初心者', '初級', '初中級', '普通', '中上級', '上級', '強い', 'かなり強い', '最強'];
 const CPU_DEFAULT_PARAMS = [null,
-  { minMs: 1500, maxMs: 2000, nextSight: 0, depth: 1, beam: 1, budgetMs: 4, useHold: 0,   bestMoveRate: 0.25, missTol: 8, missRank: 3, noise: 6, stackShape: 1, holeCare: 0.7,  templateRate: 0,    templateSight: 0,  derivRate: 0,    spinUse: 0,   spinBuild: 0,    tstBuild: 0,    attackWeight: 0.5, pcRate: 0,   pcNodes: 0,     digSkill: 0.1 },
-  { minMs: 1200, maxMs: 1600, nextSight: 0, depth: 1, beam: 1, budgetMs: 4, useHold: 0,   bestMoveRate: 0.4,  missTol: 7, missRank: 3, noise: 5, stackShape: 1, holeCare: 0.8,  templateRate: 0,    templateSight: 0,  derivRate: 0,    spinUse: 0,   spinBuild: 0,    tstBuild: 0,    attackWeight: 1,   pcRate: 0,   pcNodes: 0,     digSkill: 0.2 },
-  { minMs: 1000, maxMs: 1300, nextSight: 1, depth: 2, beam: 2, budgetMs: 5, useHold: 0.3, bestMoveRate: 0.55, missTol: 6, missRank: 3, noise: 4, stackShape: 0, holeCare: 0.9,  templateRate: 0.15, templateSight: 8,  derivRate: 0,    spinUse: 0,   spinBuild: 0,    tstBuild: 0,    attackWeight: 1.5, pcRate: 0,   pcNodes: 0,     digSkill: 0.3 },
-  { minMs: 800,  maxMs: 1050, nextSight: 2, depth: 3, beam: 3, budgetMs: 6, useHold: 0.6, bestMoveRate: 0.65, missTol: 5, missRank: 3, noise: 3, stackShape: 0, holeCare: 1, templateRate: 0.4,  templateSight: 9,  derivRate: 0,    spinUse: 0.2, spinBuild: 0,    tstBuild: 0,    attackWeight: 2,   pcRate: 0,   pcNodes: 0,     digSkill: 0.4 },
-  { minMs: 600,  maxMs: 800,  nextSight: 3, depth: 3, beam: 3, budgetMs: 6, useHold: 0.9, bestMoveRate: 0.75, missTol: 4, missRank: 3, noise: 2, stackShape: 0, holeCare: 1.05,    templateRate: 0.85, templateSight: 11, derivRate: 0,    spinUse: 0.5, spinBuild: 0,    tstBuild: 0,    attackWeight: 3,   pcRate: 0,   pcNodes: 0,     digSkill: 0.5 },
-  { minMs: 450,  maxMs: 620,  nextSight: 4, depth: 4, beam: 3, budgetMs: 7, useHold: 1,   bestMoveRate: 0.82, missTol: 3, missRank: 3, noise: 1.5, stackShape: 0, holeCare: 1.1, templateRate: 0.95, templateSight: 12, derivRate: 0.1,  spinUse: 0.7, spinBuild: 0.2,  tstBuild: 0,    attackWeight: 5,   pcRate: 0.1, pcNodes: 400,   digSkill: 0.6 },
-  { minMs: 320,  maxMs: 450,  nextSight: 5, depth: 4, beam: 4, budgetMs: 8, useHold: 1,   bestMoveRate: 0.9,  missTol: 2.5, missRank: 2, noise: 1, stackShape: 0, holeCare: 1.15,  templateRate: 1,    templateSight: 14, derivRate: 0.4,  spinUse: 0.85, spinBuild: 0.45, tstBuild: 0.15, attackWeight: 7,   pcRate: 0.3, pcNodes: 700,   digSkill: 0.7 },
-  { minMs: 220,  maxMs: 320,  nextSight: 5, depth: 5, beam: 4, budgetMs: 8, useHold: 1,   bestMoveRate: 0.95, missTol: 2, missRank: 2, noise: 0.5, stackShape: 0, holeCare: 1.2,  templateRate: 1,    templateSight: 16, derivRate: 0.65, spinUse: 1,   spinBuild: 0.7,  tstBuild: 0.4,  attackWeight: 9,   pcRate: 0.55, pcNodes: 1100, digSkill: 0.8 },
-  { minMs: 130,  maxMs: 200,  nextSight: 5, depth: 5, beam: 4, budgetMs: 9,  useHold: 1,  bestMoveRate: 0.98, missTol: 1, missRank: 2, noise: 0.2, stackShape: 0, holeCare: 1.3,  templateRate: 1,    templateSight: 18, derivRate: 0.85, spinUse: 1,   spinBuild: 0.9,  tstBuild: 0.7,  attackWeight: 11,  pcRate: 0.8, pcNodes: 1600,  digSkill: 0.9 },
-  { minMs: 50,   maxMs: 100,  nextSight: 5, depth: 6, beam: 4, budgetMs: 10, useHold: 1,  bestMoveRate: 1,    missTol: 0, missRank: 2, noise: 0,  stackShape: 0, holeCare: 1.4,  templateRate: 1,    templateSight: 20, derivRate: 1,    spinUse: 1,   spinBuild: 1,    tstBuild: 1,    attackWeight: 13,  pcRate: 1,   pcNodes: 2500, digSkill: 1 }
+  { minMs: 3200, maxMs: 4200, moveMinMs: 260, moveMaxMs: 420, gravityMs: 220, softMs: 90, softRate: 0.3, hardDropRate: 0.1, lockDelayMs: 500, nextSight: 0, depth: 1, beam: 1, budgetMs: 4, useHold: 0, bestMoveRate: 0.05, missTol: 30, missRank: 4, noise: 20, stackShape: 0, holeCare: 0.4, templateRate: 0, templateSight: 0, derivRate: 0, spinUse: 0, spinBuild: 0, tstBuild: 0, attackWeight: 0, pcRate: 0, pcNodes: 0, digSkill: 0 },
+  { minMs: 2600, maxMs: 3400, moveMinMs: 220, moveMaxMs: 340, gravityMs: 180, softMs: 80, softRate: 0.4, hardDropRate: 0.2, lockDelayMs: 450, nextSight: 0, depth: 1, beam: 1, budgetMs: 4, useHold: 0, bestMoveRate: 0.15, missTol: 20, missRank: 4, noise: 14, stackShape: 0, holeCare: 0.5, templateRate: 0, templateSight: 0, derivRate: 0, spinUse: 0, spinBuild: 0, tstBuild: 0, attackWeight: 0.3, pcRate: 0, pcNodes: 0, digSkill: 0.05 },
+  { minMs: 2000, maxMs: 2600, moveMinMs: 170, moveMaxMs: 260, gravityMs: 150, softMs: 70, softRate: 0.5, hardDropRate: 0.3, lockDelayMs: 400, nextSight: 1, depth: 2, beam: 2, budgetMs: 5, useHold: 0.2, bestMoveRate: 0.3, missTol: 14, missRank: 3, noise: 10, stackShape: 0, holeCare: 0.7, templateRate: 0, templateSight: 0, derivRate: 0, spinUse: 0, spinBuild: 0, tstBuild: 0, attackWeight: 0.8, pcRate: 0, pcNodes: 0, digSkill: 0.15 },
+  { minMs: 1500, maxMs: 2000, moveMinMs: 140, moveMaxMs: 210, gravityMs: 120, softMs: 60, softRate: 0.6, hardDropRate: 0.45, lockDelayMs: 350, nextSight: 2, depth: 2, beam: 2, budgetMs: 5, useHold: 0.4, bestMoveRate: 0.4, missTol: 12, missRank: 3, noise: 8, stackShape: 0, holeCare: 0.8, templateRate: 0, templateSight: 0, derivRate: 0, spinUse: 0, spinBuild: 0, tstBuild: 0, attackWeight: 1.2, pcRate: 0, pcNodes: 0, digSkill: 0.25 },
+  { minMs: 1150, maxMs: 1500, moveMinMs: 110, moveMaxMs: 170, gravityMs: 100, softMs: 50, softRate: 0.7, hardDropRate: 0.6, lockDelayMs: 300, nextSight: 3, depth: 3, beam: 3, budgetMs: 6, useHold: 0.7, bestMoveRate: 0.55, missTol: 8, missRank: 3, noise: 5, stackShape: 0, holeCare: 0.9, templateRate: 0.3, templateSight: 9, derivRate: 0, spinUse: 0.2, spinBuild: 0, tstBuild: 0, attackWeight: 2, pcRate: 0, pcNodes: 0, digSkill: 0.35 },
+  { minMs: 850, maxMs: 1100, moveMinMs: 85, moveMaxMs: 130, gravityMs: 80, softMs: 40, softRate: 0.8, hardDropRate: 0.75, lockDelayMs: 250, nextSight: 4, depth: 3, beam: 3, budgetMs: 6, useHold: 0.9, bestMoveRate: 0.68, missTol: 6, missRank: 3, noise: 3.5, stackShape: 0, holeCare: 1, templateRate: 0.6, templateSight: 11, derivRate: 0, spinUse: 0.4, spinBuild: 0, tstBuild: 0, attackWeight: 3, pcRate: 0, pcNodes: 0, digSkill: 0.5 },
+  { minMs: 600, maxMs: 800, moveMinMs: 60, moveMaxMs: 95, gravityMs: 60, softMs: 30, softRate: 0.9, hardDropRate: 0.85, lockDelayMs: 200, nextSight: 5, depth: 4, beam: 3, budgetMs: 7, useHold: 1, bestMoveRate: 0.8, missTol: 4, missRank: 3, noise: 2.5, stackShape: 0, holeCare: 1.05, templateRate: 0.85, templateSight: 12, derivRate: 0.1, spinUse: 0.6, spinBuild: 0.15, tstBuild: 0, attackWeight: 5, pcRate: 0.05, pcNodes: 400, digSkill: 0.6 },
+  { minMs: 420, maxMs: 560, moveMinMs: 45, moveMaxMs: 70, gravityMs: 45, softMs: 22, softRate: 1, hardDropRate: 0.95, lockDelayMs: 150, nextSight: 5, depth: 4, beam: 4, budgetMs: 8, useHold: 1, bestMoveRate: 0.88, missTol: 3, missRank: 2, noise: 1.5, stackShape: 0, holeCare: 1.1, templateRate: 0.95, templateSight: 14, derivRate: 0.3, spinUse: 0.8, spinBuild: 0.35, tstBuild: 0.1, attackWeight: 7, pcRate: 0.2, pcNodes: 700, digSkill: 0.7 },
+  { minMs: 280, maxMs: 380, moveMinMs: 32, moveMaxMs: 50, gravityMs: 32, softMs: 16, softRate: 1, hardDropRate: 1, lockDelayMs: 120, nextSight: 5, depth: 5, beam: 4, budgetMs: 8, useHold: 1, bestMoveRate: 0.94, missTol: 2, missRank: 2, noise: 0.8, stackShape: 0, holeCare: 1.2, templateRate: 1, templateSight: 16, derivRate: 0.6, spinUse: 0.95, spinBuild: 0.6, tstBuild: 0.3, attackWeight: 9, pcRate: 0.45, pcNodes: 1100, digSkill: 0.8 },
+  { minMs: 130, maxMs: 200, moveMinMs: 22, moveMaxMs: 34, gravityMs: 20, softMs: 10, softRate: 1, hardDropRate: 1, lockDelayMs: 80, nextSight: 5, depth: 6, beam: 4, budgetMs: 10, useHold: 1, bestMoveRate: 1, missTol: 0, missRank: 2, noise: 0, stackShape: 0, holeCare: 1.4, templateRate: 1, templateSight: 20, derivRate: 1, spinUse: 1, spinBuild: 1, tstBuild: 1, attackWeight: 13, pcRate: 1, pcNodes: 2500, digSkill: 1 }
 ];
 let cpuParams = CPU_DEFAULT_PARAMS.map(p => p && { ...p });   // 現在の設定（サーバーの設定で上書きされる）
 function cpuClampParams(p) {
@@ -1121,6 +1164,7 @@ function cpuApplyParamOverrides(over) {
     if (!o) continue;
     for (const d of CPU_PARAM_DEFS) { const v = Number(o[d.key]); if (Number.isFinite(v)) cpuParams[lv][d.key] = Math.min(d.max, Math.max(d.min, v)); }
     if (cpuParams[lv].maxMs < cpuParams[lv].minMs) cpuParams[lv].maxMs = cpuParams[lv].minMs;
+    if (cpuParams[lv].moveMaxMs < cpuParams[lv].moveMinMs) cpuParams[lv].moveMaxMs = cpuParams[lv].moveMinMs;
   }
 }
 const cpuLevelOf = lv => Math.min(10, Math.max(1, Math.round(Number(lv)) || 1));
@@ -1201,6 +1245,56 @@ function cpuPlacements(rows, type) {
     }
   }
   return out;
+}
+
+// ---- 操作経路（回転入れ・横入れ・スピン込みで、出現位置から設置位置までの入力列を求める）----
+// cpuPlacements と同じ移動ルールで、最も「素直な」経路（なるべく上で左右移動・回転を済ませ、最後に落とす）を返す
+const CPU_PATH_N = 4 * 40 * 24 * 3;
+const cpuPathCost = new Float64Array(CPU_PATH_N), cpuPathPrev = new Int32Array(CPU_PATH_N), cpuPathGen = new Uint32Array(CPU_PATH_N);
+let cpuPathCur = 0;
+function cpuCellKey(type, x, y, r) {
+  const cs = CPU_CELLS[type][r], idx = [];
+  for (let i = 0; i < 4; i++) idx.push((y + cs[i][1] + 4) * 16 + (x + cs[i][0] + 4));
+  return idx.sort((a, b) => a - b).join(',');
+}
+function cpuFindPath(rows, type, tx, ty, tr, tf) {
+  if (cpuHit(rows, type, 3, 0, 0)) return null;
+  if (++cpuPathCur > 4000000000) { cpuPathGen.fill(0); cpuPathCur = 1; }
+  const enc = (x, y, r, f) => (((r * 40 + (y + 4)) * 24 + (x + 4)) * 3 + f);
+  const dec = k => { const f = k % 3; k = (k - f) / 3; const xx = k % 24; k = (k - xx) / 24; const yy = k % 40; return [xx - 4, yy - 4, (k - yy) / 40, f]; };
+  const isT = type === 'T', canRot = type !== 'O', kicks = type === 'I' ? KICK_I : KICK_STD;
+  const heap = [];
+  const hpush = (c, k) => { heap.push([c, k]); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+  const hpop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  const relax = (from, c, x, y, r, f) => { const k = enc(x, y, r, f); if (cpuPathGen[k] !== cpuPathCur || c < cpuPathCost[k]) { cpuPathGen[k] = cpuPathCur; cpuPathCost[k] = c; cpuPathPrev[k] = from; hpush(c, k); } };
+  const start = enc(3, 0, 0, 0);
+  cpuPathGen[start] = cpuPathCur; cpuPathCost[start] = 0; cpuPathPrev[start] = -1; hpush(0, start);
+  const tKey = cpuCellKey(type, tx, ty, tr);
+  let goal = -1, goalAny = -1;
+  while (heap.length) {
+    const [c, k] = hpop();
+    if (c > cpuPathCost[k]) continue;
+    const [x, y, r, f] = dec(k);
+    const grounded = cpuHit(rows, type, x, y + 1, r);
+    if (grounded && cpuCellKey(type, x, y, r) === tKey) { if (!isT || f === tf) { goal = k; break; } if (goalAny < 0) goalAny = k; }
+    const mc = c + 1 + 0.02 * y;   // 下に行くほど左右移動・回転を少しだけ高く（=上で済ませる経路を選ぶ）
+    if (!grounded) relax(k, c + 1, x, y + 1, r, 0);
+    if (!cpuHit(rows, type, x - 1, y, r)) relax(k, mc, x - 1, y, r, 0);
+    if (!cpuHit(rows, type, x + 1, y, r)) relax(k, mc, x + 1, y, r, 0);
+    if (canRot) for (const dir of [1, -1]) {
+      const nr = (r + dir + 4) % 4, ks = kicks[r + '-' + nr];
+      for (let i = 0; i < ks.length; i++) {
+        const nx = x + ks[i][0], ny = y - ks[i][1];
+        if (!cpuHit(rows, type, nx, ny, nr)) { relax(k, mc + 0.01, nx, ny, nr, isT ? (i === 4 ? 2 : 1) : 0); break; }
+      }
+    }
+  }
+  if (goal < 0) goal = goalAny;
+  if (goal < 0) return null;
+  const states = [];
+  for (let k = goal; k !== -1; k = cpuPathPrev[k]) states.push(dec(k));
+  states.reverse();
+  return { states, final: states[states.length - 1] };
 }
 
 // ---- 盤面の評価 ----
@@ -1383,7 +1477,7 @@ class CpuEngine {
       const row = Array(COLS).fill('X'); row[hole] = null; this.grid.push(row);
       applied.push(hole);
     }
-    if (applied.length) this._ev([t, 'G', applied]);
+    for (let i = 0; i < applied.length; i += 40) this._ev([t, 'G', applied.slice(i, i + 40)]);   // 1イベント40ラインまで
     this.pending = 0; this.pendingHoles = [];
     if (topped) this.alive = false;
   }
@@ -1423,7 +1517,7 @@ class TetrisAI {
   _variants(allowDeriv) {
     let v = getTemplateVariants().filter(variantIsValid);
     if (!allowDeriv) v = v.filter(x => !/派生/.test(x.name));
-    return v.sort((a, b) => (fireScore(b.name) - fireScore(a.name)) || (b.priority - a.priority));
+    return v.sort((a, b) => (b.priority - a.priority) || (fireScore(b.name) - fireScore(a.name)));
   }
   _tryTemplate(eng) {
     const P = this.p;
@@ -1605,43 +1699,91 @@ class TetrisAI {
 }
 
 // ---- 1人分のCOM（時間で動くドライバ）----
+// 人間と同じく「思考 → 移動・回転 → 落下（自由落下／ソフトドロップ／ハードドロップ）→ 接地して固定」の順に、時間をかけて操作する。
+// 各操作の速さは性能パラメータ（moveMinMs/moveMaxMs・gravityMs・softMs・softRate・hardDropRate・lockDelayMs）で変えられる。
 class CpuPlayer {
   constructor({ seat, name, level, seed, hooks, params }) {
     this.seat = seat; this.name = name; this.level = cpuLevelOf(level); this.seed = seed; this.hooks = hooks || {};
     this.engine = new CpuEngine(seed); this.ai = new TetrisAI(this.level, params);
     this.dead = false; this.plan = null; this.stage = 0; this.spawnAt = 0; this.thinkAt = 0; this.lockAt = 0; this.submitted = false; this.startedAt = 0;
+    this.q = []; this.fin = null; this.nextAt = 0; this.actDoneAt = 0; this.qHard = true; this.lastEmit = -999;
   }
   _delay() { const P = this.ai.p; return P.minMs + Math.random() * Math.max(0, P.maxMs - P.minMs); }
   _snapshot() { return this.engine.grid.map(r => r.slice()); }
+  // 対戦相手への盤面送信は間引く（操作の途中経過は最短40msごと。固定時は必ず送る）
+  _emit(now, force) {
+    if (!this.hooks.onPos || !this.engine.cur) return;
+    if (!force && now - this.lastEmit < 40) return;
+    this.lastEmit = now;
+    this.hooks.onPos(this.seat, this._snapshot(), { ...this.engine.cur });
+  }
   start(now) {
     this.startedAt = now;
     if (!this.engine.spawn(now)) { this._die(now); return; }
     this._scheduled(now);
-    this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { ...this.engine.cur });
+    this._emit(now, true);
   }
-  _scheduled(now) { const d = this._delay(); this.spawnAt = now; this.thinkAt = now + d * 0.35; this.lockAt = now + d; this.plan = null; }
+  _scheduled(now) {
+    const d = this._delay();
+    this.spawnAt = now; this.thinkAt = now + d * 0.35; this.lockAt = now + d;
+    this.plan = null; this.q = []; this.fin = null; this.nextAt = 0; this.actDoneAt = now; this.qHard = true;
+  }
   receive(holes) { if (!this.dead) this.engine.receive(holes); }
   _die(now) { if (this.dead) return; this.dead = true; this.hooks.onDead && this.hooks.onDead(this.seat, now); }
   run(now) { return { name: this.name, durationMs: Math.max(this.engine.lastT, 1), events: this.engine.events }; }
+  // 決めた設置位置までの入力列（移動・回転・落下）を、速さの設定に合わせて時間つきの手順にする
+  _buildQueue(eng, plan) {
+    const P = this.ai.p, type = eng.cur.type;
+    const path = cpuFindPath(eng.rows, type, plan.x, plan.y, plan.r, plan.f || 0);
+    if (!path) return null;
+    const S = path.states;
+    const hard = Math.random() < P.hardDropRate, soft = Math.random() < P.softRate;
+    const mv = () => P.moveMinMs + Math.random() * Math.max(0, P.moveMaxMs - P.moveMinMs);
+    const fall = soft ? P.softMs : P.gravityMs;
+    const isDown = (a, b) => b[0] === a[0] && b[2] === a[2] && b[1] === a[1] + 1;
+    const items = []; let usedHard = false;
+    for (let i = 1; i < S.length;) {
+      if (isDown(S[i - 1], S[i])) {
+        let j = i; while (j + 1 < S.length && isDown(S[j], S[j + 1])) j++;
+        // ハードドロップは固定してしまうので、最後の落下（その後に横入れ・回転入れが無い）のときだけ使える
+        if (hard && j === S.length - 1) { items.push({ to: S[j], delay: mv() }); usedHard = true; i = j + 1; continue; }
+        items.push({ to: S[i], delay: fall }); i++; continue;
+      }
+      items.push({ to: S[i], delay: mv() }); i++;
+    }
+    return { items, usedHard, final: path.final };
+  }
   tick(now) {
     if (this.dead) return;
-    const eng = this.engine;
+    const eng = this.engine, P = this.ai.p;
+    // 1) 思考（HOLDも行う）→ 操作手順を作る
     if (!this.plan && now >= this.thinkAt) {
       this.plan = this.ai.decide(eng);
-      if (this.plan.hold) { eng.doHold(now); if (!eng.alive) { this._die(now); return; } this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { ...eng.cur }); }
-      // 途中経過（向きと横位置）。遅いレベルだけ見せる
-      if (this.lockAt - now > 120) { eng.pose(now, this.plan.x, 0, this.plan.r); this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { ...eng.cur }); }
+      if (this.plan.hold) { eng.doHold(now); if (!eng.alive) { this._die(now); return; } this._emit(now, true); }
+      const q = this._buildQueue(eng, this.plan);
+      this.q = q ? q.items : []; this.qHard = q ? q.usedHard : true; this.fin = q ? q.final : null;
+      this.actDoneAt = now; this.nextAt = now + (this.q.length ? this.q[0].delay : 0);
     }
-    if (now < this.lockAt) return;
-    if (!this.plan) this.plan = this.ai.decide(eng);
-    const p = this.plan;
+    if (!this.plan) return;
+    // 2) 操作を1つずつ実行（移動・回転・落下）
+    while (this.q.length && now >= this.nextAt) {
+      const it = this.q.shift(), t = this.nextAt;
+      eng.pose(t, it.to[0], it.to[1], it.to[2]);
+      this.actDoneAt = t;
+      this._emit(now, !this.q.length);
+      if (this.q.length) this.nextAt = t + this.q[0].delay;
+    }
+    if (this.q.length) return;
+    // 3) 固定: ハードドロップなら即、それ以外は接地してから lockDelayMs 待つ。目標の所要時間（lockAt）より前には固定しない
+    if (now < Math.max(this.lockAt, this.actDoneAt + (this.qHard ? 0 : P.lockDelayMs))) return;
+    let p = this.fin ? { x: this.fin[0], y: this.fin[1], r: this.fin[2], f: this.fin[3] } : this.plan;
     if (!eng.cur || cpuHit(eng.rows, eng.cur.type, p.x, p.y, p.r)) {
       // 計画した位置が使えない（おじゃま等）: 置ける所に置き直す
       const alt = this.ai._search(eng); this.plan = alt;
       if (alt.hold && eng.canHold) { eng.doHold(now); }
-      Object.assign(p, alt);
+      p = alt; this.fin = null;
     }
-    this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { type: eng.cur.type, x: p.x, y: p.y, r: p.r });
+    this._emit(now, true);
     const res = eng.lock(p.x, p.y, p.r, p.f, now);
     if (res.dead || !eng.alive) { this.hooks.onLock && this.hooks.onLock(this.seat, this._snapshot()); this._die(now); return; }
     if (res.sent > 0 && this.hooks.onAttack) this.hooks.onAttack(this.seat, generateHoles(res.sent, vsRule.holeChange));
@@ -1649,7 +1791,7 @@ class CpuPlayer {
     if (res.garbage) this.ai.invalidate();
     if (!eng.spawn(now)) { this._die(now); return; }
     this._scheduled(now);
-    this.hooks.onPos && this.hooks.onPos(this.seat, this._snapshot(), { ...eng.cur });
+    this._emit(now, true);
   }
 }
 
@@ -3195,7 +3337,7 @@ function autoCandidateVariants() {
   const variants = getTemplateVariants().filter(variantIsValid);
   const selected = getSelectedTemplateVariantName();
   if (selected) return variants.filter(v => v.name === selected);
-  return variants.sort((a, b) => (fireScore(b.name) - fireScore(a.name)) || (b.priority - a.priority));
+  return variants.sort((a, b) => (b.priority - a.priority) || (fireScore(b.name) - fireScore(a.name)));
 }
 
 function templatePieceCount(variant) {
@@ -3207,10 +3349,19 @@ function templatePieceCount(variant) {
 function planAutoBuild(startPose) {
   if (!cur) return null;
   const firstStart = startPose || { x: cur.x, y: cur.y, rot: cur.r };
+  const boardRows = board.map(row => row.reduce((m, v, c) => (v ? m | (1 << c) : m), 0));
   for (const variant of autoCandidateVariants()) {
-    const seq = [cur.type, ...peekFuturePieces(templatePieceCount(variant) + 8)];
+    const isPc = !!cpuIsPcVariant(variant);
+    const seq = [cur.type, ...peekFuturePieces(templatePieceCount(variant) + (isPc ? 12 : 8))];
     const plan = solveTemplate(board, seq, holdPiece, canHold, variant, firstStart);
-    if (plan) return plan;
+    if (!plan) continue;
+    if (isPc) {
+      // パフェ積みは、組み終えた後に残りのツモ（HOLD含む）でパフェに届く時だけ採用する
+      const tail = cpuPcTail({ rows: boardRows, hold: holdPiece }, seq, plan, 4000);
+      if (!tail) continue;
+      plan.pcTail = tail;
+    }
+    return plan;
   }
   return null;
 }
@@ -3332,7 +3483,7 @@ async function startAutoBuild() {
     const plan = planAutoBuild();
     if (!plan) {
       const sel = getSelectedTemplateVariantName();
-      stopAutoBuild(sel ? `自動積み停止：このツモ順では「${sel}」を組めません` : '自動積み停止：このツモ順で組めるテンプレがありません');
+      stopAutoBuild(sel ? `自動積み停止：このツモ順では「${sel}」を組めません（パフェ積みはパフェできる時のみ組みます）` : '自動積み停止：このツモ順で組めるテンプレがありません（パフェ積みはパフェできる時のみ組みます）');
       return;
     }
     const variant = plan.variant;
@@ -3928,10 +4079,12 @@ async function refreshCloudPlayers() {
   } catch (e) { root.textContent = e.message; }
 }
 
+const replayUserKey = n => /^COM Lv\d+[A-Z]?$/.test(String(n)) ? 'COM' : n;   // COM Lv10 / Lv10A / Lv10B … は「COM」にまとめる
+const replayHasUser = (r, u) => replayUserKey(r.playerId) === u || r.players.some(n => replayUserKey(n) === u);
 function updateReplayUserOptions() {
   const sel = document.getElementById('replayFilterUser'), keep = sel.value;
-  const has = (r, u) => r.playerId === u || r.players.includes(u);
-  const users = [...new Set(adminReplayCache.flatMap(r => [r.playerId, ...r.players]))].sort((a, b) => a.localeCompare(b, 'ja'));
+  const has = replayHasUser;
+  const users = [...new Set(adminReplayCache.flatMap(r => [r.playerId, ...r.players]).map(replayUserKey))].sort((a, b) => a.localeCompare(b, 'ja'));
   sel.replaceChildren(new Option('すべて', ''), ...users.map(u => new Option(`${u}（${adminReplayCache.filter(r => has(r, u)).length}件）`, u)));
   sel.value = users.includes(keep) ? keep : '';
 }
@@ -3940,7 +4093,7 @@ function filteredReplays() {
   const fromV = document.getElementById('replayFilterFrom').value, toV = document.getElementById('replayFilterTo').value;
   const from = fromV ? new Date(fromV).getTime() : -Infinity, to = toV ? new Date(toV).getTime() : Infinity;
   const t = r => new Date(r.endedAt).getTime();
-  const list = adminReplayCache.filter(r => (!user || r.playerId === user || r.players.includes(user)) && (!mode || r.mode === mode) && t(r) >= from && t(r) <= to);
+  const list = adminReplayCache.filter(r => (!user || replayHasUser(r, user)) && (!mode || r.mode === mode) && t(r) >= from && t(r) <= to);
   const sorters = {
     newest: (a, b) => t(b) - t(a),
     oldest: (a, b) => t(a) - t(b),
@@ -3971,7 +4124,7 @@ async function refreshCloudReplays() {
 function bulkCondition() {
   const val = id => document.getElementById(id).value;
   const c = {};
-  if (val('replayFilterUser')) c.playerId = val('replayFilterUser');
+  if (val('replayFilterUser') && val('replayFilterUser') !== 'COM') c.playerId = val('replayFilterUser');   // 「COM」は投稿者ではないので一括削除の条件には使わない
   if (val('replayFilterMode')) c.mode = val('replayFilterMode');
   if (val('replayFilterFrom')) c.from = new Date(val('replayFilterFrom')).toISOString();
   if (val('replayFilterTo')) c.to = new Date(val('replayFilterTo')).toISOString();
