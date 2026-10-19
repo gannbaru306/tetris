@@ -129,7 +129,9 @@
     .panel {
       background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
       padding: 16px; width: 90%; max-width: 320px;
+      max-height: 90vh; max-height: 90dvh; overflow-y: auto; overscroll-behavior: contain;   /* 長い設定画面でも、中でスクロールできる */
     }
+    #settingsModal .panel > div:last-child { position: sticky; bottom: -16px; margin: 10px -16px -16px !important; padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--border); border-radius: 0 0 12px 12px; }   /* 閉じるボタンは常に見える */
     .panel h3 { margin: 0 0 12px; color: var(--accent); font-size: 1.1rem; text-align: center; }
     .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.85rem; }
     .row select, .row input[type="number"] {
@@ -219,7 +221,7 @@
       </div>
       <button id="btnCreateRoom" class="alt" style="white-space:nowrap">部屋を作る</button>
       <div style="display:flex; gap:6px;">
-        <input type="text" inputmode="numeric" id="roomInput" placeholder="5桁コード（招待リンクも貼れます）">
+        <input type="text" inputmode="numeric" id="roomInput" placeholder="5桁コード">
         <button id="btnJoinRoom" style="width: 120px;">参加する</button>
       </div>
       <div id="cpuBox" style="display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px;">
@@ -3211,6 +3213,7 @@ function checkDevUnlock() {
 }
 ['cfgArr', 'cfgSd'].forEach(id => { const el = document.getElementById(id); el.addEventListener('input', checkDevUnlock); el.addEventListener('change', checkDevUnlock); });
 document.getElementById('btnCloseSettings').onclick = () => document.getElementById('settingsModal').classList.add('hidden');
+document.getElementById('settingsModal').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden'); });   // 背景をタップしても閉じる
 
 document.getElementById('cfgAiGuide').addEventListener('change', (e) => {
   aiGuideEnabled = e.target.checked;
@@ -4128,6 +4131,7 @@ async function loadCpuParams() {
   cpuParamsLoaded = true;
   try { const d = await api('/cpu-params', undefined, 'GET'); cpuApplyParamOverrides(d.levels); } catch (_) { cpuParamsLoaded = false; }
   try { const c = await api('/cpu-custom', undefined, 'GET'); applyCpuCustom(c.presets); } catch (_) {}
+  cpuDevDraft = null;   // 読み込み直後は、開発者の編集画面もサーバーの内容から作り直す
 }
 function cpuBenchmark(level, params, pieces = 60, capMs = 2500) {
   const pl = new CpuPlayer({ seat: 1, name: 'test', level, seed: Math.floor(Math.random() * 1000000), params, hooks: {} });
@@ -4154,8 +4158,10 @@ function renderCpuDev() {
     box.append(l, inp);
   }
 }
-function openCpuDev() {
+function openCpuDev(force) {
   const keep = document.getElementById('cpuDevLevel').value || '5';
+  // 定期更新やタブ切替で呼ばれても、編集中（未保存）の内容は消さない。保存・初期化の直後だけ作り直す
+  if (!force && cpuDevDraft) { fillCpuDevSelect(keep); renderCpuDev(); return; }
   cpuDevDraft = JSON.parse(JSON.stringify(cpuParams));
   cpuDevCustom = cpuCustom.map(p => ({ id: p.id, name: p.name, base: p.base, params: { ...cpuParams[p.base], ...p.params } }));
   fillCpuDevSelect(keep);
@@ -4202,14 +4208,14 @@ document.getElementById('btnCpuSave').onclick = async () => {
     const keep = document.getElementById('cpuDevLevel').value;
     const r = await api('/cpu-params', { levels: cpuDevDraft }); cpuApplyParamOverrides(r.levels);
     const c = await api('/cpu-custom', { presets: cpuDevCustom }); applyCpuCustom(c.presets);
-    document.getElementById('cpuDevLevel').value = keep; openCpuDev();
+    document.getElementById('cpuDevLevel').value = keep; openCpuDev(true);
     st.textContent = '保存しました。次の対戦から全員のCOMに反映されます。'; toast('COMの設定を保存しました');
   }
   catch (e) { st.textContent = '保存に失敗: ' + e.message; }
 };
 document.getElementById('btnCpuResetAll').onclick = async () => {
   if (!confirm('COMの設定をすべて初期値に戻します（サーバーに保存した設定も消えます）。よろしいですか？')) return;
-  try { await api('/cpu-params', { reset: true }); cpuApplyParamOverrides(null); openCpuDev(); document.getElementById('cpuDevStatus').textContent = '初期値に戻しました。'; }
+  try { await api('/cpu-params', { reset: true }); cpuApplyParamOverrides(null); openCpuDev(true); document.getElementById('cpuDevStatus').textContent = '初期値に戻しました。'; }
   catch (e) { document.getElementById('cpuDevStatus').textContent = '失敗: ' + e.message; }
 };
 document.getElementById('btnCpuTest').onclick = async () => {
