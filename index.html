@@ -111,7 +111,14 @@
       display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
       margin-top: 12px; width: 100%; max-width: 400px;
     }
-    .controls button { height: 60px; font-size: 1.3rem; padding: 0; border-radius: 8px; }
+    .controls button { height: var(--tc-h, 60px); opacity: var(--tc-op, 1); font-size: 1.3rem; padding: 0; border-radius: 8px; }
+    .stat-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .stat-table th { text-align: left; color: var(--accent); font-size: .8rem; padding: 8px 0 3px; border-bottom: 1px solid var(--border); }
+    .stat-table td { padding: 3px 0; } .stat-table td:last-child { text-align: right; font-weight: 700; }
+    .rank-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: .85rem; }
+    .rank-row.me { background: rgba(137, 180, 250, .18); }
+    .rank-row .no { width: 2.2em; text-align: right; color: var(--sub); } .rank-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rank-row .vl { font-weight: 700; } .rank-row .ex { color: var(--sub); font-size: .72rem; }
 
     /* モーダル */
     .modal {
@@ -199,6 +206,7 @@
       <h2>ソロプレイ</h2>
       <label id="soloBuildableSeedRow" style="display:none;font-size:.75rem;color:var(--sub);align-items:center;gap:6px;justify-content:center"><input id="ensureTemplatePieces" type="checkbox" style="width:auto">テンプレが組めるツモ順で開始（管理者）</label>
       <button id="btnSolo">ソロプレイ開始</button>
+      <div style="display:flex;gap:6px"><button id="btnOpenMyPage" class="alt" style="flex:1">マイページ</button><button id="btnOpenRanking" class="alt" style="flex:1">ランキング</button></div>
       <div id="playerLabel" style="font-size:.8rem;color:var(--sub);text-align:center"></div>
       <button id="btnLogout" class="alt">ログアウト</button>
       <button id="btnOpenAdmin" class="alt" style="display:none">管理者メニュー</button>
@@ -211,7 +219,7 @@
       </div>
       <button id="btnCreateRoom" class="alt" style="white-space:nowrap">部屋を作る</button>
       <div style="display:flex; gap:6px;">
-        <input type="number" id="roomInput" placeholder="5桁コード">
+        <input type="text" inputmode="numeric" id="roomInput" placeholder="5桁コード（招待リンクも貼れます）">
         <button id="btnJoinRoom" style="width: 120px;">参加する</button>
       </div>
       <div id="cpuBox" style="display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px;">
@@ -238,6 +246,7 @@
         <label id="roomPublicRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><input id="roomPublicToggle" type="checkbox" style="width:auto"> 部屋一覧に公開する</label>
         <div id="roomRoster" style="display:flex;flex-direction:column;gap:2px"></div>
         <div id="roomHint" style="font-size:.75rem;color:var(--sub)"></div>
+        <button id="btnInvite" class="alt">招待リンクを共有・コピー</button>
         <button id="btnStartMatch">対戦開始</button>
         <button id="btnLeaveRoom" class="alt">部屋を出る</button>
       </div>
@@ -247,6 +256,26 @@
     <button id="btnOpenSettings" class="alt" style="margin-top: 15px;">⚙ 詳細ルール・感度設定</button>
   </div>
 
+  <!-- マイページ（戦績） -->
+  <div id="myPageScreen" class="screen">
+    <div class="lobby-card">
+      <h2>マイページ</h2>
+      <div id="myPageBody" style="font-size:.85rem;color:var(--sub)"></div>
+      <button id="btnMyPageRefresh" class="alt">更新</button>
+      <button id="btnMyPageBack" class="alt">ロビーへ戻る</button>
+    </div>
+  </div>
+
+  <!-- ランキング -->
+  <div id="rankingScreen" class="screen">
+    <div class="lobby-card">
+      <h2>ランキング</h2>
+      <div style="display:flex;gap:6px"><button id="btnRankSolo" style="flex:1">ソロスコア</button><button id="btnRankRating" class="alt" style="flex:1">対戦レート</button></div>
+      <div id="rankingBody" style="display:flex;flex-direction:column;gap:2px;font-size:.85rem;color:var(--sub)"></div>
+      <button id="btnRankingBack" class="alt">ロビーへ戻る</button>
+    </div>
+  </div>
+
   <!-- ゲーム画面 -->
   <div id="gameScreen" class="screen">
     <div style="width:100%; display:flex; justify-content:space-between; margin-bottom:6px;">
@@ -254,6 +283,7 @@
       <div id="matchModeLabel" style="font-size:0.8rem; color:var(--sub); font-weight:bold; align-self:center;"></div>
     </div>
 
+    <div id="scorePanel" style="display:none;width:100%;justify-content:space-around;gap:6px;font-size:.78rem;margin-bottom:6px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:5px 8px"><span>SCORE <b id="statScore">0</b></span><span>LEVEL <b id="statLevel">1</b></span><span>LINES <b id="statLines">0</b></span></div>
     <div class="game-container">
       <div class="side-box">
         <span style="font-size:0.65rem; color:var(--sub); text-align:center;">HOLD</span>
@@ -328,6 +358,17 @@
       <div style="font-weight:700;font-size:.85rem;margin-bottom:4px">キーコンフィグ</div>
       <div id="keyConfigList" style="display:flex;flex-direction:column;gap:4px"></div>
       <button id="btnKeyReset" class="alt" style="margin-top:6px;padding:4px;font-size:.75rem">キー設定を初期化</button>
+      <hr style="border:0; border-top:1px solid var(--border); margin:10px 0;">
+      <div style="font-weight:700;font-size:.85rem;margin-bottom:4px">タッチ操作（スマホのボタン）</div>
+      <div class="row"><label>ボタンの大きさ</label><div><input type="range" id="tcSize" min="40" max="90" step="2" style="width:100px"> <span id="tcSizeLabel">60</span>px</div></div>
+      <div class="row"><label>ボタンの濃さ</label><div><input type="range" id="tcOpacity" min="30" max="100" step="5" style="width:100px"> <span id="tcOpacityLabel">100</span>%</div></div>
+      <div class="row"><label>ボタン配置</label><select id="tcLayout"><option value="standard">標準（移動・落下・回転）</option><option value="mirror">左右反転（回転が左）</option><option value="rotmove">回転を先頭に（回転・移動・落下）</option></select></div>
+      <div class="row"><label>HOLDボタン</label><select id="tcHold"><option value="bottom">下に表示</option><option value="top">上に表示</option><option value="off">非表示</option></select></div>
+      <div class="row"><label>タッチの長押し開始</label><div><input type="number" id="tcDas" step="10" style="width:55px"> ms</div></div>
+      <div class="row"><label>タッチの連続移動</label><div><input type="number" id="tcArr" step="5" style="width:55px"> ms</div></div>
+      <div class="row"><label>タッチのソフトドロップ</label><div><input type="number" id="tcSd" step="5" style="width:55px"> ms</div></div>
+      <div class="row"><label>ボタンを押すと振動</label><input id="tcVibrate" type="checkbox" style="width:auto"></div>
+      <button id="btnTcReset" class="alt" style="margin-top:6px;padding:4px;font-size:.75rem">タッチ設定を初期化</button>
       <hr style="border:0; border-top:1px solid var(--border); margin:10px 0;">
       <div class="row">
         <label>NEXTツモ順</label>
@@ -415,8 +456,13 @@
       <div style="display:flex;gap:8px"><button id="btnGistAudit" class="alt" style="flex:1">点検だけ行う</button><button id="btnGistFix" class="danger" style="flex:1">公開のものをSecretに直す</button></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <div style="font-weight:700">COMの性能設定</div>
-      <div class="muted" style="font-size:.78rem">レベルごとに、速さ・先読み・最善手率・T-spin・パフェ・派生などを変更できます。「保存」すると、全員のCOMに反映されます。保存前に「試運転」で目安を確認できます。</div>
+      <div class="muted" style="font-size:.78rem">レベルごとに、速さ・先読み・最善手率・T-spin・パフェ・派生などを変更できます。「プリセットを追加」で、名前つきの新しいCOM（★）を作れます（例: 人間に勝てない弱いCOM、ハードドロップしか使わないCOM）。「保存」すると全員の選択肢に反映されます。保存前に「試運転」で目安を確認できます。</div>
       <select id="cpuDevLevel"></select>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btnCpuPresetAdd" class="alt" style="flex:1;min-width:8em">プリセットを追加</button>
+        <button id="btnCpuPresetRename" class="alt" style="flex:1;min-width:6em">名前変更</button>
+        <button id="btnCpuPresetDelete" class="danger" style="flex:1;min-width:5em">削除</button>
+      </div>
       <div id="cpuDevParams" style="display:grid;grid-template-columns:1fr 96px;gap:6px 10px;align-items:center;font-size:.8rem"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button id="btnCpuSave" style="flex:1;min-width:8em">保存（全員に反映）</button>
@@ -427,6 +473,11 @@
         <button id="btnCpuResetAll" class="danger" style="flex:1;min-width:8em">すべて初期値に（保存も消す）</button>
       </div>
       <div id="cpuDevStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">全員の戦績・レート（非公開の人も含む）</div>
+      <div class="muted" style="font-size:.78rem">開発者のレートは1850固定です。非公開にしているプレイヤーも、ここでは確認できます。</div>
+      <button id="btnAdminStats" class="alt">読み込む</button>
+      <div id="adminStatsBody" style="display:flex;flex-direction:column;gap:2px;font-size:.8rem"></div>
     </section>
 
     <section id="adminTabReplays" class="admin-section">
@@ -581,6 +632,9 @@ const KICK_I = {
 };
 
 let board = [], cur = null, holdPiece = null, canHold = true;
+// 画面の上にはみ出した段（hiddenRows[0] が画面のすぐ上の段）。中開けRENなどで、はみ出して積んだ分も残す
+const HIDDEN_MAX = 20;
+let hiddenRows = [];
 let bag = [], nextQ = [];
 let ren = -1, b2b = false, pendingGarbage = 0, pendingHoles = [];
 let isEnded = false, isVsMode = false;
@@ -862,13 +916,89 @@ function recordReplayGarbage(holes) {
 // Each side records itself. In VS the guest sends its run to the host.
 // Solo: uploaded to the cloud silently whichever button is pressed (「保存する」 also keeps a local copy).
 // Versus: stored (cloud + local) ONLY when the player pressed 「保存する」; 「保存しない」, no answer, or leaving drops it.
+
+// ---- スコア・戦績の集計（スコアはテトリス公式ガイドラインに準拠）----
+// ライン消去: 1=100 / 2=300 / 3=500 / 4=800、T-Spin: 0=400 / 1=800 / 2=1200 / 3=1600、T-Spin Mini: 0=100 / 1=200 / 2=400（すべて×レベル）
+// Back-to-Back（4ライン・T-Spinの連続）は×1.5、コンボは 50×コンボ数×レベル、ソフトドロップ 1点/段、ハードドロップ 2点/段、
+// パーフェクトクリア: 1=800 / 2=1200 / 3=1800 / 4=2000（B2Bの4ラインは3200）×レベル（通常の得点に加算）。レベルは10ライン消すごとに+1。
+const newRunStats = () => ({ score: 0, lines: 0, level: 1, pieces: 0, keys: 0, attack: 0, auto: false, reported: false });
+let runStats = newRunStats();
+function updateScoreUi() {
+  const a = document.getElementById('statScore'); if (!a) return;
+  a.textContent = runStats.score.toLocaleString();
+  document.getElementById('statLevel').textContent = String(runStats.level);
+  document.getElementById('statLines').textContent = String(runStats.lines);
+}
+function awardScore(cleared, spin, perfectClear, previousB2B, combo) {
+  const lv = runStats.level;
+  let base = 0;
+  if (cleared === 0) base = spin === 'full' ? 400 : spin === 'mini' ? 100 : 0;
+  else if (spin === 'full') base = [0, 800, 1200, 1600, 0][cleared] || 0;
+  else if (spin === 'mini') base = [0, 200, 400, 0, 0][cleared] || 0;
+  else base = [0, 100, 300, 500, 800][cleared] || 0;
+  const difficult = cleared > 0 && (cleared === 4 || spin !== null);
+  let pts = base * lv;
+  if (difficult && previousB2B) pts = Math.floor(pts * 1.5);
+  if (cleared > 0 && combo > 0) pts += 50 * combo * lv;
+  if (perfectClear) pts += lv * (cleared === 1 ? 800 : cleared === 2 ? 1200 : cleared === 3 ? 1800 : (previousB2B ? 3200 : 2000));
+  runStats.score += pts;
+  runStats.lines += cleared;
+  runStats.level = 1 + Math.floor(runStats.lines / 10);
+  updateScoreUi();
+}
+// ソロは公式どおりレベルが上がるほど自由落下が速くなる（レベル1=1秒/段）。対戦は従来どおり一定。
+function currentGravity() {
+  if (isVsMode) return GRAVITY_DELAY;
+  const lv = Math.min(runStats.level, 20);
+  return Math.max(16, 1000 * Math.pow(0.8 - (lv - 1) * 0.007, lv - 1));
+}
+const countKey = () => { if (!isEnded && cur) runStats.keys++; };
+function softStep() { if (move(0, 1)) { runStats.score += 1; updateScoreUi(); return true; } return false; }
+
+// ---- 戦績をサーバーへ送る（失敗時は端末に溜めて、次のログイン時などに再送）----
+const STAT_Q_KEY = 'p2pTetrisStatQueueV1';
+const newReportId = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+function queueStat(p) { try { const q = JSON.parse(localStorage.getItem(STAT_Q_KEY) || '[]'); q.push(p); localStorage.setItem(STAT_Q_KEY, JSON.stringify(q.slice(-20))); } catch (_) {} }
+async function sendStats(p, first) {
+  try { const r = await api('/stats/report', p); if (first) onStatsResult(r, p); return true; }
+  catch (e) {
+    if ([400, 403, 409, 413].includes(e.status)) return true;   // サーバーが弾いた記録は再送しない
+    queueStat(p); return false;
+  }
+}
+async function flushStatQueue() {
+  let q = []; try { q = JSON.parse(localStorage.getItem(STAT_Q_KEY) || '[]'); } catch (_) {}
+  if (!q.length) return;
+  try { localStorage.removeItem(STAT_Q_KEY); } catch (_) {}
+  for (const p of q) await sendStats(p, false);
+}
+function onStatsResult(r, p) {
+  if (!r || r.skipped || r.duplicate) return;
+  if (p.mode === 'solo') {
+    if (r.newBest) { const el = document.getElementById('rematchStatus'); el.textContent = [el.textContent, '自己ベスト更新！'].filter(Boolean).join('　'); }
+  } else if (r.ratingChange != null) {
+    const el = document.getElementById('rankingText');
+    el.textContent = [el.textContent, `レート ${r.rating}（${r.ratingChange >= 0 ? '+' : ''}${r.ratingChange}）`].filter(Boolean).join('　');
+  }
+}
+function submitStats(result, ms) {
+  const rs = runStats;
+  if (!account || !rs || rs.auto || rs.reported) return;
+  rs.reported = true;
+  const vs = isVsMode;
+  const opponents = vs ? vsRoster.filter(r => r.seat !== mySeat && !/^COM /.test(r.name)).map(r => r.name) : [];
+  sendStats({ reportId: newReportId(), mode: vs ? 'vs' : 'solo', result, score: rs.score, lines: rs.lines, level: rs.level, pieces: rs.pieces, keys: rs.keys, attack: rs.attack, durationMs: ms, opponents }, true);
+}
+
 const VS_REPLAY_KEY = 'p2pTetrisVsReplaysV1', VS_REPLAY_MAX = 50, REPLAY_CLOUD_MAX_BYTES = 50 * 1024, VS_GUEST_WAIT_MS = 4000;
 let pendingReplay = null;
 function finishRun(result = 'lose') {
   if (!account || !runStartedAt) return;
   const squeezed = squeezeIdle(replayEvents, Math.max(0, Math.round(replayNow())));
   const run = { name: account.id, result, durationMs: squeezed.durationMs, events: squeezed.events };
+  const rawMs = Math.max(0, Math.round(replayNow()));
   runStartedAt = 0;
+  submitStats(result, rawMs);
   if (isVsMode && !isHost) { sendNet({ type: 'REPLAY', round: vsRule.round, run }); return; }
   const round = isVsMode ? vsRule.round : null;
   let p = pendingReplay;
@@ -990,9 +1120,22 @@ async function finalizeReplay(p, force = false) {
   catch (_) { await new Promise(r => setTimeout(r, 2000)); try { res = await api('/replays', body); } catch (_) {} }
   if (res && res.replayId && p.localEntryId) setLocalReplayId(p.localEntryId, res.replayId);
 }
+// ---- 招待リンク: ?room=12345 を開くと、ログイン後に自動でその部屋へ参加する ----
+function roomFromUrl() { const q = new URLSearchParams(location.search); const c = q.get('room') || q.get('join'); return c && /^\d{5}$/.test(c) ? c : ''; }
+let pendingRoomCode = roomFromUrl();
+function clearRoomParam() { try { const u = new URL(location.href); u.searchParams.delete('room'); u.searchParams.delete('join'); history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } catch (_) {} }
+function inviteUrl(code) { const u = new URL(location.href); u.search = ''; u.hash = ''; u.searchParams.set('room', code); return u.toString(); }
+function consumePendingRoom() {
+  if (!pendingRoomCode) return;
+  const code = pendingRoomCode; pendingRoomCode = ''; clearRoomParam();
+  if (peer) { toast('すでに部屋に参加中です'); return; }
+  document.getElementById('roomInput').value = code;
+  toast(`招待リンクの部屋 ${code} に参加します`);
+  document.getElementById('btnJoinRoom').onclick();
+}
 async function requireLogin() {
   readSavedAuth();
-  if (!authToken) { switchScreen('accountScreen'); return; }
+  if (!authToken) { switchScreen('accountScreen'); if (pendingRoomCode) setAccountStatus(`招待リンクの部屋 ${pendingRoomCode} に参加するには、ログインしてください。`); return; }
   try {
     const data = await api('/me', undefined, 'GET');
     if (!data.allowed) { const ne = new Error('このアカウントは現在プレイできません。'); ne.notAllowed = true; throw ne; }
@@ -1003,6 +1146,8 @@ async function requireLogin() {
     refreshAdminUi();
     switchScreen('lobbyScreen');
     eventLoop();
+    flushStatQueue().catch(() => {});
+    consumePendingRoom();
   } catch(e) {
     // ログアウトするのは「サーバーがログインを無効と答えた時（401）」「プレイ不可と判定された時」だけ。
     // 通信エラー・サーバーの一時的な不調（5xx/タイムアウト）では保存済みのログイン情報を消さず、そのままロビーへ進む。
@@ -1012,6 +1157,7 @@ async function requireLogin() {
     toast('通信が不安定です。ログイン状態は保持しています');
     setTimeout(() => { refreshSession().catch(() => {}); }, 5000);
     eventLoop();
+    consumePendingRoom();
   }
 }
 
@@ -1169,6 +1315,24 @@ function cpuApplyParamOverrides(over) {
 }
 const cpuLevelOf = lv => Math.min(10, Math.max(1, Math.round(Number(lv)) || 1));
 
+// ---- 開発者が作るCOMのプリセット（名前つき・性能セット）。選択肢の値は 'c:<id>' ----
+let cpuCustom = [];   // [{ id, name, base(1〜10), params }]
+const cpuCustomOf = id => cpuCustom.find(p => p.id === id);
+function cpuChoice(value) {
+  const v = String(value);
+  if (v.startsWith('c:')) { const p = cpuCustomOf(v.slice(2)); if (p) return { level: cpuLevelOf(p.base), custom: p.id, label: p.name, params: { ...p.params } }; }
+  const lv = cpuLevelOf(v);
+  return { level: lv, custom: null, label: 'Lv' + lv, params: undefined };
+}
+function cpuOptionList(customList) {
+  return [...Array.from({ length: 10 }, (_, k) => new Option(`Lv${k + 1}（${CPU_LEVEL_LABELS[k + 1]}）`, String(k + 1))),
+    ...customList.map(p => new Option(`★${p.name}（Lv${cpuLevelOf(p.base)}基準）`, 'c:' + p.id))];
+}
+function applyCpuCustom(list) {
+  cpuCustom = (Array.isArray(list) ? list : []).filter(p => p && p.id && p.name).map(p => ({ id: String(p.id), name: String(p.name), base: cpuLevelOf(p.base), params: { ...(p.params || {}) } }));
+  for (const id of ['cpuLevel', 'roomCpuLevel']) { const el = document.getElementById(id); if (el) { const keep = el.value; el.replaceChildren(...cpuOptionList(cpuCustom)); el.value = [...el.options].some(o => o.value === keep) ? keep : '5'; } }
+}
+
 // ---- 盤面ビットマスク演算（行ごとの整数。bit x = x列が埋まっている）----
 function cpuHit(rows, type, x, y, r) {
   const cells = CPU_CELLS[type][r];
@@ -1285,7 +1449,8 @@ function cpuFindPath(rows, type, tx, ty, tr, tf) {
       const nr = (r + dir + 4) % 4, ks = kicks[r + '-' + nr];
       for (let i = 0; i < ks.length; i++) {
         const nx = x + ks[i][0], ny = y - ks[i][1];
-        if (!cpuHit(rows, type, nx, ny, nr)) { relax(k, mc + 0.01, nx, ny, nr, isT ? (i === 4 ? 2 : 1) : 0); break; }
+        // 回転は出現位置（x=3）に近いほど安く、壁キックを使うほど高くする（端でハードドロップできる場所は、先に回してから端へ寄せる）
+        if (!cpuHit(rows, type, nx, ny, nr)) { relax(k, mc + 0.01 + 0.003 * Math.abs(x - 3) + (i > 0 ? 0.05 : 0), nx, ny, nr, isT ? (i === 4 ? 2 : 1) : 0); break; }
       }
     }
   }
@@ -1401,6 +1566,7 @@ class CpuEngine {
     this.hold = null; this.canHold = true; this.cur = null; this.alive = true;
     this.b2b = false; this.ren = -1; this.pending = 0; this.pendingHoles = [];
     this.events = []; this.lastT = 0;
+    this.hid = []; this.hidGrid = [];   // 画面の上にはみ出した段（hid[0] が画面のすぐ上）
     this.stats = { pieces: 0, lines: 0, sent: 0, received: 0, tsd: 0, tst: 0, tspin: 0, pc: 0, b2b: 0, holesMade: 0 };
   }
   _ev(e) { e[0] = Math.round(e[0]); if (e[0] < this.lastT) e[0] = this.lastT; this.lastT = e[0]; this.events.push(e); }
@@ -1445,10 +1611,9 @@ class CpuEngine {
     const spin = type === 'T' ? cpuSpinKind(this.rows, x, y, r, f) : null;
     this._ev([t, type, x, y, r]); this._ev([t, 'L']);
     const cs = CPU_CELLS[type][r];
-    for (let i = 0; i < 4; i++) { if (y + cs[i][1] < 0) { this.alive = false; return { dead: true }; } }
-    for (let i = 0; i < 4; i++) { const yy = y + cs[i][1], xx = x + cs[i][0]; this.rows[yy] |= 1 << xx; this.grid[yy][xx] = type; }
+    for (let i = 0; i < 4; i++) { const yy = y + cs[i][1], xx = x + cs[i][0]; if (yy < 0) { const h = -yy - 1; if (h < HIDDEN_MAX) { this.hid[h] = (this.hid[h] | 0) | (1 << xx); if (!this.hidGrid[h]) this.hidGrid[h] = Array(COLS).fill(null); this.hidGrid[h][xx] = type; } continue; } this.rows[yy] |= 1 << xx; this.grid[yy][xx] = type; }
     let cleared = 0;
-    for (let k = ROWS - 1; k >= 0; k--) if (this.rows[k] === CPU_FULL) { this.rows.splice(k, 1); this.rows.unshift(0); this.grid.splice(k, 1); this.grid.unshift(Array(COLS).fill(null)); cleared++; k++; }
+    for (let k = ROWS - 1; k >= 0; k--) if (this.rows[k] === CPU_FULL) { this.rows.splice(k, 1); this.rows.unshift(this.hid.shift() | 0); this.grid.splice(k, 1); this.grid.unshift(this.hidGrid.shift() || Array(COLS).fill(null)); cleared++; k++; }
     const pc = cleared > 0 && this.rows.every(m => m === 0);
     const calc = cpuAttackCalc(cleared, spin, pc, this.b2b, this.ren);
     this.ren = calc.ren; if (cleared > 0) this.b2b = calc.b2b;
@@ -1471,8 +1636,9 @@ class CpuEngine {
     const n = this.pending, applied = []; let topped = false;
     for (let i = n - 1; i >= 0; i--) {
       const hole = this.pendingHoles[i] ?? Math.floor(Math.random() * COLS);
-      const removed = this.rows.shift(); this.grid.shift();
-      if (removed) topped = true;
+      const removed = this.rows.shift(), rg = this.grid.shift();
+      this.hid.unshift(removed); this.hidGrid.unshift(rg);
+      if (this.hid.length > HIDDEN_MAX) { const d = this.hid.pop(); this.hidGrid.pop(); if (d) topped = true; }
       this.rows.push(CPU_FULL & ~(1 << hole));
       const row = Array(COLS).fill('X'); row[hole] = null; this.grid.push(row);
       applied.push(hole);
@@ -1731,10 +1897,17 @@ class CpuPlayer {
   receive(holes) { if (!this.dead) this.engine.receive(holes); }
   _die(now) { if (this.dead) return; this.dead = true; this.hooks.onDead && this.hooks.onDead(this.seat, now); }
   run(now) { return { name: this.name, durationMs: Math.max(this.engine.lastT, 1), events: this.engine.events }; }
+  // T-spinの「回転で入れた」扱い(f≠0)は、ラインが消えてT-spinが成立する時だけ使う。それ以外は普通に落とすだけで置ける（回転入れにしない）
+  _effectiveF(eng, plan) {
+    if (eng.cur.type !== 'T' || !plan.f) return 0;
+    const cs = CPU_CELLS.T[plan.r], rows = eng.rows.slice();
+    for (let k = 0; k < 4; k++) { const yy = plan.y + cs[k][1]; if (yy >= 0 && yy < ROWS) rows[yy] |= 1 << (plan.x + cs[k][0]); }
+    return rows.some(m => m === CPU_FULL) && cpuSpinKind(eng.rows, plan.x, plan.y, plan.r, plan.f) ? plan.f : 0;
+  }
   // 決めた設置位置までの入力列（移動・回転・落下）を、速さの設定に合わせて時間つきの手順にする
   _buildQueue(eng, plan) {
     const P = this.ai.p, type = eng.cur.type;
-    const path = cpuFindPath(eng.rows, type, plan.x, plan.y, plan.r, plan.f || 0);
+    const path = cpuFindPath(eng.rows, type, plan.x, plan.y, plan.r, this._effectiveF(eng, plan));
     if (!path) return null;
     const S = path.states;
     const hard = Math.random() < P.hardDropRate, soft = Math.random() < P.softRate;
@@ -1811,7 +1984,8 @@ const myName = () => (account && account.id) || 'ゲスト';
 const cleanName = v => String(v == null ? '?' : v).replace(/[\u0000-\u001f]/g, '').slice(0, 24) || '?';
 const vsHasPeers = () => isHost ? (guests.some(g => g.conn && g.conn.open) || cpuPlayers.length > 0) : !!(conn && conn.open);
 const cpuBySeat = seat => cpuPlayers.find(c => c.seat === seat);
-const cpuNameFor = (level, idx) => `COM Lv${level}${cpuPlayers.some((c, i) => i !== idx && c.level === level) ? String.fromCharCode(65 + idx) : ''}`;
+const cpuKeyOf = c => c.custom || ('L' + c.level);
+const cpuNameFor = (c, idx) => `COM ${c.custom ? c.label : 'Lv' + c.level}${cpuPlayers.some((o, i) => i !== idx && cpuKeyOf(o) === cpuKeyOf(c)) ? String.fromCharCode(65 + idx) : ''}`;   // COMの名前は必ず「COM 」で始まる（人間のIDは空白を含めない）
 function safeSend(c, msg) { try { if (c && c.open) c.send(msg); } catch (_) {} }
 function sendTo(seat, msg) { const g = guests.find(x => x.seat === seat); if (g) safeSend(g.conn, msg); }
 function broadcast(msg, exceptSeat = -1) { for (const g of guests) if (g.seat !== exceptSeat) safeSend(g.conn, msg); }
@@ -1924,6 +2098,15 @@ async function roomListLoop() {
 }
 document.getElementById('btnRoomListRefresh').onclick = () => refreshRoomList(true).catch(() => toast('部屋一覧を取得できませんでした'));
 document.getElementById('btnLeaveRoom').onclick = leaveRoom;
+document.getElementById('btnInvite').onclick = async () => {
+  if (!roomCode) return;
+  const url = inviteUrl(roomCode);
+  if (navigator.share) {
+    try { await navigator.share({ title: 'テトリス対戦に招待', text: `テトリス対戦の招待です（部屋コード ${roomCode}）`, url }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(url); toast('招待リンクをコピーしました'); } catch (_) { prompt('招待リンクをコピーしてください', url); }
+};
 document.getElementById('btnStartMatch').onclick = () => startMatchAsHost();
 
 document.getElementById('btnCreateRoom').onclick = () => {
@@ -1950,8 +2133,11 @@ document.getElementById('btnCreateRoom').onclick = () => {
 
 document.getElementById('btnJoinRoom').onclick = () => {
   if (peer) return;
-  const code = document.getElementById('roomInput').value.trim();
+  const raw = document.getElementById('roomInput').value.trim();
+  const m = raw.match(/(?:room|join)=(\d{5})/) || raw.match(/(\d{5})/);   // コードだけでなく、招待リンクをそのまま貼っても参加できる
+  const code = m ? m[1] : '';
   if (code.length !== 5) return toast('5桁のコードを入力してください');
+  document.getElementById('roomInput').value = code;
   roomCode = code; roomState = 'joining'; isHost = false;
   peer = new Peer();
   peer.on('open', () => { conn = peer.connect('wtvs-' + code); setupGuestConn(); });
@@ -2042,7 +2228,7 @@ function startCpus() {
   };
   const t0 = replayNow();
   cpuPlanCache.clear();
-  for (const c of cpuPlayers) { c.submitted = false; c.runner = new CpuPlayer({ seat: c.seat, name: c.name, level: c.level, seed: common ? vsRule.seed : Math.floor(Math.random() * 1000000), hooks }); }
+  for (const c of cpuPlayers) { c.submitted = false; c.runner = new CpuPlayer({ seat: c.seat, name: c.name, level: c.level, params: c.params, seed: common ? vsRule.seed : Math.floor(Math.random() * 1000000), hooks }); }
   for (const c of cpuPlayers) c.runner.start(t0);
   cpuTimer = setInterval(() => { const now = replayNow(); for (const c of cpuPlayers) if (c.runner && !c.runner.dead && roomState === 'playing') c.runner.tick(now); }, 16);
 }
@@ -2059,26 +2245,25 @@ function startCpuMatch(levels) {
   if (peer) return;
   leaveRoom();
   isHost = true; roomState = 'waiting'; roomMax = 1 + levels.length; mySeat = 0;
-  cpuPlayers = levels.map((lv, i) => ({ level: cpuLevelOf(lv), name: '', seat: 0, runner: null, submitted: false }));
-  cpuPlayers.forEach((c, i) => { c.name = cpuNameFor(c.level, i); });
+  cpuPlayers = levels.map(v => ({ ...cpuChoice(v), name: '', seat: 0, runner: null, submitted: false }));
+  cpuPlayers.forEach((c, i) => { c.name = cpuNameFor(c, i); });
   startMatchAsHost();
 }
 function fillCpuLevelSelect(el, def) {
-  el.replaceChildren(...Array.from({ length: 10 }, (_, k) => new Option(`Lv${k + 1}（${CPU_LEVEL_LABELS[k + 1]}）`, String(k + 1))));
+  el.replaceChildren(...cpuOptionList(cpuCustom));
   el.value = String(def);
 }
 fillCpuLevelSelect(document.getElementById('cpuLevel'), 5);
 fillCpuLevelSelect(document.getElementById('roomCpuLevel'), 5);
 document.getElementById('btnCpuMatch').onclick = () => {
-  const lv = cpuLevelOf(document.getElementById('cpuLevel').value), n = Math.max(1, Math.min(3, parseInt(document.getElementById('cpuCount').value, 10) || 1));
-  startCpuMatch(Array(n).fill(lv));
+  const v = document.getElementById('cpuLevel').value, n = Math.max(1, Math.min(3, parseInt(document.getElementById('cpuCount').value, 10) || 1));
+  startCpuMatch(Array(n).fill(v));
 };
 document.getElementById('btnAddCpu').onclick = () => {
   if (!isHost || roomState !== 'waiting') return;
   if (roomCountNow() >= roomMax) { toast('満員です（人数を増やして部屋を作り直してください）'); return; }
-  const lv = cpuLevelOf(document.getElementById('roomCpuLevel').value);
-  cpuPlayers.push({ level: lv, name: '', seat: 0, runner: null, submitted: false });
-  cpuPlayers.forEach((c, i) => { c.name = cpuNameFor(c.level, i); });
+  cpuPlayers.push({ ...cpuChoice(document.getElementById('roomCpuLevel').value), name: '', seat: 0, runner: null, submitted: false });
+  cpuPlayers.forEach((c, i) => { c.name = cpuNameFor(c, i); });
   sendRoster();
 };
 function startMatchAsHost() {
@@ -2233,7 +2418,11 @@ function showRematch(message) {
   document.getElementById('rematchArea').classList.add('active');
   const btn = document.getElementById('btnRematch'), status = document.getElementById('rematchStatus'), rank = document.getElementById('rankingText');
   btn.textContent = isVsMode ? '再戦する' : 'リトライ';
-  if (!isVsMode) { btn.style.display = ''; btn.disabled = false; status.textContent = message || ''; rank.textContent = ''; return; }
+  if (!isVsMode) {
+    btn.style.display = ''; btn.disabled = false; rank.textContent = '';
+    status.textContent = message === 'GAME OVER' ? `GAME OVER　SCORE ${runStats.score.toLocaleString()}（LEVEL ${runStats.level} / ${runStats.lines}ライン）` : (message || '');
+    return;
+  }
   if (myPlace && message === 'GAME OVER') message = `GAME OVER（${myPlace}位）`;
   rank.textContent = [message, rankingSummary].filter(Boolean).join('　');
   refreshRematchUi();
@@ -2308,7 +2497,7 @@ document.getElementById('btnBackToLobby').onclick = () => {
 function gameLoop(timestamp) {
   if (!lastDropTime) lastDropTime = timestamp;
   if (document.getElementById('gameScreen').classList.contains('active') && !isEnded && cur) {
-    if (timestamp - lastDropTime >= GRAVITY_DELAY) {
+    if (timestamp - lastDropTime >= currentGravity()) {
       if (move(0, 1)) lastDropTime = timestamp;
       else lastDropTime = timestamp;
     }
@@ -2363,7 +2552,8 @@ function checkCollision(x, y, type, r) {
       if (m[row][col]) {
         let nx = x + col, ny = y + row;
         if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
-        if (ny >= 0 && board[ny][nx]) return true;
+        if (ny >= 0) { if (board[ny][nx]) return true; }
+        else if (hiddenRows[-ny - 1] && hiddenRows[-ny - 1][nx]) return true;
       }
     }
   }
@@ -2415,7 +2605,9 @@ function rotate(dir) {
 
 function hardDrop() {
   if (isEnded || !cur) return;
+  const y0 = cur.y;
   while (!checkCollision(cur.x, cur.y + 1, cur.type, cur.r)) cur.y++;
+  runStats.score += (cur.y - y0) * 2; updateScoreUi();
   groundedAt = 0;
   recordReplayPosition();
   lockPiece();
@@ -2453,28 +2645,26 @@ function lockPiece() {
   if (isEnded || !cur) return;
   const spin = isTSpin();
   const m = getShapeMatrix(cur.type, cur.r);
-  let aboveTop = false;
+  // 盤面の上にはみ出したマスは hiddenRows に残す（ライン消去で降りてくる）。ゲームオーバーは「次のミノが出現できない時」だけ（spawnPiece / HOLD で判定）
   m.forEach((row, r) => row.forEach((val, c) => {
     if (!val) return;
     const y = cur.y + r, x = cur.x + c;
-    if (y < 0) aboveTop = true;
-    else if (y < ROWS && x >= 0 && x < COLS) board[y][x] = cur.type;
+    if (x < 0 || x >= COLS) return;
+    if (y >= 0 && y < ROWS) board[y][x] = cur.type;
+    else if (y < 0 && -y - 1 < HIDDEN_MAX) { const h = -y - 1; if (!hiddenRows[h]) hiddenRows[h] = Array(COLS).fill(null); hiddenRows[h][x] = cur.type; }
   }));
   recordReplayLock();
-  if (aboveTop) {
-    isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishRun();
-    return;
-  }
+  runStats.pieces++;
 
   let cleared = 0;
   for (let r = ROWS - 1; r >= 0; r--) {
     if (board[r].every(c => c !== null)) {
       board.splice(r, 1);
-      board.unshift(Array(COLS).fill(null));
+      board.unshift(hiddenRows.shift() || Array(COLS).fill(null));
       cleared++; r++;
     }
   }
-  const perfectClear = cleared > 0 && board.every(row => row.every(cell => cell === null));
+  const perfectClear = cleared > 0 && board.every(row => row.every(cell => cell === null)) && hiddenRows.every(row => !row || row.every(cell => cell === null));
   const previousB2B = b2b;
 
   if (cleared > 0) {
@@ -2491,11 +2681,13 @@ function lockPiece() {
     if (difficultClear && previousB2B) attack += 1;
     if (perfectClear) attack += 10;
     b2b = difficultClear;
+    awardScore(cleared, spin, perfectClear, previousB2B, ren);
+    if (isVsMode) runStats.attack += attack;
     showClearEvent(cleared, spin, perfectClear, previousB2B && difficultClear);
     if (isVsMode) sendAttack(attack);
   } else {
     ren = -1;
-    if (spin) showClearEvent(0, spin, false, false);
+    if (spin) { awardScore(0, spin, false, false, -1); showClearEvent(0, spin, false, false); }
     // A no-line placement does not break the B2B chain in this ruleset.
   }
 
@@ -2548,7 +2740,8 @@ function applyGarbageOnLock() {
   for (let i = holesToApply - 1; i >= 0; i--) {
     const hole = pendingHoles[i] ?? Math.floor(Math.random() * COLS);
     const removed = board.shift();
-    if (removed && removed.some(cell => cell !== null)) toppedOut = true;
+    hiddenRows.unshift(removed);   // 押し上げられた段は画面の上に残る（限度を超えた分だけ溢れて負け）
+    if (hiddenRows.length > HIDDEN_MAX) { const d = hiddenRows.pop(); if (d && d.some(cell => cell !== null)) toppedOut = true; }
     const row = Array(COLS).fill('X'); row[hole] = null;
     board.push(row);
     applied.push(hole);
@@ -2604,13 +2797,13 @@ function updateConfig() {
   config.sd = parseInt(document.getElementById('cfgSd').value, 10) || 20;
 }
 
-function handlePressStart(actionKey, actionFn, speedInterval) {
+function handlePressStart(actionKey, actionFn, speedInterval, dasOverride) {
   if (keyTimers[actionKey]) return;
   updateConfig(); actionFn();
   const dasTimer = setTimeout(() => {
     const arrTimer = setInterval(() => { if (!actionFn()) handlePressEnd(actionKey); }, speedInterval);
     if (keyTimers[actionKey]) keyTimers[actionKey].arr = arrTimer;
-  }, config.das);
+  }, dasOverride ?? config.das);
   keyTimers[actionKey] = { das: dasTimer, arr: null };
 }
 
@@ -2852,6 +3045,69 @@ function drawAiSuggestion() {
   ctx.restore();
 }
 
+
+// ---- パフェ手順ガイド（開発者モード）----
+// パフェ積みを組み終えた盤面で、いまのミノ・HOLD・NEXTからパフェ（全消し）まで届く手順があれば、
+// すべてのミノの置き場所を点線で表示する。途中でラインが消えて盤面がずれる分は、現在の盤面の位置に換算して描く。
+let pcGuideKey = '', pcGuideResult = null;
+const PC_GUIDE_COLORS = ['#a6e3a1', '#89dceb', '#f9e2af', '#f5c2e7', '#fab387', '#b4befe', '#f38ba8'];
+function findPcGuide() {
+  const rows = board.map(row => row.reduce((m, v, c) => (v ? m | (1 << c) : m), 0));
+  const key = JSON.stringify([rows, cur && cur.type, holdPiece, nextQ, bag, canHold]);
+  if (key === pcGuideKey) return pcGuideResult;
+  pcGuideKey = key; pcGuideResult = null;
+  let cells = 0; for (const m of rows) cells += CPU_POP[m];
+  if (cells < 8 || cells > 40) return null;          // 空に近い盤面や高く積んだ盤面では出さない（パフェ積みを組んだ後の想定）
+  const seq = [cur.type, ...peekFuturePieces(12)];
+  const steps = cpuFindPC(rows, seq, holdPiece, canHold, Math.min(7, seq.length + (holdPiece ? 1 : 0)), 4000, 40);
+  if (!steps || !steps.length) return null;
+  // 各手のミノを「現在の盤面の位置」に換算する（前の手でラインが消えると、後の手の座標は下にずれているため）
+  const clears = [];            // 手ごとの { c: 消えた行数, kept: 残った行（消える前の行番号）}
+  let rs = rows.slice();
+  const pieces = steps.map((st, i) => {
+    const cs = CPU_CELLS[st.type][st.r], out = [];
+    for (let k = 0; k < 4; k++) {
+      let x = st.x + cs[k][0], y = st.y + cs[k][1];
+      for (let j = i - 1; j >= 0; j--) y = (y >= clears[j].c) ? clears[j].kept[y - clears[j].c] : y - clears[j].c;
+      out.push([x, y]);
+    }
+    const placed = rs.slice();
+    for (let k = 0; k < 4; k++) placed[st.y + cs[k][1]] |= 1 << (st.x + cs[k][0]);
+    const kept = []; for (let k = 0; k < ROWS; k++) if (placed[k] !== CPU_FULL) kept.push(k);
+    clears.push({ c: ROWS - kept.length, kept });
+    rs = kept.map(k => placed[k]); while (rs.length < ROWS) rs.unshift(0);
+    return { type: st.type, hold: !!st.hold, cells: out };
+  });
+  pcGuideResult = pieces;
+  return pcGuideResult;
+}
+function drawPcGuide() {
+  if (!adminMode || !cur || isEnded || autoBuildRunning) return false;
+  const pieces = findPcGuide();
+  if (!pieces) return false;
+  ctx.save();
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 2;
+  ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  pieces.forEach((p, i) => {
+    const color = PC_GUIDE_COLORS[i % PC_GUIDE_COLORS.length];
+    ctx.strokeStyle = color; ctx.fillStyle = color + '38';
+    let label = null;
+    p.cells.forEach(([x, y]) => {
+      if (y < 0 || y >= ROWS || x < 0 || x >= COLS) return;
+      const px = x * BLOCK_SIZE, py = y * BLOCK_SIZE;
+      ctx.fillRect(px + 2, py + 2, BLOCK_SIZE - 5, BLOCK_SIZE - 5);
+      ctx.strokeRect(px + 1, py + 1, BLOCK_SIZE - 3, BLOCK_SIZE - 3);
+      if (!label) label = [px, py];
+    });
+    if (label) { ctx.save(); ctx.setLineDash([]); ctx.fillStyle = color; ctx.fillText(String(i + 1), label[0] + BLOCK_SIZE / 2, label[1] + BLOCK_SIZE / 2); ctx.restore(); }
+  });
+  ctx.restore();
+  const text = `パフェ手順（${pieces.length}手）：` + pieces.map((p, i) => `${i + 1}.${p.hold ? 'H→' : ''}${p.type}`).join(' ');
+  document.getElementById('aiGuideStatus').textContent = text;
+  return true;
+}
+
 function render() {
   drawGarbagePreview();
   ctx.clearRect(0, 0, 200, 400);
@@ -2874,7 +3130,7 @@ function render() {
   m.forEach((row, r) => row.forEach((val, c) => {
     if (val) ctx.fillRect((cur.x + c) * BLOCK_SIZE, (cur.y + r) * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
   }));
-  drawAiSuggestion();
+  if (!drawPcGuide()) drawAiSuggestion();
 }
 
 
@@ -2910,7 +3166,10 @@ function drawNext() {
 
 
 function initGame() {
-  board = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+  runStats = newRunStats();
+  { const sp = document.getElementById('scorePanel'); if (sp) sp.style.display = isVsMode ? 'none' : 'flex'; }
+  updateScoreUi();
+  board = Array.from({length: ROWS}, () => Array(COLS).fill(null)); hiddenRows = [];
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
   autoBuildRunning = false; autoBuildToken++;
@@ -3472,7 +3731,7 @@ async function driveToTarget(step, token) {
 
 async function startAutoBuild() {
   if (!adminMode || autoBuildRunning || isEnded) return;
-  autoBuildRunning = true;
+  autoBuildRunning = true; runStats.auto = true;   // 自動積みを使ったプレイは戦績に含めない
   const token = ++autoBuildToken;
   document.getElementById('btnAutoBuild').disabled = true;
   document.getElementById('btnAutoStop').disabled = false;
@@ -3593,9 +3852,10 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   if (e.repeat) return;
   if (autoBuildRunning) return;
+  countKey();
   if (act === 'left')  handlePressStart('left', () => move(-1, 0), config.arr);
   if (act === 'right') handlePressStart('right', () => move(1, 0), config.arr);
-  if (act === 'soft')  handlePressStart('down', () => move(0, 1), config.sd);
+  if (act === 'soft')  handlePressStart('down', softStep, config.sd);
   if (act === 'hard')  hardDrop();
   if (act === 'rotL')  rotate(-1);
   if (act === 'rotR')  rotate(1);
@@ -3611,7 +3871,7 @@ document.addEventListener('keyup', (e) => {
 function bindTouchButton(id, key, fn, interval) {
   const btn = document.getElementById(id);
   if (!btn) return;
-  const start = (e) => { e.preventDefault(); if (autoBuildRunning) return; handlePressStart(key, fn, interval()); };
+  const start = (e) => { e.preventDefault(); if (autoBuildRunning) return; if (!keyTimers[key]) { countKey(); touchVibrate(); } handlePressStart(key, fn, interval(), touchCfg.das); };
   const end = (e) => { e.preventDefault(); handlePressEnd(key); };
   btn.addEventListener('pointerdown', start); btn.addEventListener('pointerup', end);
   btn.addEventListener('pointercancel', end); btn.addEventListener('pointerleave', end);
@@ -3619,18 +3879,128 @@ function bindTouchButton(id, key, fn, interval) {
 function bindTapButton(id, fn) {
   const btn = document.getElementById(id);
   if (!btn) return;
-  btn.addEventListener('pointerdown', (e) => { e.preventDefault(); if (autoBuildRunning) return; fn(); });
+  btn.addEventListener('pointerdown', (e) => { e.preventDefault(); if (autoBuildRunning) return; countKey(); touchVibrate(); fn(); });
 }
 
-bindTouchButton('btnL', 'left', () => move(-1, 0), () => config.arr);
-bindTouchButton('btnR', 'right', () => move(1, 0), () => config.arr);
-bindTouchButton('btnSoft', 'down', () => move(0, 1), () => config.sd);
+bindTouchButton('btnL', 'left', () => move(-1, 0), () => touchCfg.arr);
+bindTouchButton('btnR', 'right', () => move(1, 0), () => touchCfg.arr);
+bindTouchButton('btnSoft', 'down', softStep, () => touchCfg.sd);
 
 bindTapButton('btnHard', hardDrop);
 bindTapButton('btnRotL', () => rotate(-1));
 bindTapButton('btnRotR', () => rotate(1));
 bindTapButton('btnHold', doHold);
 
+// ---- タッチ操作のカスタマイズ（このブラウザに保存）----
+const TOUCH_KEY = 'p2pTetrisTouchV1';
+const TOUCH_DEFAULT = { size: 60, opacity: 100, layout: 'standard', hold: 'bottom', das: 150, arr: 30, sd: 20, vibrate: false };
+let touchCfg = { ...TOUCH_DEFAULT };
+try { const v = JSON.parse(localStorage.getItem(TOUCH_KEY) || '{}'); touchCfg = { ...TOUCH_DEFAULT, ...v }; } catch (_) {}
+const TOUCH_LAYOUTS = {
+  standard: ['btnL', 'btnR', 'btnSoft', 'btnHard', 'btnRotL', 'btnRotR'],
+  mirror: ['btnRotL', 'btnRotR', 'btnHard', 'btnSoft', 'btnL', 'btnR'],
+  rotmove: ['btnRotL', 'btnRotR', 'btnL', 'btnR', 'btnSoft', 'btnHard']
+};
+function touchVibrate() { if (touchCfg.vibrate && navigator.vibrate) { try { navigator.vibrate(10); } catch (_) {} } }
+function applyTouchCfg() {
+  const c = document.querySelector('.controls'); if (!c) return;
+  c.style.setProperty('--tc-h', touchCfg.size + 'px');
+  c.style.setProperty('--tc-op', String(touchCfg.opacity / 100));
+  (TOUCH_LAYOUTS[touchCfg.layout] || TOUCH_LAYOUTS.standard).forEach((id, i) => { const b = document.getElementById(id); if (b) b.style.order = String(i + 1); });
+  const h = document.getElementById('btnHold');
+  h.style.order = touchCfg.hold === 'top' ? '0' : '99';
+  h.style.display = touchCfg.hold === 'off' ? 'none' : '';
+  h.style.height = Math.max(36, Math.round(touchCfg.size * 0.75)) + 'px';
+}
+function syncTouchCfgUi() {
+  const $ = id => document.getElementById(id);
+  $('tcSize').value = touchCfg.size; $('tcSizeLabel').textContent = touchCfg.size;
+  $('tcOpacity').value = touchCfg.opacity; $('tcOpacityLabel').textContent = touchCfg.opacity;
+  $('tcLayout').value = touchCfg.layout; $('tcHold').value = touchCfg.hold;
+  $('tcDas').value = touchCfg.das; $('tcArr').value = touchCfg.arr; $('tcSd').value = touchCfg.sd; $('tcVibrate').checked = !!touchCfg.vibrate;
+}
+function readTouchCfgUi() {
+  const $ = id => document.getElementById(id);
+  const num = (id, d, lo, hi) => { const v = parseInt($(id).value, 10); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+  touchCfg = { size: num('tcSize', 60, 40, 90), opacity: num('tcOpacity', 100, 30, 100), layout: $('tcLayout').value, hold: $('tcHold').value, das: num('tcDas', 150, 0, 500), arr: num('tcArr', 30, 0, 300), sd: num('tcSd', 20, 0, 300), vibrate: $('tcVibrate').checked };
+  try { localStorage.setItem(TOUCH_KEY, JSON.stringify(touchCfg)); } catch (_) {}
+  $('tcSizeLabel').textContent = touchCfg.size; $('tcOpacityLabel').textContent = touchCfg.opacity;
+  applyTouchCfg();
+}
+['tcSize', 'tcOpacity', 'tcLayout', 'tcHold', 'tcDas', 'tcArr', 'tcSd', 'tcVibrate'].forEach(id => { const el = document.getElementById(id); el.addEventListener('input', readTouchCfgUi); el.addEventListener('change', readTouchCfgUi); });
+document.getElementById('btnTcReset').onclick = () => { touchCfg = { ...TOUCH_DEFAULT }; try { localStorage.removeItem(TOUCH_KEY); } catch (_) {} syncTouchCfgUi(); applyTouchCfg(); };
+syncTouchCfgUi(); applyTouchCfg();
+
+
+// ---- マイページ（戦績）・ランキング ----
+const fmtN = n => Number(n || 0).toLocaleString();
+function fmtDuration(ms) { const m = Math.floor(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}時間${m % 60}分` : `${m}分`; }
+function renderMyPage(d) {
+  const s = d.stats, body = document.getElementById('myPageBody');
+  const vsMin = s.vs_ms / 60000;
+  const apm = vsMin > 0 ? (s.total_attack / vsMin).toFixed(1) : '-';
+  const kpp = s.total_pieces > 0 ? (s.total_keys / s.total_pieces).toFixed(2) : '-';
+  const pps = s.total_ms > 0 ? (s.total_pieces / (s.total_ms / 1000)).toFixed(2) : '-';
+  const winRate = s.vs_games > 0 ? (Math.round(s.vs_wins / s.vs_games * 1000) / 10) + '%' : '-';
+  const rate = d.isDev ? `${d.devRating}（固定）` : s.rated_games >= 3 ? `${s.rating}${d.ratingRank ? `（${d.ratingRank}位）` : ''}` : `ランク判定中（${s.rated_games}/3戦）`;
+  const sections = [
+    ['レート（人間同士の対戦）', [['現在のレート', rate], ['最高レート', d.isDev ? d.devRating : (s.rated_games > 0 ? s.peak_rating : '-')], ['レート対象の試合', fmtN(s.rated_games)]]],
+    ['ソロ', [['最高スコア', s.best_score > 0 ? `${fmtN(s.best_score)}${d.soloRank ? `（${d.soloRank}位）` : ''}` : '-'], ['最高ライン数', s.best_lines || '-'], ['最高レベル', s.best_score > 0 ? s.best_level : '-'], ['プレイ回数', fmtN(s.solo_games)]]],
+    ['対戦', [['試合数', fmtN(s.vs_games)], ['勝利数', fmtN(s.vs_wins)], ['勝率', winRate], ['APM（平均）', apm], ['APM（最高）', s.best_apm > 0 ? s.best_apm.toFixed(1) : '-']]],
+    ['全体', [['総試合数', fmtN(s.games)], ['KPP（1ピースあたりのキー入力）', kpp], ['PPS（1秒あたりのピース）', pps], ['総ピース数', fmtN(s.total_pieces)], ['総ライン数', fmtN(s.total_lines)], ['総プレイ時間', fmtDuration(s.total_ms)]]]
+  ];
+  const note = document.createElement('div'); note.style.cssText = 'font-size:.72rem;color:var(--sub);margin-top:8px';
+  note.textContent = 'ID: ' + d.id + '　※自動積みを使ったプレイと、途中で抜けたソロは記録されません。COMとの対戦はレート対象外です。';
+  const table = document.createElement('table'); table.className = 'stat-table';
+  for (const [title, rows] of sections) {
+    const h = document.createElement('tr'); const th = document.createElement('th'); th.colSpan = 2; th.textContent = title; h.append(th); table.append(h);
+    for (const [k, v] of rows) { const tr = document.createElement('tr'); const a = document.createElement('td'); a.textContent = k; const b = document.createElement('td'); b.textContent = String(v); tr.append(a, b); table.append(tr); }
+  }
+  const vis = document.createElement('label'); vis.style.cssText = 'display:flex;align-items:center;gap:8px;margin:2px 0 6px;font-size:.85rem;color:var(--text)';
+  if (d.isDev) { vis.textContent = '開発者はランキングに表示されません（戦績はここで確認できます）'; }
+  else {
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.style.width = 'auto'; cb.checked = !s.hide_ranking;
+    cb.onchange = async () => { try { await api('/stats/visibility', { hidden: !cb.checked }); toast(cb.checked ? 'ランキングに載せます' : 'ランキングに載せません'); openMyPage(); } catch (e) { cb.checked = !cb.checked; toast('変更できませんでした: ' + e.message); } };
+    vis.append(cb, document.createTextNode('自分の戦績・レートをランキングに載せる'));
+  }
+  body.replaceChildren(vis, table, note);
+}
+async function openMyPage() {
+  if (!account) return switchScreen('accountScreen');
+  switchScreen('myPageScreen');
+  const body = document.getElementById('myPageBody'); body.textContent = '読み込み中…';
+  try { renderMyPage(await api('/stats/me', undefined, 'GET')); }
+  catch (e) { body.textContent = '読み込めませんでした: ' + (e.message || ''); }
+}
+let rankingType = 'solo';
+async function openRanking(type) {
+  if (!account) return switchScreen('accountScreen');
+  if (type) rankingType = type;
+  switchScreen('rankingScreen');
+  document.getElementById('btnRankSolo').className = rankingType === 'solo' ? '' : 'alt';
+  document.getElementById('btnRankRating').className = rankingType === 'rating' ? '' : 'alt';
+  const body = document.getElementById('rankingBody'); body.textContent = '読み込み中…';
+  try {
+    const d = await api('/leaderboard?type=' + rankingType, undefined, 'GET');
+    if (!d.rows.length) { body.textContent = rankingType === 'rating' ? 'まだランク入りしたプレイヤーはいません（人間同士の対戦を3回すると判定されます）' : 'まだスコアの記録がありません'; return; }
+    body.replaceChildren(...d.rows.map((r, i) => {
+      const row = document.createElement('div'); row.className = 'rank-row' + (r.id === d.me ? ' me' : '');
+      const no = document.createElement('span'); no.className = 'no'; no.textContent = String(i + 1);
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.id;
+      const ex = document.createElement('span'); ex.className = 'ex';
+      ex.textContent = rankingType === 'rating' ? `${r.vsGames}戦${r.wins}勝` : `LV${r.level} / ${r.lines}ライン`;
+      const vl = document.createElement('span'); vl.className = 'vl'; vl.textContent = fmtN(r.value);
+      row.append(no, nm, ex, vl); return row;
+    }));
+  } catch (e) { body.textContent = '読み込めませんでした: ' + (e.message || ''); }
+}
+document.getElementById('btnOpenMyPage').onclick = openMyPage;
+document.getElementById('btnMyPageRefresh').onclick = openMyPage;
+document.getElementById('btnMyPageBack').onclick = () => switchScreen('lobbyScreen');
+document.getElementById('btnOpenRanking').onclick = () => openRanking('solo');
+document.getElementById('btnRankSolo').onclick = () => openRanking('solo');
+document.getElementById('btnRankRating').onclick = () => openRanking('rating');
+document.getElementById('btnRankingBack').onclick = () => switchScreen('lobbyScreen');
 
 let adminReplayCache = [];
 
@@ -3743,11 +4113,21 @@ async function gistScan(apply) {
   } catch (e) { st.textContent = 'エラー: ' + e.message; }
 }
 // ---- COM performance editor (developer) ----
-let cpuDevDraft = null, cpuParamsLoaded = false;
+let cpuParamsLoaded = false;
+let cpuDevDraft = null, cpuDevCustom = [];
+const cpuDevTargetOf = v => { if (String(v).startsWith('c:')) { const p = cpuDevCustom.find(x => x.id === String(v).slice(2)); if (p) return p; } return null; };
+const cpuDevParamsOf = v => { const p = cpuDevTargetOf(v); return p ? p.params : cpuDevDraft[cpuLevelOf(v)]; };
+function fillCpuDevSelect(def) {
+  const sel = document.getElementById('cpuDevLevel');
+  sel.replaceChildren(...cpuOptionList(cpuDevCustom));
+  sel.value = [...sel.options].some(o => o.value === String(def)) ? String(def) : '5';
+}
+
 async function loadCpuParams() {
   if (cpuParamsLoaded || !authToken) return;
   cpuParamsLoaded = true;
   try { const d = await api('/cpu-params', undefined, 'GET'); cpuApplyParamOverrides(d.levels); } catch (_) { cpuParamsLoaded = false; }
+  try { const c = await api('/cpu-custom', undefined, 'GET'); applyCpuCustom(c.presets); } catch (_) {}
 }
 function cpuBenchmark(level, params, pieces = 60, capMs = 2500) {
   const pl = new CpuPlayer({ seat: 1, name: 'test', level, seed: Math.floor(Math.random() * 1000000), params, hooks: {} });
@@ -3761,26 +4141,70 @@ function cpuBenchmark(level, params, pieces = 60, capMs = 2500) {
 }
 function renderCpuDev() {
   const sel = document.getElementById('cpuDevLevel');
-  if (!sel.options.length) fillCpuLevelSelect(sel, 5);
-  const lv = cpuLevelOf(sel.value), box = document.getElementById('cpuDevParams');
+  if (!sel.options.length) fillCpuDevSelect(5);
+  const target = cpuDevParamsOf(sel.value), box = document.getElementById('cpuDevParams');
+  const isCustom = sel.value.startsWith('c:');
+  document.getElementById('btnCpuPresetRename').disabled = !isCustom; document.getElementById('btnCpuPresetDelete').disabled = !isCustom;
   box.replaceChildren();
   for (const d of CPU_PARAM_DEFS) {
     const l = document.createElement('label'); l.textContent = d.label; l.htmlFor = 'cpuDev_' + d.key;
     const inp = document.createElement('input'); inp.type = 'number'; inp.id = 'cpuDev_' + d.key; inp.min = d.min; inp.max = d.max; inp.step = d.step; inp.style.cssText = 'width:96px;padding:4px';
-    inp.value = String(cpuDevDraft[lv][d.key]);
-    inp.onchange = () => { const v = Math.min(d.max, Math.max(d.min, Number(inp.value))); cpuDevDraft[lv][d.key] = Number.isFinite(v) ? v : cpuDevDraft[lv][d.key]; inp.value = String(cpuDevDraft[lv][d.key]); };
+    inp.value = String(target[d.key]);
+    inp.onchange = () => { const v = Math.min(d.max, Math.max(d.min, Number(inp.value))); target[d.key] = Number.isFinite(v) ? v : target[d.key]; inp.value = String(target[d.key]); };
     box.append(l, inp);
   }
 }
 function openCpuDev() {
+  const keep = document.getElementById('cpuDevLevel').value || '5';
   cpuDevDraft = JSON.parse(JSON.stringify(cpuParams));
+  cpuDevCustom = cpuCustom.map(p => ({ id: p.id, name: p.name, base: p.base, params: { ...cpuParams[p.base], ...p.params } }));
+  fillCpuDevSelect(keep);
   renderCpuDev();
 }
+const cpuPresetNameOk = (name, exceptId) => {
+  if (!name) return false;
+  if (/^Lv\d+$/i.test(name)) { alert('「Lv数字」の名前は使えません'); return false; }
+  if (cpuDevCustom.some(p => p.id !== exceptId && p.name === name)) { alert('同じ名前のプリセットがあります'); return false; }
+  return true;
+};
+document.getElementById('btnCpuPresetAdd').onclick = () => {
+  if (!cpuDevDraft) return;
+  if (cpuDevCustom.length >= 20) return alert('プリセットは20個までです');
+  const name = (prompt('新しいCOMの名前（12文字まで）', '') || '').trim().slice(0, 12);
+  if (!cpuPresetNameOk(name, '')) return;
+  const cur = document.getElementById('cpuDevLevel').value, t = cpuDevTargetOf(cur);
+  const id = 'c' + Date.now().toString(36);
+  cpuDevCustom.push({ id, name, base: t ? t.base : cpuLevelOf(cur), params: { ...cpuDevParamsOf(cur) } });   // いま選んでいる性能をコピーして作る
+  fillCpuDevSelect('c:' + id); renderCpuDev();
+  document.getElementById('cpuDevStatus').textContent = `「${name}」を追加しました（いま選んでいた性能のコピーです）。数値を調整して「保存」すると、全員の選択肢に出ます。`;
+};
+document.getElementById('btnCpuPresetRename').onclick = () => {
+  const t = cpuDevTargetOf(document.getElementById('cpuDevLevel').value); if (!t) return;
+  const name = (prompt('COMの名前（12文字まで）', t.name) || '').trim().slice(0, 12);
+  if (!cpuPresetNameOk(name, t.id)) return;
+  t.name = name; fillCpuDevSelect('c:' + t.id); renderCpuDev();
+  document.getElementById('cpuDevStatus').textContent = '名前を変更しました。「保存」で反映されます。';
+};
+document.getElementById('btnCpuPresetDelete').onclick = () => {
+  const t = cpuDevTargetOf(document.getElementById('cpuDevLevel').value); if (!t) return;
+  if (!confirm(`「${t.name}」を削除します。よろしいですか？（「保存」で反映されます）`)) return;
+  cpuDevCustom = cpuDevCustom.filter(p => p.id !== t.id); fillCpuDevSelect(5); renderCpuDev();
+};
 document.getElementById('cpuDevLevel').onchange = () => { if (cpuDevDraft) renderCpuDev(); };
-document.getElementById('btnCpuResetLv').onclick = () => { const lv = cpuLevelOf(document.getElementById('cpuDevLevel').value); cpuDevDraft[lv] = { ...CPU_DEFAULT_PARAMS[lv] }; renderCpuDev(); };
+document.getElementById('btnCpuResetLv').onclick = () => {
+  const v = document.getElementById('cpuDevLevel').value, t = cpuDevTargetOf(v);
+  if (t) t.params = { ...CPU_DEFAULT_PARAMS[t.base] }; else { const lv = cpuLevelOf(v); cpuDevDraft[lv] = { ...CPU_DEFAULT_PARAMS[lv] }; }
+  renderCpuDev();
+};
 document.getElementById('btnCpuSave').onclick = async () => {
   const st = document.getElementById('cpuDevStatus');
-  try { const r = await api('/cpu-params', { levels: cpuDevDraft }); cpuApplyParamOverrides(r.levels); openCpuDev(); st.textContent = '保存しました。次の対戦から全員のCOMに反映されます。'; toast('COMの設定を保存しました'); }
+  try {
+    const keep = document.getElementById('cpuDevLevel').value;
+    const r = await api('/cpu-params', { levels: cpuDevDraft }); cpuApplyParamOverrides(r.levels);
+    const c = await api('/cpu-custom', { presets: cpuDevCustom }); applyCpuCustom(c.presets);
+    document.getElementById('cpuDevLevel').value = keep; openCpuDev();
+    st.textContent = '保存しました。次の対戦から全員のCOMに反映されます。'; toast('COMの設定を保存しました');
+  }
   catch (e) { st.textContent = '保存に失敗: ' + e.message; }
 };
 document.getElementById('btnCpuResetAll').onclick = async () => {
@@ -3789,10 +4213,25 @@ document.getElementById('btnCpuResetAll').onclick = async () => {
   catch (e) { document.getElementById('cpuDevStatus').textContent = '失敗: ' + e.message; }
 };
 document.getElementById('btnCpuTest').onclick = async () => {
-  const lv = cpuLevelOf(document.getElementById('cpuDevLevel').value), st = document.getElementById('cpuDevStatus');
+  const sel = document.getElementById('cpuDevLevel').value, ch = cpuDevTargetOf(sel), lv = ch ? cpuLevelOf(ch.base) : cpuLevelOf(sel), st = document.getElementById('cpuDevStatus');
   st.textContent = '試運転中…'; await new Promise(r => setTimeout(r, 30));
-  const r = cpuBenchmark(lv, { ...cpuDevDraft[lv] }, 60);
-  st.textContent = `Lv${lv}（編集中の設定）で${r.pieces}ミノ${r.dead ? '（途中で死亡）' : ''}\n平均設置間隔 ${r.perPieceMs.toFixed(0)}ms / 攻撃効率 ${r.sentPerPiece.toFixed(2)} / TSD ${r.tsd}・TST ${r.tst}・パフェ ${r.pc} / 残った穴 ${r.holes}\n1手の思考 平均${r.thinkAvg.toFixed(1)}ms・最大${r.thinkMax.toFixed(0)}ms（テンプレ ${r.kinds.template}手・パフェ ${r.kinds.pc}手）`;
+  const r = cpuBenchmark(lv, { ...cpuDevParamsOf(sel) }, 60);
+  st.textContent = `${ch ? ch.name : 'Lv' + lv}（編集中の設定）で${r.pieces}ミノ${r.dead ? '（途中で死亡）' : ''}\n平均設置間隔 ${r.perPieceMs.toFixed(0)}ms / 攻撃効率 ${r.sentPerPiece.toFixed(2)} / TSD ${r.tsd}・TST ${r.tst}・パフェ ${r.pc} / 残った穴 ${r.holes}\n1手の思考 平均${r.thinkAvg.toFixed(1)}ms・最大${r.thinkMax.toFixed(0)}ms（テンプレ ${r.kinds.template}手・パフェ ${r.kinds.pc}手）`;
+};
+
+document.getElementById('btnAdminStats').onclick = async () => {
+  const body = document.getElementById('adminStatsBody'); body.textContent = '読み込み中…';
+  try {
+    const d = await api('/admin/stats', undefined, 'GET');
+    body.replaceChildren(...d.rows.map(r => {
+      const row = document.createElement('div'); row.className = 'rank-row';
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.id + (r.isDev ? '［開発者］' : '') + (r.hidden ? '［非公開］' : '');
+      const apm = r.vsMs > 0 ? (r.attack / (r.vsMs / 60000)).toFixed(1) : '-', kpp = r.pieces > 0 ? (r.keys / r.pieces).toFixed(2) : '-';
+      const ex = document.createElement('span'); ex.className = 'ex'; ex.textContent = `${r.vsGames}戦${r.vsWins}勝 / 最高${fmtN(r.bestScore)} / APM ${apm} / KPP ${kpp}`;
+      const vl = document.createElement('span'); vl.className = 'vl'; vl.textContent = r.isDev ? String(d.devRating) : (r.ratedGames >= 3 ? String(r.rating) : `${r.rating}（判定中）`);
+      row.append(nm, ex, vl); return row;
+    }));
+  } catch (e) { body.textContent = '読み込めませんでした: ' + e.message; }
 };
 document.getElementById('btnGistAudit').onclick = () => gistScan(false);
 document.getElementById('btnGistFix').onclick = () => gistScan(true);
@@ -4079,7 +4518,7 @@ async function refreshCloudPlayers() {
   } catch (e) { root.textContent = e.message; }
 }
 
-const replayUserKey = n => /^COM Lv\d+[A-Z]?$/.test(String(n)) ? 'COM' : n;   // COM Lv10 / Lv10A / Lv10B … は「COM」にまとめる
+const replayUserKey = n => /^COM /.test(String(n)) ? 'COM' : n;   // COM Lv10 / Lv10A / COM 〇〇 … は「COM」にまとめる
 const replayHasUser = (r, u) => replayUserKey(r.playerId) === u || r.players.some(n => replayUserKey(n) === u);
 function updateReplayUserOptions() {
   const sel = document.getElementById('replayFilterUser'), keep = sel.value;
@@ -4175,13 +4614,15 @@ document.getElementById('btnRefreshReplays').onclick = refreshCloudReplays;
 function makeReplayStepper(events) {
   const rb = Array.from({length:ROWS},()=>Array(COLS).fill(null));
   let piece = null, eventIndex = 0;
+  const hid = [];   // 画面の上にはみ出した段（対戦・ソロ本体と同じ規則）
   const hits = (x, y, type, r) => {
     const mm = getShapeMatrix(type, r || 0);
     for (let rr = 0; rr < mm.length; rr++) for (let cc = 0; cc < mm[rr].length; cc++) {
       if (!mm[rr][cc]) continue;
       const nx = x + cc, ny = y + rr;
       if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
-      if (ny >= 0 && rb[ny][nx]) return true;
+      if (ny >= 0) { if (rb[ny][nx]) return true; }
+      else if (hid[-ny - 1] && hid[-ny - 1][nx]) return true;
     }
     return false;
   };
@@ -4192,9 +4633,11 @@ function makeReplayStepper(events) {
     const m = getShapeMatrix(piece.type, piece.r || 0);
     m.forEach((row,r)=>row.forEach((v,c)=>{
       const x=piece.x+c,y=piece.y+r;
-      if(v && y>=0 && y<ROWS && x>=0 && x<COLS) rb[y][x]=piece.type;
+      if(!v || x<0 || x>=COLS) return;
+      if(y>=0 && y<ROWS) rb[y][x]=piece.type;
+      else if(y<0 && -y-1<HIDDEN_MAX){ const h=-y-1; if(!hid[h]) hid[h]=Array(COLS).fill(null); hid[h][x]=piece.type; }
     }));
-    for(let r=ROWS-1;r>=0;r--) if(rb[r].every(v=>v!==null)){rb.splice(r,1);rb.unshift(Array(COLS).fill(null));r++;}
+    for(let r=ROWS-1;r>=0;r--) if(rb[r].every(v=>v!==null)){rb.splice(r,1);rb.unshift(hid.shift()||Array(COLS).fill(null));r++;}
     piece=null;
   };
   return {
@@ -4202,7 +4645,7 @@ function makeReplayStepper(events) {
       while(eventIndex<events.length && events[eventIndex][0]<=targetMs){
         const e=events[eventIndex++];
         if(e.length===2) lock();
-        else if(e.length===3) e[2].forEach(h=>{rb.shift();const row=Array(COLS).fill('X');row[h]=null;rb.push(row);});
+        else if(e.length===3) e[2].forEach(h=>{hid.unshift(rb.shift());if(hid.length>HIDDEN_MAX)hid.pop();const row=Array(COLS).fill('X');row[h]=null;rb.push(row);});
         else piece={type:e[1],x:e[2],y:e[3],r:e[4]};
       }
       return {board:rb,piece,index:eventIndex};
