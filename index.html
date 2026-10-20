@@ -246,6 +246,7 @@
         <div id="roomCount" style="color:var(--sub)"></div>
         <div id="roomCpuRow" style="display:none;align-items:center;gap:6px;flex-wrap:wrap"><select id="roomCpuLevel" style="width:auto;flex:0 0 auto;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 6px"></select><button id="btnAddCpu" class="alt" style="width:auto;min-width:0;padding:6px 12px;white-space:nowrap">COMを追加</button></div>
         <label id="roomPublicRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><input id="roomPublicToggle" type="checkbox" style="width:auto"> 部屋一覧に公開する</label>
+        <div id="roomTeamRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><span>対戦形式</span><select id="roomTeamMode" style="width:auto"><option value="0">個人戦（全員が敵）</option><option value="2">チーム戦（2チーム）</option><option value="3">チーム戦（3チーム）</option><option value="4">チーム戦（4チーム）</option></select></div>
         <div id="roomRoster" style="display:flex;flex-direction:column;gap:2px"></div>
         <div id="roomHint" style="font-size:.75rem;color:var(--sub)"></div>
         <button id="btnInvite" class="alt">招待リンクを共有・コピー</button>
@@ -1002,7 +1003,7 @@ function submitStats(result, ms) {
   if (!account || !rs || rs.auto || rs.reported) return;
   rs.reported = true;
   const vs = isVsMode;
-  const opponents = vs ? vsRoster.filter(r => r.seat !== mySeat && !/^COM /.test(r.name)).map(r => r.name) : [];
+  const opponents = vs && !vsTeams ? vsRoster.filter(r => r.seat !== mySeat && !/^COM /.test(r.name)).map(r => r.name) : [];
   sendStats({ reportId: newReportId(), mode: vs ? 'vs' : 'solo', result, score: rs.score, lines: rs.lines, level: rs.level, pieces: rs.pieces, keys: rs.keys, attack: rs.attack, durationMs: ms, opponents }, true);
 }
 
@@ -1995,6 +1996,23 @@ let cpuPlayers = [], cpuTimer = null;   // host only: COM seats [{level,name,sea
 let guests = [];                 // host only: [{conn, seat, name, alive, wantsRematch}]
 let mySeat = 0, myPlace = 0, roomMax = 2, roomState = 'idle', roomCode = '';
 let vsRoster = [], waitingRoster = [], rematchReady = [], rematchTotal = 0, rankingSummary = '';
+// ---- チーム戦（ホストが 2〜4 チームに振り分ける。味方には攻撃が届かず、最後に残ったチームの勝ち）----
+let roomTeams = 0;      // 0=個人戦 / 2〜4=チーム数（ホストの設定）
+let hostTeam = 0;       // ホスト自身のチーム
+let vsTeams = 0;        // 進行中の対戦のチーム数（0=個人戦）
+let teamOutOrder = [];  // 全滅したチームの順（ホストのみ）
+const TEAM_NAMES = ['A', 'B', 'C', 'D'], TEAM_COLORS = ['#f38ba8', '#89b4fa', '#a6e3a1', '#f9e2af'];
+const teamTag = t => 'チーム' + (TEAM_NAMES[t] ?? '?');
+const aliveTeamCount = () => new Set(vsRoster.filter(x => x.alive).map(x => x.team)).size;
+// 振り分けが未設定・範囲外のメンバーを、人数の少ないチームへ入れる
+function normalizeTeams() {
+  if (!roomTeams) return;
+  const members = [{ get: () => hostTeam, set: t => { hostTeam = t; } }, ...guests.map(g => ({ get: () => g.team, set: t => { g.team = t; } })), ...cpuPlayers.map(c => ({ get: () => c.team, set: t => { c.team = t; } }))];
+  const count = Array(roomTeams).fill(0);
+  for (const m of members) { const t = m.get(); if (Number.isInteger(t) && t >= 0 && t < roomTeams) count[t]++; else m.set(-1); }
+  for (const m of members) if (m.get() === -1) { const t = count.indexOf(Math.min(...count)); m.set(t); count[t]++; }
+}
+function prepareTeams() { normalizeTeams(); vsRule.teams = roomTeams; vsTeams = roomTeams; teamOutOrder = []; }
 const oppView = new Map();       // seat -> {ctx, canvas, title, name, dead}
 const myName = () => (account && account.id) || 'ゲスト';
 const cleanName = v => String(v == null ? '?' : v).replace(/[\u0000-\u001f]/g, '').slice(0, 24) || '?';
@@ -2008,7 +2026,8 @@ function broadcast(msg, exceptSeat = -1) { for (const g of guests) if (g.seat !=
 const assignSeats = () => guests.forEach((g, i) => { g.seat = i + 1; });
 const makeRoster = () => {
   cpuPlayers.forEach((c, i) => { c.seat = guests.length + 1 + i; });
-  return [{ seat: 0, name: myName(), alive: true, place: 0, left: false }, ...guests.map(g => ({ seat: g.seat, name: g.name, alive: true, place: 0, left: false })), ...cpuPlayers.map(c => ({ seat: c.seat, name: c.name, alive: true, place: 0, left: false, cpu: true }))];
+  const tm = t => (roomTeams ? t : null);
+  return [{ seat: 0, name: myName(), alive: true, place: 0, left: false, team: tm(hostTeam) }, ...guests.map(g => ({ seat: g.seat, name: g.name, alive: true, place: 0, left: false, team: tm(g.team) })), ...cpuPlayers.map(c => ({ seat: c.seat, name: c.name, alive: true, place: 0, left: false, cpu: true, team: tm(c.team) }))];
 };
 
 // ---- lobby: waiting room ----
@@ -2020,22 +2039,34 @@ function renderRoomPanel() {
   document.getElementById('cpuBox').style.display = peer ? 'none' : 'flex';
   for (const id of ['btnCreateRoom', 'btnJoinRoom', 'roomMax', 'roomVisibility', 'roomInput']) document.getElementById(id).disabled = !!peer;
   if (!inRoom) return;
-  const list = isHost ? [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name })), ...cpuPlayers.map((c, i) => ({ seat: guests.length + 1 + i, name: c.name, cpuIndex: i }))] : waitingRoster;
+  if (isHost) normalizeTeams();
+  const tm = t => (roomTeams ? t : null);
+  const list = isHost ? [{ seat: 0, name: myName(), team: tm(hostTeam), setTeam: t => { hostTeam = t; } }, ...guests.map(g => ({ seat: g.seat, name: g.name, team: tm(g.team), setTeam: t => { g.team = t; } })), ...cpuPlayers.map((c, i) => ({ seat: guests.length + 1 + i, name: c.name, cpuIndex: i, team: tm(c.team), setTeam: t => { c.team = t; } }))] : waitingRoster;
   document.getElementById('roomCodeLabel').textContent = `部屋コード: ${roomCode}`;
-  document.getElementById('roomCount').textContent = `参加者 ${list.length} / ${roomMax}人${isHost ? (roomPublic ? '・公開中' : '・非公開') : ''}`;
+  document.getElementById('roomCount').textContent = `参加者 ${list.length} / ${roomMax}人${isHost ? (roomPublic ? '・公開中' : '・非公開') : ''}${roomTeams ? `・チーム戦（${roomTeams}チーム）` : ''}`;
+  const teamRow = document.getElementById('roomTeamRow'); teamRow.style.display = isHost ? 'flex' : 'none'; document.getElementById('roomTeamMode').value = String(roomTeams);
   const pubRow = document.getElementById('roomPublicRow'); pubRow.style.display = isHost ? 'flex' : 'none';
   document.getElementById('roomPublicToggle').checked = roomPublic;
   document.getElementById('roomRoster').replaceChildren(...list.map(p => {
     const d = document.createElement('div'); d.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:6px';
-    const label = document.createElement('span'); label.textContent = `${p.name}${p.seat === 0 ? '（ホスト）' : ''}${p.seat === mySeat && !isHost ? '（あなた）' : ''}`; d.append(label);
-    if (isHost && p.cpuIndex !== undefined) { const b = document.createElement('button'); b.className = 'alt'; b.textContent = '外す'; b.style.cssText = 'width:auto;min-width:0;padding:2px 10px;font-size:.72rem'; b.onclick = () => { cpuPlayers.splice(p.cpuIndex, 1); cpuPlayers.forEach((c, k) => { c.name = cpuNameFor(c.level, k); }); sendRoster(); }; d.append(b); }
+    const label = document.createElement('span'); label.style.flex = '1'; label.textContent = `${p.name}${p.seat === 0 ? '（ホスト）' : ''}${p.seat === mySeat && !isHost ? '（あなた）' : ''}`; d.append(label);
+    if (roomTeams && Number.isInteger(p.team)) {
+      if (isHost && p.setTeam) {
+        const sel = document.createElement('select'); sel.style.cssText = 'width:auto;padding:2px 6px;font-size:.78rem;background:#11111b;color:' + TEAM_COLORS[p.team] + ';border:1px solid var(--border);border-radius:6px';
+        for (let t = 0; t < roomTeams; t++) sel.append(new Option(teamTag(t), String(t)));
+        sel.value = String(p.team); sel.onchange = () => { p.setTeam(parseInt(sel.value, 10)); sendRoster(); };   // ホストだけがチームを変更できる
+        d.append(sel);
+      } else { const tag = document.createElement('span'); tag.textContent = teamTag(p.team); tag.style.cssText = 'font-weight:700;color:' + TEAM_COLORS[p.team]; d.append(tag); }
+    }
+    if (isHost && p.cpuIndex !== undefined) { const b = document.createElement('button'); b.className = 'alt'; b.textContent = '外す'; b.style.cssText = 'width:auto;min-width:0;padding:2px 10px;font-size:.72rem'; b.onclick = () => { cpuPlayers.splice(p.cpuIndex, 1); cpuPlayers.forEach((c, k) => { c.name = cpuNameFor(c, k); }); sendRoster(); }; d.append(b); }
     return d;
   }));
   document.getElementById('roomCpuRow').style.display = isHost && roomState === 'waiting' ? 'flex' : 'none';
   const start = document.getElementById('btnStartMatch');
   start.style.display = isHost ? '' : 'none';
-  start.disabled = list.length < 2;
-  start.textContent = list.length < 2 ? '対戦開始（2人以上で開始できます）' : `対戦開始（${list.length}人）`;
+  const teamsUsed = roomTeams ? new Set(list.map(p => p.team)).size : 2;
+  start.disabled = list.length < 2 || teamsUsed < 2;
+  start.textContent = list.length < 2 ? '対戦開始（2人以上で開始できます）' : teamsUsed < 2 ? '対戦開始（2チーム以上に分けてください）' : `対戦開始（${list.length}人${roomTeams ? '・チーム戦' : ''}）`;
   document.getElementById('roomHint').textContent = isHost
     ? (list.length < roomMax ? `最大${roomMax}人まで参加できます。人数が揃わなくても、2人以上いれば開始できます。` : '全員そろいました。')
     : 'ホストが開始するまでお待ちください。';
@@ -2044,7 +2075,7 @@ function renderRoomPanel() {
 function leaveRoom() {
   const p = peer;
   stopRoomAnnounce(); stopCpus(); cpuPlayers = [];
-  peer = null; conn = null; guests = []; isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = '';
+  peer = null; conn = null; guests = []; isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = ''; roomTeams = 0; hostTeam = 0; vsTeams = 0; teamOutOrder = [];
   if (p) { try { p.destroy(); } catch (_) {} }
   oppView.clear();
   const ob = document.getElementById('oppBoards'); ob.classList.remove('active'); ob.replaceChildren();
@@ -2174,7 +2205,8 @@ function setupGuestConn() {
   c.on('close', () => { if (conn === c) onHostClosed(); });
 }
 function setRosterFromHost(d) {
-  if (Array.isArray(d.roster)) vsRoster = d.roster.map(r => ({ seat: r.seat | 0, name: cleanName(r.name), alive: true, place: 0, left: false }));
+  if (Array.isArray(d.roster)) vsRoster = d.roster.map(r => ({ seat: r.seat | 0, name: cleanName(r.name), alive: true, place: 0, left: false, team: Number.isInteger(r.team) ? r.team : null }));
+  vsTeams = (vsRule && vsRule.teams | 0) || 0;
   if (Number.isInteger(d.you)) mySeat = d.you;
 }
 function onHostData(d) {
@@ -2182,7 +2214,8 @@ function onHostData(d) {
   switch (d.type) {
     case 'ROSTER':
       roomMax = (d.max | 0) || roomMax;
-      waitingRoster = Array.isArray(d.players) ? d.players.map(p => ({ seat: p.seat | 0, name: cleanName(p.name) })) : [];
+      roomTeams = d.teams | 0;
+      waitingRoster = Array.isArray(d.players) ? d.players.map(p => ({ seat: p.seat | 0, name: cleanName(p.name), team: Number.isInteger(p.team) ? p.team : null })) : [];
       if (Number.isInteger(d.you)) mySeat = d.you;
       renderRoomPanel(); break;
     case 'FULL': toast(String(d.reason || '参加できません')); leaveRoom(); break;
@@ -2222,8 +2255,9 @@ function onGuestConnection(c) {
   c.on('error', () => {});
 }
 function sendRoster() {
-  const players = [{ seat: 0, name: myName() }, ...guests.map(g => ({ seat: g.seat, name: g.name })), ...cpuPlayers.map((c, i) => ({ seat: guests.length + 1 + i, name: c.name }))];
-  for (const g of guests) safeSend(g.conn, { type: 'ROSTER', max: roomMax, players, you: g.seat });
+  normalizeTeams();
+  const players = [{ seat: 0, name: myName(), team: roomTeams ? hostTeam : null }, ...guests.map(g => ({ seat: g.seat, name: g.name, team: roomTeams ? g.team : null })), ...cpuPlayers.map((c, i) => ({ seat: guests.length + 1 + i, name: c.name, team: roomTeams ? c.team : null }))];
+  for (const g of guests) safeSend(g.conn, { type: 'ROSTER', max: roomMax, players, you: g.seat, teams: roomTeams });
   renderRoomPanel();
   announceRoom();
 }
@@ -2255,7 +2289,7 @@ function submitCpuReplay(c, result) {
   const run = c.runner.run(); run.result = result;
   receiveVsReplay(vsRule.round, run, c.seat);
 }
-function submitCpuReplays(winner) { for (const c of cpuPlayers) submitCpuReplay(c, winner === c.seat ? 'win' : 'lose'); }
+function submitCpuReplays(winner) { const ws = Array.isArray(winner) ? winner : [winner]; for (const c of cpuPlayers) submitCpuReplay(c, ws.includes(c.seat) ? 'win' : 'lose'); }
 // ネットワークなしで COM とだけ対戦する
 function startCpuMatch(levels) {
   if (peer) return;
@@ -2275,6 +2309,7 @@ document.getElementById('btnCpuMatch').onclick = () => {
   const v = document.getElementById('cpuLevel').value, n = Math.max(1, Math.min(3, parseInt(document.getElementById('cpuCount').value, 10) || 1));
   startCpuMatch(Array(n).fill(v));
 };
+document.getElementById('roomTeamMode').onchange = () => { if (!isHost || roomState !== 'waiting') return; roomTeams = parseInt(document.getElementById('roomTeamMode').value, 10) || 0; sendRoster(); };
 document.getElementById('btnAddCpu').onclick = () => {
   if (!isHost || roomState !== 'waiting') return;
   if (roomCountNow() >= roomMax) { toast('満員です（人数を増やして部屋を作り直してください）'); return; }
@@ -2291,6 +2326,8 @@ function startMatchAsHost() {
   vsRule.nextMode = document.getElementById('cfgNextMode').value;
   vsRule.holeChange = parseFloat(document.getElementById('cfgHoleChange').value);
   vsRule.posInterval = parseInt(document.getElementById('cfgPosInterval').value, 10) || 33;
+  { normalizeTeams(); const used = new Set([hostTeam, ...guests.map(g => g.team), ...cpuPlayers.map(c => c.team)]).size; if (roomTeams && used < 2) { toast('2チーム以上に分けてください'); sendRoster(); return; } }
+  prepareTeams();
   roomState = 'playing'; mySeat = 0;
   vsRoster = makeRoster();
   for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'RULE', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
@@ -2316,6 +2353,7 @@ function distributeAttack(fromSeat, holes) {
   if (!clean.length) return;
   for (const r of vsRoster) {
     if (!r.alive || r.seat === fromSeat) continue;
+    if (vsTeams && r.team === sender.team) continue;   // チーム戦: 味方には攻撃が届かない
     if (r.seat === 0) receiveAttack(clean);
     else { const c = cpuBySeat(r.seat); if (c && c.runner) c.runner.receive(clean); else sendTo(r.seat, { type: 'ATTACK', holes: clean, from: fromSeat }); }
   }
@@ -2336,14 +2374,26 @@ function handlePlayerOut(seat, left = false) {
   if (!r) return;
   if (left) r.left = true;
   if (!r.alive || roomState !== 'playing') return;
-  r.alive = false; r.place = vsRoster.filter(x => x.alive).length + 1;
+  r.alive = false;
+  if (vsTeams) {   // チーム戦: チームが全滅した時だけ順位がつく（残っている味方がいる間は ✕ だけ）
+    if (!vsRoster.some(x => x.alive && x.team === r.team)) { teamOutOrder.push(r.team); r.place = aliveTeamCount() + 1; } else r.place = 0;
+  } else r.place = vsRoster.filter(x => x.alive).length + 1;
   broadcast({ type: 'DEAD', p: seat, place: r.place });
   applyDead(seat, r.place);
   const alive = vsRoster.filter(x => x.alive);
-  if (alive.length <= 1) {
-    if (alive[0]) alive[0].place = 1;
+  if (vsTeams ? aliveTeamCount() <= 1 : alive.length <= 1) {
+    if (!vsTeams && alive[0]) alive[0].place = 1;
     roomState = 'result';
-    const end = { type: 'END', winner: alive[0] ? alive[0].seat : -1, ranking: vsRoster.map(x => ({ seat: x.seat, name: x.name, place: x.place || vsRoster.length })) };
+    let end;
+    if (vsTeams) {
+      const winTeam = alive[0] ? alive[0].team : -1, tp = new Map();
+      let next = 1; if (winTeam >= 0) { tp.set(winTeam, 1); next = 2; }
+      for (const t of teamOutOrder.slice().reverse()) if (!tp.has(t)) tp.set(t, next++);   // 全滅が遅いチームほど上位
+      end = { type: 'END', teamMode: true, winnerTeam: winTeam, winner: alive[0] ? alive[0].seat : -1, winners: vsRoster.filter(x => x.team === winTeam).map(x => x.seat),
+        ranking: vsRoster.map(x => ({ seat: x.seat, name: x.name, team: x.team, place: tp.get(x.team) || vsRoster.length })) };
+    } else {
+      end = { type: 'END', winner: alive[0] ? alive[0].seat : -1, winners: alive[0] ? [alive[0].seat] : [], ranking: vsRoster.map(x => ({ seat: x.seat, name: x.name, place: x.place || vsRoster.length })) };
+    }
     broadcast(end);
     applyEnd(end);
   }
@@ -2357,10 +2407,12 @@ function buildOppViews() {
   root.className = 'opp-boards active n' + Math.max(1, Math.min(3, others.length));
   for (const r of others) {
     const box = document.createElement('div'); box.className = 'opp-box';
-    const title = document.createElement('div'); title.className = 'p2-title'; title.textContent = r.name;
+    const label = Number.isInteger(r.team) ? `[${TEAM_NAMES[r.team]}] ${r.name}` : r.name;
+    const title = document.createElement('div'); title.className = 'p2-title'; title.textContent = label;
+    if (Number.isInteger(r.team)) { title.style.color = TEAM_COLORS[r.team]; box.style.outline = `2px solid ${TEAM_COLORS[r.team]}`; box.style.outlineOffset = '-1px'; }
     const canvas = document.createElement('canvas'); canvas.width = 100; canvas.height = 200;
     box.append(title, canvas); root.append(box);
-    oppView.set(r.seat, { ctx: canvas.getContext('2d'), canvas, title, name: r.name, dead: false });
+    oppView.set(r.seat, { ctx: canvas.getContext('2d'), canvas, title, name: label, dead: false });
   }
 }
 function drawOpp(seat, bBoard, pCur) {
@@ -2386,28 +2438,35 @@ function applyDead(seat, place) {
     return;
   }
   const v = oppView.get(seat);
-  if (v) { v.dead = true; v.title.textContent = `${v.name} ✕${place | 0}位`; v.canvas.style.opacity = '.45'; }
+  if (v) { v.dead = true; v.title.textContent = `${v.name} ✕${place | 0 ? (place | 0) + '位' : ''}`; v.canvas.style.opacity = '.45'; }
 }
 function applyEnd(d) {
   roomState = 'result';
   const rank = Array.isArray(d.ranking) ? d.ranking : [];
   for (const r of rank) { const v = vsRoster.find(x => x.seat === r.seat); if (v) v.place = r.place | 0; }
   if (autoBuildRunning) stopAutoBuild('');
-  if (isHost) { stopCpus(); submitCpuReplays(d.winner); }
-  if (d.winner === mySeat) { if (!isEnded) finishRun('win'); isEnded = true; myPlace = 1; }
-  rankingSummary = rank.slice().sort((a, b) => a.place - b.place).map(r => `${r.place}位 ${cleanName(r.name)}`).join(' / ');
+  const winners = Array.isArray(d.winners) ? d.winners : [d.winner];
+  if (isHost) { stopCpus(); submitCpuReplays(winners); }
+  const iWon = winners.includes(mySeat);
+  if (iWon) { if (!isEnded) finishRun('win'); isEnded = true; myPlace = 1; }
+  else if (d.teamMode) { const me = rank.find(r => r.seat === mySeat); if (me) myPlace = me.place | 0; }
+  if (d.teamMode) {
+    const byTeam = new Map(); for (const r of rank) { if (!byTeam.has(r.team)) byTeam.set(r.team, { place: r.place | 0, names: [] }); byTeam.get(r.team).names.push(cleanName(r.name)); }
+    rankingSummary = [...byTeam.entries()].sort((a, b) => a[1].place - b[1].place).map(([t, v]) => `${v.place}位 ${teamTag(t)}（${v.names.join('・')}）`).join(' / ');
+  } else rankingSummary = rank.slice().sort((a, b) => a.place - b.place).map(r => `${r.place}位 ${cleanName(r.name)}`).join(' / ');
   rematchReady = []; rematchTotal = isHost ? 1 + guests.length : vsRoster.length;
-  showRematch(d.winner === mySeat ? 'WIN! 1位' : (myPlace ? `GAME OVER（${myPlace}位）` : 'GAME OVER'));
+  showRematch(iWon ? (d.teamMode ? `WIN! ${teamTag(d.winnerTeam)} の勝利` : 'WIN! 1位') : (myPlace ? `GAME OVER（${myPlace}位）` : 'GAME OVER'));
   if (isHost && pendingReplay && pendingReplay.answered) armReplayTimer(pendingReplay);
 }
 
+const vsModeLabel = () => { const me = vsRoster.find(r => r.seat === mySeat); return `オンライン対戦中（${vsRoster.length}人${vsTeams && me && Number.isInteger(me.team) ? `・チーム戦：あなたは${teamTag(me.team)}` : ''}）`; };
 function startVsGame() {
   if (isVsMode && document.getElementById('gameScreen').classList.contains('active')) return;
   isVsMode = true;
   rematchRequested = false; rematchReady = []; myPlace = 0; rankingSummary = '';
   clearRematchArea();
   buildOppViews();
-  document.getElementById('matchModeLabel').textContent = `オンライン対戦中（${vsRoster.length}人）`;
+  document.getElementById('matchModeLabel').textContent = vsModeLabel();
   renderRoomPanel();
   switchScreen('gameScreen'); initGame();
   if (isHost) startCpus();
@@ -2480,7 +2539,7 @@ function tryStartRematch() {
   if (!isHost || roomState !== 'result' || !rematchRequested) return;
   guests = guests.filter(g => g.conn && g.conn.open);
   if ((!guests.length && !cpuPlayers.length) || !guests.every(g => g.wantsRematch)) return;
-  newRound(); assignSeats();
+  newRound(); assignSeats(); prepareTeams();
   vsRoster = makeRoster(); roomState = 'playing';
   for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'REMATCH_START', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
   resetForRematch();
@@ -2490,7 +2549,7 @@ function resetForRematch() {
   rematchRequested = false; rematchReady = []; rankingSummary = ''; myPlace = 0;
   clearRematchArea();
   buildOppViews();
-  document.getElementById('matchModeLabel').textContent = `オンライン対戦中（${vsRoster.length}人）`;
+  document.getElementById('matchModeLabel').textContent = vsModeLabel();
   initGame();
   if (isHost) startCpus();
   toast('再戦スタート！');
