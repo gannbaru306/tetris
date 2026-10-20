@@ -498,6 +498,7 @@
       <div style="font-weight:700">全員の戦績・レート（非公開の人も含む）</div>
       <div class="muted" style="font-size:.78rem">開発者のレートは1850固定です。非公開にしているプレイヤーも、ここでは確認できます。</div>
       <button id="btnAdminStats" class="alt">読み込む</button>
+      <div id="adminStatsEditor" style="display:none;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:.8rem"></div>
       <div id="adminStatsBody" style="display:flex;flex-direction:column;gap:2px;font-size:.8rem"></div>
     </section>
 
@@ -1011,7 +1012,7 @@ function submitStats(result, ms) {
   rs.reported = true;
   const vs = isVsMode;
   const opponents = vs && !vsTeams ? vsRoster.filter(r => r.seat !== mySeat && !/^COM /.test(r.name)).map(r => r.name) : [];
-  const cpuOpponents = vs && !vsTeams ? vsRoster.filter(r => r.seat !== mySeat && /^COM /.test(r.name)).map(r => r.cpuRating || (/^COM Lv(\d+)/.test(r.name) ? CPU_RATING_BASE[cpuLevelOf(RegExp.$1)] : 1000)) : [];
+  const cpuOpponents = vs && !vsTeams && vsRoster.length === 2 ? vsRoster.filter(r => r.seat !== mySeat && /^COM /.test(r.name)).map(r => r.cpuRating || (/^COM Lv(\d+)/.test(r.name) ? CPU_RATING_BASE[cpuLevelOf(RegExp.$1)] : 1000)) : [];
   sendStats({ reportId: newReportId(), mode: vs ? 'vs' : 'solo', result, score: rs.score, lines: rs.lines, level: rs.level, pieces: rs.pieces, keys: rs.keys, attack: rs.attack, durationMs: ms, opponents, cpuOpponents }, true);
 }
 
@@ -1704,6 +1705,7 @@ function cpuPcTail(eng, seq, plan, nodeBudget) {
 function cpuGauss() { return (Math.random() + Math.random() + Math.random() + Math.random() - 2) * 1.7; }
 const cpuPlanCache = new Map();
 let templateSolveDeadline = Infinity;
+let templateLastCut = false;   // 直前の solveTemplate が、ノード数・時間の上限で打ち切られたか（false の null は「組めない」と確定）
 class TetrisAI {
   constructor(level, params) {
     this.level = cpuLevelOf(level);
@@ -3102,7 +3104,7 @@ function rawTemplateScore(candidate, variant) {
 // The guide uses the very same planner as 自動積み (planAutoBuild), so template, placement and HOLD always agree.
 function findAiSuggestion() {
   if (!aiGuideEnabled || !adminMode || !cur || isEnded) return null;
-  const key = JSON.stringify([board.map(row => row.join('')), cur.type, holdPiece, nextQ, bag, canHold, selectedTemplateOverlay, templateData.map(t => [t.name,t.priority,t.enabled,t.mirror,t.pattern])]);
+  const key = autoBoardKey(board) + '|' + [cur.type, holdPiece, canHold, nextQ.join(''), bag.join('')].join('|') + '|' + templateSig();
   if (key === aiCacheKey) return aiCacheResult;
   aiCacheKey = key;
   const plan = planAutoBuild(AUTO_SPAWN);
@@ -3142,25 +3144,17 @@ function drawAiSuggestion() {
 // ---- パフェ手順ガイド（開発者モード）----
 // パフェ積みを組み終えた盤面で、いまのミノ・HOLD・NEXTからパフェ（全消し）まで届く手順があれば、
 // すべてのミノの置き場所を点線で表示する。途中でラインが消えて盤面がずれる分は、現在の盤面の位置に換算して描く。
-let pcGuideKey = '', pcGuideResult = null;
+let pcGuideKey = '', pcGuideResult = null, pcGuidePlan = null;   // pcGuidePlan: 見つけた手順 { steps, keys }（keys = 各手の直前の盤面）
 const PC_GUIDE_COLORS = ['#a6e3a1', '#89dceb', '#f9e2af', '#f5c2e7', '#fab387', '#b4befe', '#f38ba8'];
-function findPcGuide() {
-  const rows = board.map(row => row.reduce((m, v, c) => (v ? m | (1 << c) : m), 0));
-  const key = JSON.stringify([rows, cur && cur.type, holdPiece, nextQ, bag, canHold]);
-  if (key === pcGuideKey) return pcGuideResult;
-  pcGuideKey = key; pcGuideResult = null;
-  let cells = 0; for (const m of rows) cells += CPU_POP[m];
-  if (cells < 8 || cells > 40) return null;          // 空に近い盤面や高く積んだ盤面では出さない（パフェ積みを組んだ後の想定）
-  const seq = [cur.type, ...peekFuturePieces(12)];
-  const steps = cpuFindPC(rows, seq, holdPiece, canHold, Math.min(7, seq.length + (holdPiece ? 1 : 0)), 4000, 40);
-  if (!steps || !steps.length) return null;
-  // 各手のミノを「現在の盤面の位置」に換算する（前の手でラインが消えると、後の手の座標は下にずれているため）
-  const clears = [];            // 手ごとの { c: 消えた行数, kept: 残った行（消える前の行番号）}
+// 手順（cpuFindPCの結果）を、いまの盤面の位置に換算して返す。途中でラインが消えると後の手の座標は下にずれるため、前の手の分を戻して描く
+function mapPcSteps(rows, steps) {
+  const clears = [], keys = [];
   let rs = rows.slice();
   const pieces = steps.map((st, i) => {
+    keys.push(rs.join(','));
     const cs = CPU_CELLS[st.type][st.r], out = [];
     for (let k = 0; k < 4; k++) {
-      let x = st.x + cs[k][0], y = st.y + cs[k][1];
+      const x = st.x + cs[k][0]; let y = st.y + cs[k][1];
       for (let j = i - 1; j >= 0; j--) y = (y >= clears[j].c) ? clears[j].kept[y - clears[j].c] : y - clears[j].c;
       out.push([x, y]);
     }
@@ -3171,7 +3165,40 @@ function findPcGuide() {
     rs = kept.map(k => placed[k]); while (rs.length < ROWS) rs.unshift(0);
     return { type: st.type, hold: !!st.hold, cells: out };
   });
-  pcGuideResult = pieces;
+  return { pieces, keys };
+}
+// 手順どおりに置いている間は、探索し直さず続きを使う（探索し直すと、HOLD後などで見つからず表示が消えることがあった）
+function reusePcGuide(rows) {
+  if (!pcGuidePlan || !cur) return null;
+  const rk = rows.join(','), P = pcGuidePlan;
+  for (let i = 0; i < P.steps.length; i++) {
+    if (P.keys[i] !== rk) continue;
+    const st = P.steps[i];
+    let steps = P.steps.slice(i);
+    if (st.hold) {
+      if (cur.type === st.type && !canHold) steps = [{ ...st, hold: false }, ...steps.slice(1)];   // もうHOLDした後（盤面は同じ・使えるミノが入れ替わった状態）
+      else if (!(canHold && (holdPiece ? holdPiece === st.type : nextQ[0] === st.type))) return null;
+    } else if (cur.type !== st.type) return null;
+    return mapPcSteps(rows, steps).pieces;
+  }
+  return null;
+}
+function findPcGuide() {
+  const rows = board.map(row => row.reduce((m, v, c) => (v ? m | (1 << c) : m), 0));
+  const key = JSON.stringify([rows, cur && cur.type, holdPiece, nextQ, bag, canHold]);
+  if (key === pcGuideKey) return pcGuideResult;
+  pcGuideKey = key; pcGuideResult = null;
+  const re = reusePcGuide(rows);
+  if (re) { pcGuideResult = re; return re; }
+  pcGuidePlan = null;
+  let cells = 0; for (const m of rows) cells += CPU_POP[m];
+  if (cells < 8 || cells > 40) return null;          // 空に近い盤面や高く積んだ盤面では出さない（パフェ積みを組んだ後の想定）
+  const seq = [cur.type, ...peekFuturePieces(12)];
+  const steps = cpuFindPC(rows, seq, holdPiece, canHold, Math.min(7, seq.length + (holdPiece ? 1 : 0)), 4000, 40);
+  if (!steps || !steps.length) return null;
+  const m = mapPcSteps(rows, steps);
+  pcGuidePlan = { steps, keys: m.keys };
+  pcGuideResult = m.pieces;
   return pcGuideResult;
 }
 function drawPcGuide() {
@@ -3622,6 +3649,7 @@ function templatePlacementsFor(b, type, variant, start) {
 }
 
 function solveTemplate(startBoard, seq, startHold, startCanHold, variant, firstStart, nodeLimit = 6000) {
+  templateLastCut = false;
   if (!variantIsValid(variant) || !boardConsistentWithVariant(startBoard, variant)) return null;
   const rows = variantRows(variant), top = ROWS - rows.length;
   let total = 0, filled = 0;
@@ -3677,6 +3705,7 @@ function solveTemplate(startBoard, seq, startHold, startCanHold, variant, firstS
     return null;
   }
   const steps = rec(startBoard, 0, startHold, startCanHold, filled, true);
+  templateLastCut = nodes > nodeLimit || performance.now() > templateSolveDeadline;
   return steps ? { variant, steps, nodes } : null;
 }
 
@@ -3699,24 +3728,74 @@ function templatePieceCount(variant) {
   return Math.ceil(cells / 4);
 }
 
-function planAutoBuild(startPose) {
-  if (!cur) return null;
-  const firstStart = startPose || { x: cur.x, y: cur.y, rot: cur.r };
-  const boardRows = board.map(row => row.reduce((m, v, c) => (v ? m | (1 << c) : m), 0));
-  for (const variant of autoCandidateVariants()) {
-    const isPc = !!cpuIsPcVariant(variant);
-    const seq = [cur.type, ...peekFuturePieces(templatePieceCount(variant) + (isPc ? 12 : 8))];
-    const plan = solveTemplate(board, seq, holdPiece, canHold, variant, firstStart);
-    if (!plan) continue;
-    if (isPc) {
-      // パフェ積みは、組み終えた後に残りのツモ（HOLD含む）でパフェに届く時だけ採用する
-      const tail = cpuPcTail({ rows: boardRows, hold: holdPiece }, seq, plan, 4000);
-      if (!tail) continue;
-      plan.pcTail = tail;
-    }
-    return plan;
+// ---- 自動積みの計画（テンプレ探索）----
+// 重くなりやすいので、(1) 直前の計画どおりに置いている間は続きをそのまま使う、(2) 同じ状況の再計算はしない、
+// (3) 探索は「小さい上限で全テンプレを試す → だめなら大きい上限」の2段階にして、組めないテンプレに時間を使わない、
+// (4) パフェ到達チェック（パフェ積みのみ）は合計の時間に上限をつける。
+let autoPlanLast = null;                 // { plan, sig } 追従用（直前に出した計画）
+let autoPlanMemo = { key: '', plan: null };
+let templateSigAt = -1e9, templateSigVal = '';
+function templateSig() {   // テンプレ設定の署名（毎フレーム計算しないよう、0.4秒ごとにだけ作り直す）
+  const now = performance.now();
+  if (now - templateSigAt > 400) { templateSigAt = now; templateSigVal = JSON.stringify([selectedTemplateOverlay, templateData.map(t => [t.name, t.priority, t.enabled, t.mirror, t.pc, t.pattern])]); }
+  return templateSigVal;
+}
+function reuseAutoPlan(bKey, sig) {
+  if (!autoPlanLast || autoPlanLast.sig !== sig || !cur) return null;
+  const steps = autoPlanLast.plan.steps;
+  if (cur.x !== AUTO_SPAWN.x || cur.y !== AUTO_SPAWN.y || cur.r !== AUTO_SPAWN.rot) return null;   // 最初のミノがまだ動いていない時だけ
+  for (let i = 0; i < steps.length; i++) {
+    const st = steps[i];
+    if (st.boardBefore !== bKey) continue;
+    const okPiece = st.hold ? (canHold && (holdPiece ? holdPiece === st.type : nextQ[0] === st.type)) : cur.type === st.type;
+    if (!okPiece) return null;
+    return { ...autoPlanLast.plan, steps: steps.slice(i), reused: true };
   }
   return null;
+}
+function planAutoBuild(startPose) {
+  if (!cur) return null;
+  const bKey = autoBoardKey(board), sig = templateSig();
+  if (!startPose || (startPose.x === AUTO_SPAWN.x && startPose.y === AUTO_SPAWN.y && startPose.rot === AUTO_SPAWN.rot)) {
+    const re = reuseAutoPlan(bKey, sig); if (re) return re;
+  }
+  const memoKey = [bKey, cur.type, cur.x, cur.y, cur.r, holdPiece, canHold, nextQ.join(''), bag.join(''), sig].join('|');
+  if (autoPlanMemo.key === memoKey) return autoPlanMemo.plan;
+  const plan = planAutoBuildCore(startPose);
+  autoPlanMemo = { key: memoKey, plan };
+  if (plan) autoPlanLast = { plan, sig };
+  return plan;
+}
+function planAutoBuildCore(startPose) {
+  const firstStart = startPose || { x: cur.x, y: cur.y, rot: cur.r };
+  const boardRows = board.map(row => row.reduce((m, v, c) => (v ? m | (1 << c) : m), 0));
+  const variants = autoCandidateVariants();
+  const t0 = performance.now(), tEnd = t0 + 900;   // 全体の探索時間の上限
+  let tailSpent = 0; const tailFailed = new Set(), impossible = new Set();
+  try {
+    for (const nodeLimit of [400, 6000]) {   // 1周目: 組めるテンプレはたいてい数十ノードで見つかる。組めないものは早く切り上げる
+      for (const variant of variants) {
+        if (performance.now() > tEnd) return null;
+        const isPc = !!cpuIsPcVariant(variant);
+        if (impossible.has(variant.name)) continue;   // 1周目で「組めない」と確定したものは再挑戦しない
+        if (isPc && (tailFailed.has(variant.name) || tailSpent > 250)) continue;   // パフェ到達チェックに使う時間にも上限
+        templateSolveDeadline = tEnd;
+        const seq = [cur.type, ...peekFuturePieces(templatePieceCount(variant) + (isPc ? 12 : 8))];
+        const plan = solveTemplate(board, seq, holdPiece, canHold, variant, firstStart, nodeLimit);
+        if (!plan) { if (!templateLastCut) impossible.add(variant.name); continue; }
+        if (isPc) {
+          // パフェ積みは、組み終えた後に残りのツモ（HOLD含む）でパフェに届く時だけ採用する
+          const t1 = performance.now();
+          const tail = cpuPcTail({ rows: boardRows, hold: holdPiece }, seq, plan, 4000);
+          tailSpent += performance.now() - t1;
+          if (!tail) { tailFailed.add(variant.name); continue; }
+          plan.pcTail = tail;
+        }
+        return plan;
+      }
+    }
+    return null;
+  } finally { templateSolveDeadline = Infinity; }
 }
 
 // Used by the solo lobby to pick a seed whose 7-bag order can build the template.
@@ -4045,7 +4124,7 @@ function renderMyPage(d) {
     ['全体', [['総試合数', fmtN(s.games)], ['KPP（1ピースあたりのキー入力）', kpp], ['PPS（1秒あたりのピース）', pps], ['総ピース数', fmtN(s.total_pieces)], ['総ライン数', fmtN(s.total_lines)], ['総プレイ時間', fmtDuration(s.total_ms)]]]
   ];
   const note = document.createElement('div'); note.style.cssText = 'font-size:.72rem;color:var(--sub);margin-top:8px';
-  note.textContent = 'ID: ' + d.id + '　※途中で抜けたソロは記録されません。チーム戦は戦績のみで、レートは動きません。';
+  note.textContent = 'ID: ' + d.id + '　※途中で抜けたソロは記録されません。チーム戦は戦績のみで、レートは動きません。COM戦レートは、COM1体との1対1だけが対象です。';
   const table = document.createElement('table'); table.className = 'stat-table';
   for (const [title, rows] of sections) {
     const h = document.createElement('tr'); const th = document.createElement('th'); th.colSpan = 2; th.textContent = title; h.append(th); table.append(h);
@@ -4471,6 +4550,37 @@ document.getElementById('btnCpuTest').onclick = async () => {
   st.textContent = `${ch ? ch.name : 'Lv' + lv}（編集中の設定）で${r.pieces}ミノ${r.dead ? '（途中で死亡）' : ''}\n平均設置間隔 ${r.perPieceMs.toFixed(0)}ms / 攻撃効率 ${r.sentPerPiece.toFixed(2)} / TSD ${r.tsd}・TST ${r.tst}・パフェ ${r.pc} / 残った穴 ${r.holes}\n1手の思考 平均${r.thinkAvg.toFixed(1)}ms・最大${r.thinkMax.toFixed(0)}ms（テンプレ ${r.kinds.template}手・パフェ ${r.kinds.pc}手）`;
 };
 
+
+// ---- 開発者: 戦績の編集（開発者アカウント同士のテスト対戦などで崩れた戦績の補正用）----
+const STAT_EDIT_LABELS = { games: '総試合数', solo_games: 'ソロ回数', vs_games: '対戦試合数', vs_wins: '対戦の勝利数', best_score: 'ソロ最高スコア', best_lines: 'ソロ最高ライン', best_level: 'ソロ最高レベル', total_pieces: '総ピース数', total_keys: '総キー入力', total_attack: '総攻撃ライン', total_lines: '総ライン数', total_ms: '総プレイ時間(ms)', vs_ms: '対戦時間(ms)', best_apm: '最高APM', rating: '対人レート', rated_games: '対人レート試合数', peak_rating: '対人レート最高', cpu_rating: 'COM戦レート', cpu_rated_games: 'COM戦レート試合数', cpu_peak_rating: 'COM戦レート最高' };
+async function openStatsEditor(id) {
+  const box = document.getElementById('adminStatsEditor'); box.style.display = 'flex'; box.textContent = '読み込み中…';
+  try {
+    const d = await api('/admin/stats/user?id=' + encodeURIComponent(id), undefined, 'GET');
+    const inputs = {};
+    const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr auto;gap:4px 8px;align-items:center';
+    for (const k of Object.keys(STAT_EDIT_LABELS)) {
+      if (!(k in d.stats)) continue;
+      const lab = document.createElement('label'); lab.textContent = STAT_EDIT_LABELS[k];
+      const inp = document.createElement('input'); inp.type = 'number'; inp.value = String(d.stats[k]); inp.style.width = '8em'; inp.min = String(d.fields[k].min); inp.max = String(d.fields[k].max); inp.step = d.fields[k].int ? '1' : '0.1';
+      inputs[k] = { el: inp, orig: String(d.stats[k]) }; grid.append(lab, inp);
+    }
+    const title = document.createElement('div'); title.style.fontWeight = '700'; title.textContent = `「${d.id}」の戦績を編集`;
+    const note = document.createElement('div'); note.className = 'muted'; note.textContent = '勝率は「対戦の勝利数 ÷ 対戦試合数」です。負けを減らすなら、対戦試合数を減らしてください。';
+    const msg = document.createElement('div');
+    const save = document.createElement('button'); save.textContent = '保存';
+    save.onclick = async () => {
+      const stats = {}; for (const [k, v] of Object.entries(inputs)) if (v.el.value !== v.orig) stats[k] = v.el.value;
+      if (!Object.keys(stats).length) { msg.textContent = '変更がありません'; return; }
+      try { await api('/admin/stats/edit', { id: d.id, stats }); toast('戦績を保存しました'); box.style.display = 'none'; document.getElementById('btnAdminStats').onclick(); } catch (e) { msg.textContent = '保存できませんでした: ' + e.message; }
+    };
+    const reset = document.createElement('button'); reset.className = 'danger'; reset.textContent = '戦績を全てリセット';
+    reset.onclick = async () => { if (!confirm(`「${d.id}」の戦績・レートをすべて初期化します。よろしいですか？`)) return; try { await api('/admin/stats/edit', { id: d.id, reset: true }); toast('戦績をリセットしました'); box.style.display = 'none'; document.getElementById('btnAdminStats').onclick(); } catch (e) { msg.textContent = 'リセットできませんでした: ' + e.message; } };
+    const close = document.createElement('button'); close.className = 'alt'; close.textContent = '閉じる'; close.onclick = () => { box.style.display = 'none'; };
+    const bar = document.createElement('div'); bar.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap'; bar.append(save, reset, close);
+    box.replaceChildren(title, note, grid, msg, bar);
+  } catch (e) { box.textContent = '読み込めませんでした: ' + e.message; }
+}
 document.getElementById('btnAdminStats').onclick = async () => {
   const body = document.getElementById('adminStatsBody'); body.textContent = '読み込み中…';
   try {
@@ -4481,7 +4591,8 @@ document.getElementById('btnAdminStats').onclick = async () => {
       const apm = r.vsMs > 0 ? (r.attack / (r.vsMs / 60000)).toFixed(1) : '-', kpp = r.pieces > 0 ? (r.keys / r.pieces).toFixed(2) : '-';
       const ex = document.createElement('span'); ex.className = 'ex'; ex.textContent = `${r.vsGames}戦${r.vsWins}勝 / 最高${fmtN(r.bestScore)} / APM ${apm} / KPP ${kpp}`;
       const vl = document.createElement('span'); vl.className = 'vl'; vl.textContent = (r.isDev ? String(d.devRating) : (r.ratedGames >= 3 ? String(r.rating) : `${r.rating}（判定中）`)) + ` / COM ${r.cpuRating}${r.cpuRatedGames >= 3 ? '' : '（判定中）'}`;
-      row.append(nm, ex, vl); return row;
+      const ed = document.createElement('button'); ed.className = 'alt'; ed.textContent = '編集'; ed.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:2px 10px;font-size:.72rem'; ed.onclick = () => openStatsEditor(r.id);
+      row.append(nm, ex, vl, ed); return row;
     }));
   } catch (e) { body.textContent = '読み込めませんでした: ' + e.message; }
 };
