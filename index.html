@@ -476,6 +476,20 @@
       </div>
       <div id="cpuDevStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">COM同士の対戦</div>
+      <div class="muted" style="font-size:.78rem">COMを2〜4体選んで戦わせます。上の「COMの性能設定」で編集中の内容（未保存でも）と、追加したプリセット（★）が使われるので、保存する前に強さを確かめられます。1戦ならリプレイとして観戦、複数戦なら勝率などを集計します。</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <select id="cpuBattleSel0"></select><select id="cpuBattleSel1"></select><select id="cpuBattleSel2"></select><select id="cpuBattleSel3"></select>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:.82rem"><input type="checkbox" id="cpuBattleCommon" checked style="width:auto">全員が同じツモ順（NEXTの並びが同じ）</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button id="btnCpuBattleWatch" style="flex:1;min-width:9em">1戦して観戦</button>
+        <input type="number" id="cpuBattleN" value="20" min="2" max="200" style="width:4.5em"><span style="font-size:.82rem">戦</span>
+        <button id="btnCpuBattleRun" class="alt" style="flex:1;min-width:8em">まとめて対戦</button>
+        <button id="btnCpuBattleStop" class="danger" style="display:none">中止</button>
+      </div>
+      <div id="cpuBattleStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <div style="font-weight:700">全員の戦績・レート（非公開の人も含む）</div>
       <div class="muted" style="font-size:.78rem">開発者のレートは1850固定です。非公開にしているプレイヤーも、ここでは確認できます。</div>
       <button id="btnAdminStats" class="alt">読み込む</button>
@@ -4124,6 +4138,7 @@ function fillCpuDevSelect(def) {
   const sel = document.getElementById('cpuDevLevel');
   sel.replaceChildren(...cpuOptionList(cpuDevCustom));
   sel.value = [...sel.options].some(o => o.value === String(def)) ? String(def) : '5';
+  if (typeof fillCpuBattleSelects === 'function') fillCpuBattleSelects();   // 対戦用の選択肢にも、追加・改名・削除を反映
 }
 
 async function loadCpuParams() {
@@ -4173,6 +4188,95 @@ const cpuPresetNameOk = (name, exceptId) => {
   if (cpuDevCustom.some(p => p.id !== exceptId && p.name === name)) { alert('同じ名前のプリセットがあります'); return false; }
   return true;
 };
+
+// ---- COM同士の対戦（開発者）: 画面なしで高速に対戦をシミュレートし、1戦ならリプレイで観戦、複数戦なら集計する ----
+function devCpuChoice(value) {
+  const v = String(value);
+  if (v.startsWith('c:')) {
+    const p = cpuDevCustom.find(x => x.id === v.slice(2)) || cpuCustomOf(v.slice(2));
+    if (p) { const b = cpuLevelOf(p.base); return { level: b, custom: p.id, label: p.name, params: { ...cpuParams[b], ...p.params } }; }
+  }
+  const lv = cpuLevelOf(v);
+  return { level: lv, custom: null, label: 'Lv' + lv, params: { ...(cpuDevDraft ? cpuDevDraft[lv] : cpuParams[lv]) } };   // 編集中の設定をそのまま使う
+}
+function devNameFor(list, idx) {
+  const key = c => c.custom || ('L' + c.level), c = list[idx];
+  return `COM ${c.custom ? c.label : 'Lv' + c.level}${list.some((o, i) => i !== idx && key(o) === key(c)) ? String.fromCharCode(65 + idx) : ''}`;
+}
+function fillCpuBattleSelects() {
+  const list = cpuDevCustom.length || cpuDevDraft ? cpuDevCustom : cpuCustom;
+  const defaults = ['5', '5', '', ''];
+  for (let i = 0; i < 4; i++) {
+    const el = document.getElementById('cpuBattleSel' + i); if (!el) continue;
+    const keep = el.options.length ? el.value : defaults[i];
+    el.replaceChildren(...(i >= 2 ? [new Option('（なし）', '')] : []), ...cpuOptionList(list));
+    el.value = [...el.options].some(o => o.value === keep) ? keep : (i >= 2 ? '' : '5');
+  }
+}
+function readCpuBattleEntries() {
+  return [0, 1, 2, 3].map(i => document.getElementById('cpuBattleSel' + i).value).filter(v => v !== '').map(devCpuChoice);
+}
+function simulateCpuBattle(entries, { common = true, maxMs = 300000 } = {}) {
+  cpuPlanCache.clear();
+  const names = entries.map((c, i) => devNameFor(entries, i));
+  const sent = entries.map(() => 0), seed0 = Math.floor(Math.random() * 1000000);
+  let runners = [];
+  const hooks = {
+    onAttack: (seat, holes) => {   // 本番と同じく、生きている相手全員に届く
+      const clean = holes.filter(h => Number.isInteger(h) && h >= 0 && h < COLS); if (!clean.length) return;
+      sent[seat] += clean.length;
+      for (const r of runners) if (r.seat !== seat && !r.dead) r.receive(clean);
+    }
+  };
+  runners = entries.map((c, i) => new CpuPlayer({ seat: i, name: names[i], level: c.level, params: c.params, seed: common ? seed0 : seed0 + i * 7919 + 1, hooks }));
+  const diedAt = entries.map(() => null);
+  runners.forEach((r, i) => { const prev = r.hooks.onDead; r.hooks = { ...hooks, onDead: (seat, t) => { diedAt[seat] = t; } }; });
+  for (const r of runners) r.start(0);
+  let now = 0;
+  while (now < maxMs && runners.filter(r => !r.dead).length > 1) { now += 16; for (const r of runners) if (!r.dead) r.tick(now); }
+  const left = runners.filter(r => !r.dead), winner = left.length === 1 ? left[0].seat : -1;
+  const players = runners.map(r => { const run = r.run(); run.result = r.seat === winner ? 'win' : 'lose'; return run; });
+  const stats = runners.map((r, i) => { const t = diedAt[i] ?? now; return { pieces: r.engine.stats.pieces, sent: sent[i], ms: t, apm: t > 0 ? sent[i] / (t / 60000) : 0 }; });
+  return { names, winner, durationMs: now, players, stats, timeout: winner < 0 && left.length > 1 };
+}
+let cpuBattleCancel = false;
+function cpuBattleSetBusy(b) { document.getElementById('btnCpuBattleStop').style.display = b ? '' : 'none'; document.getElementById('btnCpuBattleWatch').disabled = b; document.getElementById('btnCpuBattleRun').disabled = b; }
+document.getElementById('btnCpuBattleWatch').onclick = async () => {
+  const st = document.getElementById('cpuBattleStatus'), entries = readCpuBattleEntries();
+  if (entries.length < 2) { st.textContent = 'COMを2体以上選んでください'; return; }
+  cpuBattleSetBusy(true); st.textContent = '対戦を計算中…'; await new Promise(r => setTimeout(r, 30));
+  try {
+    const r = simulateCpuBattle(entries, { common: document.getElementById('cpuBattleCommon').checked });
+    const packed = await packReplay({ version: 3, mode: 'vs', durationMs: r.durationMs, players: r.players });
+    await loadReplayText(packed);
+    document.getElementById('replayTitle').textContent = `${r.names.join(' vs ')}（COM同士・開発者テスト）`;
+    document.getElementById('replayPlayer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const sec = ms => (ms / 1000).toFixed(1) + '秒';
+    st.textContent = (r.winner >= 0 ? `勝者: ${r.names[r.winner]}（${sec(r.durationMs)}）` : r.timeout ? `決着がつかず引き分け（${sec(r.durationMs)}で打ち切り）` : '同時に決着（引き分け）') + '\n' +
+      r.names.map((n, i) => `${n}: ${r.stats[i].pieces}ミノ / 攻撃${r.stats[i].sent}ライン / APM ${r.stats[i].apm.toFixed(1)}`).join('\n') + '\n下のリプレイプレイヤーで再生できます。';
+  } catch (e) { st.textContent = '失敗しました: ' + (e.message || e); }
+  cpuBattleSetBusy(false);
+};
+document.getElementById('btnCpuBattleRun').onclick = async () => {
+  const st = document.getElementById('cpuBattleStatus'), entries = readCpuBattleEntries();
+  if (entries.length < 2) { st.textContent = 'COMを2体以上選んでください'; return; }
+  const n = Math.max(2, Math.min(200, parseInt(document.getElementById('cpuBattleN').value, 10) || 20)), common = document.getElementById('cpuBattleCommon').checked;
+  const names = entries.map((c, i) => devNameFor(entries, i));
+  const agg = entries.map(() => ({ wins: 0, pieces: 0, sent: 0, ms: 0 })); let draws = 0, total = 0, totalMs = 0;
+  cpuBattleCancel = false; cpuBattleSetBusy(true);
+  for (let i = 0; i < n && !cpuBattleCancel; i++) {
+    st.textContent = `対戦中… ${i}/${n}戦`; await new Promise(r => setTimeout(r, 0));
+    const r = simulateCpuBattle(entries, { common });
+    total++; totalMs += r.durationMs; if (r.winner >= 0) agg[r.winner].wins++; else draws++;
+    r.stats.forEach((x, k) => { agg[k].pieces += x.pieces; agg[k].sent += x.sent; agg[k].ms += x.ms; });
+  }
+  cpuBattleSetBusy(false);
+  if (!total) { st.textContent = '中止しました'; return; }
+  const pct = v => (v / total * 100).toFixed(1) + '%';
+  st.textContent = `${total}戦${cpuBattleCancel ? '（中止）' : ''}の結果（平均 ${(totalMs / total / 1000).toFixed(1)}秒/戦、引き分け ${draws}）\n` +
+    names.map((nm, i) => `${nm}: ${agg[i].wins}勝（勝率 ${pct(agg[i].wins)}）/ 平均${(agg[i].pieces / total).toFixed(0)}ミノ / 平均APM ${(agg[i].ms > 0 ? agg[i].sent / (agg[i].ms / 60000) : 0).toFixed(1)}`).join('\n');
+};
+document.getElementById('btnCpuBattleStop').onclick = () => { cpuBattleCancel = true; };
 document.getElementById('btnCpuPresetAdd').onclick = () => {
   if (!cpuDevDraft) return;
   if (cpuDevCustom.length >= 20) return alert('プリセットは20個までです');
