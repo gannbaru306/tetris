@@ -209,6 +209,7 @@
       <h2>モード選択</h2>
       <h2>ソロプレイ</h2>
       <label id="soloBuildableSeedRow" style="display:none;font-size:.75rem;color:var(--sub);align-items:center;gap:6px;justify-content:center"><input id="ensureTemplatePieces" type="checkbox" style="width:auto">テンプレが組めるツモ順で開始（管理者）</label>
+      <select id="soloMode" style="width:100%;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="marathon">ノーマル（無制限・スコアを競う）</option><option value="sprint">40ライン（最速タイムを競う）</option><option value="ultra">2分間（スコアを競う）</option></select>
       <button id="btnSolo">ソロプレイ開始</button>
       <div style="display:flex;gap:6px"><button id="btnOpenMyPage" class="alt" style="flex:1">マイページ</button><button id="btnOpenRanking" class="alt" style="flex:1">ランキング</button></div>
       <div id="playerLabel" style="font-size:.8rem;color:var(--sub);text-align:center"></div>
@@ -225,6 +226,7 @@
       <div style="display:flex; gap:6px;">
         <input type="text" inputmode="numeric" id="roomInput" placeholder="5桁コード">
         <button id="btnJoinRoom" style="width: 120px;">参加する</button>
+        <button id="btnSpectateRoom" class="alt" style="width: 100px;">観戦</button>
       </div>
       <div id="cpuBox" style="display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px;">
         <span style="font-size:.85rem;font-weight:700">COMと対戦</span>
@@ -252,6 +254,7 @@
         <div id="roomRoster" style="display:flex;flex-direction:column;gap:2px"></div>
         <div id="roomHint" style="font-size:.75rem;color:var(--sub)"></div>
         <button id="btnInvite" class="alt">招待リンクを共有・コピー</button>
+        <button id="btnInviteSpectate" class="alt">観戦リンクを共有・コピー</button>
         <button id="btnStartMatch">対戦開始</button>
         <button id="btnLeaveRoom" class="alt">部屋を出る</button>
       </div>
@@ -275,9 +278,20 @@
   <div id="rankingScreen" class="screen">
     <div class="lobby-card">
       <h2>ランキング</h2>
-      <div style="display:flex;gap:6px"><button id="btnRankSolo" style="flex:1">ソロスコア</button><button id="btnRankRating" class="alt" style="flex:1">対戦レート</button><button id="btnRankCpu" class="alt" style="flex:1">COM戦レート</button></div>
+      <div style="display:flex;gap:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><button id="btnRankSolo" style="flex:1 1 30%">ノーマル</button><button id="btnRankSprint" class="alt" style="flex:1 1 30%">40ライン</button><button id="btnRankUltra" class="alt" style="flex:1 1 30%">2分間</button><button id="btnRankRating" class="alt" style="flex:1 1 45%">対戦レート</button><button id="btnRankCpu" class="alt" style="flex:1 1 45%">COM戦レート</button></div></div>
       <div id="rankingBody" style="display:flex;flex-direction:column;gap:2px;font-size:.85rem;color:var(--sub)"></div>
       <button id="btnRankingBack" class="alt">ロビーへ戻る</button>
+    </div>
+  </div>
+
+  <!-- 観戦画面 -->
+  <div id="spectateScreen" class="screen">
+    <div class="lobby-card" style="max-width:640px">
+      <h2 id="specTitle">観戦中</h2>
+      <div id="specStatus" style="font-size:.85rem;color:var(--sub);text-align:center"></div>
+      <div id="specBoards" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center"></div>
+      <div id="specResult" style="font-size:.9rem;font-weight:700;text-align:center;color:var(--accent)"></div>
+      <button id="btnSpecLeave" class="alt">観戦をやめる</button>
     </div>
   </div>
 
@@ -288,7 +302,7 @@
       <div id="matchModeLabel" style="font-size:0.8rem; color:var(--sub); font-weight:bold; align-self:center;"></div>
     </div>
 
-    <div id="scorePanel" style="display:none;width:100%;justify-content:space-around;gap:6px;font-size:.78rem;margin-bottom:6px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:5px 8px"><span>SCORE <b id="statScore">0</b></span><span>LEVEL <b id="statLevel">1</b></span><span>LINES <b id="statLines">0</b></span></div>
+    <div id="scorePanel" style="display:none;width:100%;justify-content:space-around;gap:6px;font-size:.78rem;margin-bottom:6px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:5px 8px"><span>SCORE <b id="statScore">0</b></span><span>LEVEL <b id="statLevel">1</b></span><span>LINES <b id="statLines">0</b></span><span id="statTimeBox" style="display:none">TIME <b id="statTime">0:00.00</b></span></div>
     <div class="game-container">
       <div class="side-box">
         <span style="font-size:0.65rem; color:var(--sub); text-align:center;">HOLD</span>
@@ -943,13 +957,13 @@ function recordReplayGarbage(holes) {
 // ライン消去: 1=100 / 2=300 / 3=500 / 4=800、T-Spin: 0=400 / 1=800 / 2=1200 / 3=1600、T-Spin Mini: 0=100 / 1=200 / 2=400（すべて×レベル）
 // Back-to-Back（4ライン・T-Spinの連続）は×1.5、コンボは 50×コンボ数×レベル、ソフトドロップ 1点/段、ハードドロップ 2点/段、
 // パーフェクトクリア: 1=800 / 2=1200 / 3=1800 / 4=2000（B2Bの4ラインは3200）×レベル（通常の得点に加算）。レベルは10ライン消すごとに+1。
-const newRunStats = () => ({ score: 0, lines: 0, level: 1, pieces: 0, keys: 0, attack: 0, auto: false, reported: false });
+const newRunStats = () => ({ score: 0, lines: 0, level: 1, pieces: 0, keys: 0, attack: 0, auto: false, reported: false, timeMs: 0 });
 let runStats = newRunStats();
 function updateScoreUi() {
   const a = document.getElementById('statScore'); if (!a) return;
   a.textContent = runStats.score.toLocaleString();
   document.getElementById('statLevel').textContent = String(runStats.level);
-  document.getElementById('statLines').textContent = String(runStats.lines);
+  document.getElementById('statLines').textContent = !isVsMode && soloMode === 'sprint' ? `${runStats.lines}/${SPRINT_LINES}` : String(runStats.lines);
 }
 function awardScore(cleared, spin, perfectClear, previousB2B, combo) {
   const lv = runStats.level;
@@ -971,11 +985,29 @@ function awardScore(cleared, spin, perfectClear, previousB2B, combo) {
 // ソロは公式どおりレベルが上がるほど自由落下が速くなる（レベル1=1秒/段）。対戦は従来どおり一定。
 function currentGravity() {
   if (isVsMode) return GRAVITY_DELAY;
-  const lv = Math.min(runStats.level, 20);
+  const lv = soloMode === 'sprint' ? 1 : Math.min(runStats.level, 20);   // 40ラインは最後まで同じ速さ
   return Math.max(16, 1000 * Math.pow(0.8 - (lv - 1) * 0.007, lv - 1));
 }
 const countKey = () => { if (!isEnded && cur) runStats.keys++; };
 function softStep() { if (move(0, 1)) { runStats.score += 1; updateScoreUi(); return true; } return false; }
+
+
+// ---- ソロのモード: ノーマル（無制限）/ 40ライン（最速タイム）/ 2分間（スコア）----
+const SOLO_MODES = { marathon: 'ノーマル', sprint: '40ライン', ultra: '2分間' };
+const SPRINT_LINES = 40, ULTRA_MS = 120000;
+let soloMode = 'marathon', soloStartAt = 0;
+try { const v = localStorage.getItem('p2pTetrisSoloModeV1'); if (SOLO_MODES[v]) soloMode = v; } catch (_) {}
+const fmtTime = ms => { ms = Math.max(0, Math.round(ms)); return `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}.${String(Math.floor(ms % 1000 / 10)).padStart(2, '0')}`; };
+const soloElapsed = () => (soloStartAt ? performance.now() - soloStartAt : 0);
+function updateSoloTimer() {
+  const el = document.getElementById('statTime'); if (!el || isVsMode || !soloStartAt) return;
+  el.textContent = fmtTime(soloMode === 'ultra' ? ULTRA_MS - soloElapsed() : soloElapsed());
+}
+function finishSolo(result, msg) {   // 40ライン達成・2分終了など、ゲームオーバー以外の終わり方
+  if (isEnded) return;
+  runStats.timeMs = Math.round(soloElapsed());
+  isEnded = true; showRematch(msg); finishRun(result);
+}
 
 // ---- 戦績をサーバーへ送る（失敗時は端末に溜めて、次のログイン時などに再送）----
 const STAT_Q_KEY = 'p2pTetrisStatQueueV1';
@@ -1013,7 +1045,7 @@ function submitStats(result, ms) {
   const vs = isVsMode;
   const opponents = vs && !vsTeams ? vsRoster.filter(r => r.seat !== mySeat && !/^COM /.test(r.name)).map(r => r.name) : [];
   const cpuOpponents = vs && !vsTeams && vsRoster.length === 2 ? vsRoster.filter(r => r.seat !== mySeat && /^COM /.test(r.name)).map(r => r.cpuRating || (/^COM Lv(\d+)/.test(r.name) ? CPU_RATING_BASE[cpuLevelOf(RegExp.$1)] : 1000)) : [];
-  sendStats({ reportId: newReportId(), mode: vs ? 'vs' : 'solo', result, score: rs.score, lines: rs.lines, level: rs.level, pieces: rs.pieces, keys: rs.keys, attack: rs.attack, durationMs: ms, opponents, cpuOpponents }, true);
+  sendStats({ reportId: newReportId(), mode: vs ? 'vs' : 'solo', result, score: rs.score, lines: rs.lines, level: rs.level, pieces: rs.pieces, keys: rs.keys, attack: rs.attack, durationMs: ms, opponents, cpuOpponents, soloMode: vs ? undefined : soloMode, timeMs: rs.timeMs || 0 }, true);
 }
 
 const VS_REPLAY_KEY = 'p2pTetrisVsReplaysV1', VS_REPLAY_MAX = 50, REPLAY_CLOUD_MAX_BYTES = 50 * 1024, VS_GUEST_WAIT_MS = 4000;
@@ -1147,15 +1179,16 @@ async function finalizeReplay(p, force = false) {
   if (res && res.replayId && p.localEntryId) setLocalReplayId(p.localEntryId, res.replayId);
 }
 // ---- 招待リンク: ?room=12345 を開くと、ログイン後に自動でその部屋へ参加する ----
-function roomFromUrl() { const q = new URLSearchParams(location.search); const c = q.get('room') || q.get('join'); return c && /^\d{5}$/.test(c) ? c : ''; }
-let pendingRoomCode = roomFromUrl();
-function clearRoomParam() { try { const u = new URL(location.href); u.searchParams.delete('room'); u.searchParams.delete('join'); history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } catch (_) {} }
-function inviteUrl(code) { const u = new URL(location.href); u.search = ''; u.hash = ''; u.searchParams.set('room', code); return u.toString(); }
+function roomFromUrl() { const q = new URLSearchParams(location.search); const c = q.get('room') || q.get('join') || q.get('spectate'); return c && /^\d{5}$/.test(c) ? c : ''; }
+let pendingRoomCode = roomFromUrl(), pendingSpectate = new URLSearchParams(location.search).has('spectate') && !new URLSearchParams(location.search).has('room');
+function clearRoomParam() { try { const u = new URL(location.href); u.searchParams.delete('room'); u.searchParams.delete('join'); u.searchParams.delete('spectate'); history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } catch (_) {} }
+function inviteUrl(code, spectate) { const u = new URL(location.href); u.search = ''; u.hash = ''; u.searchParams.set(spectate ? 'spectate' : 'room', code); return u.toString(); }
 function consumePendingRoom() {
   if (!pendingRoomCode) return;
   const code = pendingRoomCode; pendingRoomCode = ''; clearRoomParam();
   if (peer) { toast('すでに部屋に参加中です'); return; }
   document.getElementById('roomInput').value = code;
+  if (pendingSpectate) { pendingSpectate = false; toast(`部屋 ${code} を観戦します`); document.getElementById('btnSpectateRoom').onclick(); return; }
   toast(`招待リンクの部屋 ${code} に参加します`);
   document.getElementById('btnJoinRoom').onclick();
 }
@@ -1234,7 +1267,8 @@ async function startSoloGame() {
   catch(e) { toast(e.message); return; }
   leaveRoom();
   isVsMode = false;
-  document.getElementById('matchModeLabel').textContent = 'ソロプレイ';
+  { const v = document.getElementById('soloMode').value; if (SOLO_MODES[v]) { soloMode = v; try { localStorage.setItem('p2pTetrisSoloModeV1', v); } catch (_) {} } }
+  document.getElementById('matchModeLabel').textContent = `ソロプレイ（${SOLO_MODES[soloMode]}）`;
   document.getElementById('rematchArea').classList.remove('active');
   let seed;
   if (adminMode && document.getElementById('ensureTemplatePieces').checked) {
@@ -1247,6 +1281,7 @@ async function startSoloGame() {
   vsRule = { ...vsRule, nextMode:'common', seed };
   switchScreen('gameScreen'); initGame();
 }
+document.getElementById('soloMode').value = soloMode;
 document.getElementById('btnSolo').onclick = startSoloGame;
 document.getElementById('btnLogout').onclick = () => { clearAuth(); switchScreen('accountScreen'); setAccountStatus('ログアウトしました。'); };
 document.getElementById('btnLogin').onclick = async () => {
@@ -2013,6 +2048,12 @@ const MAX_ROOM = 4;
 let roomPublic = false, roomAnnounceTimer = null, roomListToken = '', roomListRunning = false;
 let cpuPlayers = [], cpuTimer = null;   // host only: COM seats [{level,name,seat,runner,submitted}]
 let guests = [];                 // host only: [{conn, seat, name, alive, wantsRematch}]
+// ---- 観戦（ホストは観戦者にも盤面・結果をそのまま中継する。観戦者は席を持たず、対戦には影響しない）----
+let spectators = [];             // host only: [{conn, name}]
+const spectateLast = new Map();  // host only: seat -> {board, cur}（途中から観戦に入った人に、いまの盤面をすぐ見せる）
+let lastEndMsg = null;           // host only: 直近のEND（結果画面で観戦に入った人用）
+let isSpectator = false;         // 自分が観戦者か
+const MAX_SPECTATORS = 8;
 let mySeat = 0, myPlace = 0, roomMax = 2, roomState = 'idle', roomCode = '';
 let vsRoster = [], waitingRoster = [], rematchReady = [], rematchTotal = 0, rankingSummary = '';
 // ---- チーム戦（ホストが 2〜4 チームに振り分ける。味方には攻撃が届かず、最後に残ったチームの勝ち）----
@@ -2042,7 +2083,11 @@ const cpuKeyOf = c => c.custom || ('L' + c.level);
 const cpuNameFor = (c, idx) => `COM ${c.custom ? c.label : 'Lv' + c.level}${cpuPlayers.some((o, i) => i !== idx && cpuKeyOf(o) === cpuKeyOf(c)) ? String.fromCharCode(65 + idx) : ''}`;   // COMの名前は必ず「COM 」で始まる（人間のIDは空白を含めない）
 function safeSend(c, msg) { try { if (c && c.open) c.send(msg); } catch (_) {} }
 function sendTo(seat, msg) { const g = guests.find(x => x.seat === seat); if (g) safeSend(g.conn, msg); }
-function broadcast(msg, exceptSeat = -1) { for (const g of guests) if (g.seat !== exceptSeat) safeSend(g.conn, msg); }
+function broadcast(msg, exceptSeat = -1) {
+  if (msg && (msg.type === 'POS' || msg.type === 'LOCK') && Number.isInteger(msg.p)) spectateLast.set(msg.p, { board: msg.board, cur: msg.type === 'POS' ? (msg.cur || null) : null });
+  for (const g of guests) if (g.seat !== exceptSeat) safeSend(g.conn, msg);
+  for (const sp of spectators) safeSend(sp.conn, msg);
+}
 const assignSeats = () => guests.forEach((g, i) => { g.seat = i + 1; });
 const makeRoster = () => {
   cpuPlayers.forEach((c, i) => { c.seat = guests.length + 1 + i; });
@@ -2095,7 +2140,7 @@ function renderRoomPanel() {
 function leaveRoom() {
   const p = peer;
   stopRoomAnnounce(); stopCpus(); cpuPlayers = [];
-  peer = null; conn = null; guests = []; isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = ''; roomTeams = 0; hostTeam = 0; vsTeams = 0; teamOutOrder = [];
+  peer = null; conn = null; guests = []; spectators = []; spectateLast.clear(); lastEndMsg = null; isSpectator = false; specView.clear(); isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = ''; roomTeams = 0; hostTeam = 0; vsTeams = 0; teamOutOrder = [];
   if (p) { try { p.destroy(); } catch (_) {} }
   oppView.clear();
   const ob = document.getElementById('oppBoards'); ob.classList.remove('active'); ob.replaceChildren();
@@ -2104,9 +2149,9 @@ function leaveRoom() {
 }
 // ---- public room directory (host side): announce while waiting, remove when the match starts or the room closes ----
 function roomCountNow() { return 1 + guests.filter(g => g.conn && g.conn.open).length + cpuPlayers.length; }
-function announceRoom() {
-  if (!isHost || !roomPublic || roomState !== 'waiting' || !authToken) return;
-  api('/rooms/announce', { code: roomCode, max: roomMax, count: roomCountNow(), state: 'waiting' }).catch(() => {});
+function announceRoom() {   // 公開の部屋は、待機中だけでなく対戦中も一覧に出す（観戦できる）
+  if (!isHost || !roomPublic || !authToken || !['waiting', 'playing', 'result'].includes(roomState)) return;
+  api('/rooms/announce', { code: roomCode, max: roomMax, count: roomCountNow(), state: roomState === 'waiting' ? 'waiting' : 'playing' }).catch(() => {});
 }
 function startRoomAnnounce() {
   clearInterval(roomAnnounceTimer);
@@ -2132,10 +2177,12 @@ function renderRoomList(rooms) {
   if (!rooms.length) { const d = document.createElement('div'); d.style.cssText = 'font-size:.8rem;color:var(--sub);text-align:center;padding:6px'; d.textContent = '公開中の部屋はありません'; box.replaceChildren(d); return; }
   box.replaceChildren(...rooms.map(r => {
     const row = document.createElement('div'); row.className = 'room-item';
-    const name = document.createElement('span'); name.className = 'room-name'; name.textContent = `${cleanName(r.host)}　${r.count}/${r.max}人`;
-    const btn = document.createElement('button'); btn.textContent = '参加';
-    btn.onclick = () => { if (peer) return; document.getElementById('roomInput').value = r.code; document.getElementById('btnJoinRoom').onclick(); };
-    row.append(name, btn); return row;
+    const playing = r.state === 'playing', canJoin = !playing && r.count < r.max;
+    const name = document.createElement('span'); name.className = 'room-name'; name.textContent = `${cleanName(r.host)}　${r.count}/${r.max}人${playing ? '・対戦中' : ''}`;
+    const btns = document.createElement('span'); btns.style.cssText = 'display:flex;gap:6px;flex:0 0 auto';
+    if (canJoin) { const btn = document.createElement('button'); btn.textContent = '参加'; btn.onclick = () => { if (peer) return; document.getElementById('roomInput').value = r.code; document.getElementById('btnJoinRoom').onclick(); }; btns.append(btn); }
+    const sb = document.createElement('button'); sb.className = 'alt'; sb.textContent = '観戦'; sb.onclick = () => { if (peer) return; document.getElementById('roomInput').value = r.code; document.getElementById('btnSpectateRoom').onclick(); }; btns.append(sb);
+    row.append(name, btns); return row;
   }));
 }
 async function refreshRoomList(force) {
@@ -2165,15 +2212,17 @@ async function roomListLoop() {
 }
 document.getElementById('btnRoomListRefresh').onclick = () => refreshRoomList(true).catch(() => toast('部屋一覧を取得できませんでした'));
 document.getElementById('btnLeaveRoom').onclick = leaveRoom;
-document.getElementById('btnInvite').onclick = async () => {
+document.getElementById('btnInviteSpectate').onclick = () => shareInvite(true);
+document.getElementById('btnInvite').onclick = () => shareInvite(false);
+async function shareInvite(spectate) {
   if (!roomCode) return;
-  const url = inviteUrl(roomCode);
+  const url = inviteUrl(roomCode, spectate);
   if (navigator.share) {
-    try { await navigator.share({ title: 'テトリス対戦に招待', text: `テトリス対戦の招待です（部屋コード ${roomCode}）`, url }); return; }
+    try { await navigator.share({ title: spectate ? 'テトリス対戦を観戦' : 'テトリス対戦に招待', text: spectate ? `テトリス対戦の観戦リンクです（部屋コード ${roomCode}）` : `テトリス対戦の招待です（部屋コード ${roomCode}）`, url }); return; }
     catch (e) { if (e && e.name === 'AbortError') return; }
   }
-  try { await navigator.clipboard.writeText(url); toast('招待リンクをコピーしました'); } catch (_) { prompt('招待リンクをコピーしてください', url); }
-};
+  try { await navigator.clipboard.writeText(url); toast(spectate ? '観戦リンクをコピーしました' : '招待リンクをコピーしました'); } catch (_) { prompt('リンクをコピーしてください', url); }
+}
 document.getElementById('btnStartMatch').onclick = () => startMatchAsHost();
 
 document.getElementById('btnCreateRoom').onclick = () => {
@@ -2212,13 +2261,116 @@ document.getElementById('btnJoinRoom').onclick = () => {
   renderRoomPanel();
 };
 
+
+// ---- 観戦画面 ----
+const specView = new Map();   // seat -> {ctx, title, canvas, name, card}
+let specRoster = [];
+function paintBoard(x, bBoard, pCur) {
+  x.clearRect(0, 0, 100, 200);
+  bBoard.forEach((row, r) => row.forEach((val, c) => { if (val && COLORS[val]) { x.fillStyle = COLORS[val]; x.fillRect(c * 10, r * 10, 9, 9); } }));
+  if (pCur && pCur.type && COLORS[pCur.type]) {
+    const m = getShapeMatrix(pCur.type, pCur.r); x.fillStyle = COLORS[pCur.type];
+    m.forEach((row, r) => row.forEach((val, c) => { if (val) x.fillRect((pCur.x + c) * 10, (pCur.y + r) * 10, 9, 9); }));
+  }
+}
+function specSetRoster(list) {
+  specRoster = (Array.isArray(list) ? list : []).map(r => ({ seat: r.seat | 0, name: cleanName(r.name), alive: r.alive !== false, place: r.place | 0, team: Number.isInteger(r.team) ? r.team : null }));
+}
+function buildSpecViews() {
+  const root = document.getElementById('specBoards'); root.replaceChildren(); specView.clear();
+  for (const r of specRoster) {
+    const card = document.createElement('div'); card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px;border-radius:8px';
+    const label = Number.isInteger(r.team) ? `[${TEAM_NAMES[r.team]}] ${r.name}` : r.name;
+    const title = document.createElement('div'); title.style.cssText = 'font-size:.78rem;font-weight:700;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; title.textContent = label; title.title = label;
+    if (Number.isInteger(r.team)) { title.style.color = TEAM_COLORS[r.team]; card.style.outline = `2px solid ${TEAM_COLORS[r.team]}`; card.style.outlineOffset = '-1px'; }
+    const canvas = document.createElement('canvas'); canvas.width = 100; canvas.height = 200; canvas.style.cssText = 'width:150px;height:300px;background:#11111b;border:1px solid var(--border);image-rendering:pixelated';
+    card.append(title, canvas); root.append(card);
+    specView.set(r.seat, { ctx: canvas.getContext('2d'), canvas, title, name: label });
+    if (!r.alive) specMarkDead(r.seat, r.place);
+  }
+}
+function specMarkDead(seat, place) {
+  const r = specRoster.find(x => x.seat === seat); if (r) { r.alive = false; r.place = place | 0; }
+  const v = specView.get(seat); if (!v) return;
+  v.title.textContent = `${v.name} ✕${place | 0 ? (place | 0) + '位' : ''}`; v.canvas.style.opacity = '.45';
+}
+function drawSpec(seat, bBoard, pCur) {
+  const v = specView.get(seat); if (!v || !Array.isArray(bBoard)) return;
+  try { paintBoard(v.ctx, bBoard, pCur); } catch (_) {}
+}
+function specShowEnd(d) {
+  const rank = Array.isArray(d.ranking) ? d.ranking : [];
+  let text;
+  if (d.teamMode) {
+    const byTeam = new Map(); for (const r of rank) { if (!byTeam.has(r.team)) byTeam.set(r.team, { place: r.place | 0, names: [] }); byTeam.get(r.team).names.push(cleanName(r.name)); }
+    text = [...byTeam.entries()].sort((a, b) => a[1].place - b[1].place).map(([t, v]) => `${v.place}位 ${teamTag(t)}（${v.names.join('・')}）`).join(' / ');
+  } else text = rank.slice().sort((a, b) => a.place - b.place).map(r => `${r.place}位 ${cleanName(r.name)}`).join(' / ');
+  document.getElementById('specResult').textContent = text ? '結果: ' + text : '';
+  document.getElementById('specStatus').textContent = '対戦が終わりました。再戦が始まると、そのまま観戦できます';
+}
+function onSpectatorData(d) {
+  switch (d.type) {
+    case 'SPECTATE_INIT': {
+      roomTeams = d.teams | 0; roomMax = (d.max | 0) || roomMax;
+      document.getElementById('specResult').textContent = '';
+      if (d.rule && d.roster) {
+        vsRule = d.rule; vsTeams = (d.rule.teams | 0) || 0; specSetRoster(d.roster); buildSpecViews();
+        for (const b of (d.boards || [])) drawSpec(b.seat, b.board, b.cur);
+        document.getElementById('specStatus').textContent = d.state === 'result' ? '対戦が終わりました' : '対戦中';
+        if (d.result) specShowEnd(d.result);
+      } else {
+        specSetRoster(d.players); buildSpecViews();
+        document.getElementById('specStatus').textContent = 'ホストが対戦を始めるのを待っています（待機中の参加者）';
+      }
+      break;
+    }
+    case 'ROSTER':
+      specSetRoster(d.players); roomTeams = d.teams | 0; buildSpecViews();
+      document.getElementById('specStatus').textContent = 'ホストが対戦を始めるのを待っています（待機中の参加者）'; break;
+    case 'RULE': case 'REMATCH_START':
+      vsRule = d.rule; vsTeams = (d.rule && d.rule.teams | 0) || 0; specSetRoster(d.roster); buildSpecViews();
+      document.getElementById('specResult').textContent = ''; document.getElementById('specStatus').textContent = d.type === 'REMATCH_START' ? '再戦スタート！' : '対戦スタート！'; break;
+    case 'POS': case 'LOCK': drawSpec(d.p, d.board, d.type === 'POS' ? d.cur : null); break;
+    case 'DEAD': specMarkDead(d.p, d.place); break;
+    case 'END': specShowEnd(d); break;
+    case 'FULL': toast(String(d.reason || '観戦できません')); leaveRoom(); switchScreen('lobbyScreen'); break;
+  }
+}
+function startSpectating(code) {
+  if (peer) return;
+  roomCode = code; roomState = 'joining'; isHost = false; isSpectator = true;
+  peer = new Peer();
+  peer.on('open', () => { conn = peer.connect('wtvs-' + code); setupGuestConn(); });
+  peer.on('error', () => { if (roomState === 'joining') { toast('部屋が見つかりませんでした'); leaveRoom(); refreshRoomList(true).catch(() => {}); } });
+  renderRoomPanel();
+}
+const parseRoomCode = raw => { const m = String(raw || '').trim().match(/(?:room|join|spectate)=(\d{5})/) || String(raw || '').trim().match(/(\d{5})/); return m ? m[1] : ''; };
+document.getElementById('btnSpectateRoom').onclick = () => {
+  if (peer) return;
+  const code = parseRoomCode(document.getElementById('roomInput').value);
+  if (!code) return toast('5桁のコードを入力してください');
+  document.getElementById('roomInput').value = code;
+  startSpectating(code);
+};
+document.getElementById('btnSpecLeave').onclick = () => { leaveRoom(); switchScreen('lobbyScreen'); };
+
 // ---- guest side ----
 function setupGuestConn() {
   const c = conn;
   c.on('open', () => {
+    if (isSpectator) {
+      roomState = 'spectating';
+      document.getElementById('specTitle').textContent = `観戦中（部屋 ${roomCode}）`;
+      document.getElementById('specStatus').textContent = '接続しました。盤面を受信しています…';
+      document.getElementById('specResult').textContent = '';
+      document.getElementById('specBoards').replaceChildren(); specView.clear();
+      safeSend(c, { type: 'HELLO', name: myName(), spectator: true });
+      switchScreen('spectateScreen');
+      return;
+    }
     roomState = 'waiting';
     document.getElementById('netStatus').textContent = '部屋に参加しました。ホストの開始を待っています';
-    safeSend(c, { type: 'HELLO', name: myName() });
+    safeSend(c, { type: 'HELLO', name: myName(), spectator: false });
     renderRoomPanel();
   });
   c.on('data', onHostData);
@@ -2231,6 +2383,7 @@ function setRosterFromHost(d) {
 }
 function onHostData(d) {
   if (!d || typeof d !== 'object') return;
+  if (isSpectator) return onSpectatorData(d);
   switch (d.type) {
     case 'ROSTER':
       roomMax = (d.max | 0) || roomMax;
@@ -2252,6 +2405,7 @@ function onHostData(d) {
 }
 function onHostClosed() {
   if (roomState === 'idle') return;
+  if (isSpectator) { toast('ホストが部屋を閉じました'); leaveRoom(); switchScreen('lobbyScreen'); return; }
   if (roomState === 'waiting' || roomState === 'joining') { toast('ホストが部屋を閉じました'); leaveRoom(); return; }
   if (!isEnded) { if (autoBuildRunning) stopAutoBuild(''); finishRun('quit'); }
   isEnded = true; roomState = 'closed';
@@ -2261,23 +2415,41 @@ function onHostClosed() {
 }
 
 // ---- host side ----
+function waitingPlayers() {
+  return [{ seat: 0, name: myName(), team: roomTeams ? hostTeam : null }, ...guests.map(g => ({ seat: g.seat, name: g.name, team: roomTeams ? g.team : null })), ...cpuPlayers.map((c, i) => ({ seat: guests.length + 1 + i, name: c.name, team: roomTeams ? c.team : null }))];
+}
+function rejectConn(c, reason) { safeSend(c, { type: 'FULL', reason }); setTimeout(() => { try { c.close(); } catch (_) {} }, 400); }
+function sendSpectateInit(sp) {
+  const playing = roomState === 'playing' || roomState === 'result';
+  safeSend(sp.conn, { type: 'SPECTATE_INIT', state: roomState, code: roomCode, max: roomMax, teams: roomTeams,
+    rule: playing ? { ...vsRule } : null, roster: playing ? vsRoster : null, players: waitingPlayers(),
+    boards: [...spectateLast].map(([seat, v]) => ({ seat, board: v.board, cur: v.cur })), result: roomState === 'result' ? lastEndMsg : null });
+}
+// 最初に届くHELLOで、参加者（席あり）か観戦者（席なし）かを決める
 function onGuestConnection(c) {
-  if (roomState !== 'waiting' || guests.length + cpuPlayers.length >= roomMax - 1) {
-    const reason = roomState !== 'waiting' ? '対戦中のため参加できません' : '満員です';
-    c.on('open', () => { safeSend(c, { type: 'FULL', reason }); setTimeout(() => { try { c.close(); } catch (_) {} }, 400); });
-    return;
-  }
-  const g = { conn: c, seat: 0, name: '?', alive: true, wantsRematch: false };
-  guests.push(g); assignSeats();
-  c.on('open', () => sendRoster());
-  c.on('data', d => onGuestData(g, d));
-  c.on('close', () => onGuestClose(g));
+  let g = null, sp = null;
+  c.on('data', d => {
+    if (g) return onGuestData(g, d);
+    if (sp || !d || typeof d !== 'object' || d.type !== 'HELLO') return;
+    if (d.spectator) {
+      if (spectators.length >= MAX_SPECTATORS) return rejectConn(c, '観戦者がいっぱいです');
+      sp = { conn: c, name: cleanName(d.name) }; spectators.push(sp);
+      sendSpectateInit(sp); toast(`${sp.name} さんが観戦に入りました`);
+      return;
+    }
+    if (roomState !== 'waiting' || guests.length + cpuPlayers.length >= roomMax - 1) return rejectConn(c, roomState !== 'waiting' ? '対戦中のため参加できません（観戦はできます）' : '満員です（観戦はできます）');
+    g = { conn: c, seat: 0, name: '?', alive: true, wantsRematch: false };
+    guests.push(g); assignSeats();
+    onGuestData(g, d);
+  });
+  c.on('close', () => { if (g) onGuestClose(g); else if (sp) spectators = spectators.filter(x => x !== sp); });
   c.on('error', () => {});
 }
 function sendRoster() {
   normalizeTeams();
-  const players = [{ seat: 0, name: myName(), team: roomTeams ? hostTeam : null }, ...guests.map(g => ({ seat: g.seat, name: g.name, team: roomTeams ? g.team : null })), ...cpuPlayers.map((c, i) => ({ seat: guests.length + 1 + i, name: c.name, team: roomTeams ? c.team : null }))];
+  const players = waitingPlayers();
   for (const g of guests) safeSend(g.conn, { type: 'ROSTER', max: roomMax, players, you: g.seat, teams: roomTeams });
+  for (const sp of spectators) safeSend(sp.conn, { type: 'ROSTER', max: roomMax, players, you: -1, teams: roomTeams });
   renderRoomPanel();
   announceRoom();
 }
@@ -2341,7 +2513,6 @@ function startMatchAsHost() {
   if (!isHost || roomState !== 'waiting') return;
   guests = guests.filter(g => g.conn && g.conn.open); assignSeats();
   if (!guests.length && !cpuPlayers.length) { toast('2人以上で開始できます'); sendRoster(); return; }
-  stopRoomAnnounce();   // a started match is no longer joinable: take it off the list
   newRound();
   vsRule.nextMode = document.getElementById('cfgNextMode').value;
   vsRule.holeChange = parseFloat(document.getElementById('cfgHoleChange').value);
@@ -2350,7 +2521,10 @@ function startMatchAsHost() {
   prepareTeams();
   roomState = 'playing'; mySeat = 0;
   vsRoster = makeRoster();
+  spectateLast.clear(); lastEndMsg = null;
   for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'RULE', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
+  for (const sp of spectators) safeSend(sp.conn, { type: 'RULE', rule: { ...vsRule }, roster: vsRoster, you: -1 });
+  announceRoom();   // 対戦中の部屋として一覧に出す（参加はできないが、観戦はできる）
   startVsGame();
 }
 function onGuestData(g, d) {
@@ -2414,6 +2588,7 @@ function handlePlayerOut(seat, left = false) {
     } else {
       end = { type: 'END', winner: alive[0] ? alive[0].seat : -1, winners: alive[0] ? [alive[0].seat] : [], ranking: vsRoster.map(x => ({ seat: x.seat, name: x.name, place: x.place || vsRoster.length })) };
     }
+    lastEndMsg = end;
     broadcast(end);
     applyEnd(end);
   }
@@ -2515,7 +2690,7 @@ function showRematch(message) {
   btn.textContent = isVsMode ? '再戦する' : 'リトライ';
   if (!isVsMode) {
     btn.style.display = ''; btn.disabled = false; rank.textContent = '';
-    status.textContent = message === 'GAME OVER' ? `GAME OVER　SCORE ${runStats.score.toLocaleString()}（LEVEL ${runStats.level} / ${runStats.lines}ライン）` : (message || '');
+    status.textContent = message === 'GAME OVER' ? (soloMode === 'sprint' ? `GAME OVER　${runStats.lines}/${SPRINT_LINES}ライン（TIME ${fmtTime(soloElapsed())}）` : `GAME OVER　SCORE ${runStats.score.toLocaleString()}（LEVEL ${runStats.level} / ${runStats.lines}ライン）`) : (message || '');
     return;
   }
   if (myPlace && message === 'GAME OVER') message = `GAME OVER（${myPlace}位）`;
@@ -2561,7 +2736,9 @@ function tryStartRematch() {
   if ((!guests.length && !cpuPlayers.length) || !guests.every(g => g.wantsRematch)) return;
   newRound(); assignSeats(); prepareTeams();
   vsRoster = makeRoster(); roomState = 'playing';
+  spectateLast.clear(); lastEndMsg = null;
   for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'REMATCH_START', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
+  for (const sp of spectators) safeSend(sp.conn, { type: 'REMATCH_START', rule: { ...vsRule }, roster: vsRoster, you: -1 });
   resetForRematch();
 }
 function resetForRematch() {
@@ -2592,6 +2769,7 @@ document.getElementById('btnBackToLobby').onclick = () => {
 function gameLoop(timestamp) {
   if (!lastDropTime) lastDropTime = timestamp;
   if (document.getElementById('gameScreen').classList.contains('active') && !isEnded && cur) {
+    if (!isVsMode && soloStartAt) { updateSoloTimer(); if (soloMode === 'ultra' && soloElapsed() >= ULTRA_MS) { finishSolo('win', `TIME UP!　SCORE ${runStats.score.toLocaleString()}（LEVEL ${runStats.level} / ${runStats.lines}ライン）`); render(); requestAnimationFrame(gameLoop); return; } }
     if (timestamp - lastDropTime >= currentGravity()) {
       if (move(0, 1)) lastDropTime = timestamp;
       else lastDropTime = timestamp;
@@ -2790,6 +2968,7 @@ function lockPiece() {
   hideOverlayIfComplete();
   if (isVsMode) sendNet({ type: 'LOCK', board: board.map(row => row.slice()) });
   if (isEnded) return;
+  if (!isVsMode && soloMode === 'sprint' && runStats.lines >= SPRINT_LINES) { finishSolo('win', `CLEAR!　TIME ${fmtTime(soloElapsed())}`); return; }
   spawnPiece();
   lastDropTime = performance.now();
   groundedAt = 0;
@@ -2943,8 +3122,11 @@ function refreshTemplateOverlayOptions() {
   select.value = [...select.options].some(o => o.value === old) ? old : '';
   selectedTemplateOverlay = select.value;
 }
+// おじゃまブロックが盤面にせり上がっている間は、テンプレの位置とずれて意味がないので表示しない（おじゃまが消えて元の位置に戻れば、また表示する）
+const boardHasGarbage = () => board.some(row => row.some(v => v === 'X'));
+function templateOverlayVisible() { return adminMode && !!selectedTemplateOverlay && !overlayHiddenByComplete && !boardHasGarbage(); }
 function drawTemplateOverlay() {
-  if (!adminMode || !selectedTemplateOverlay || overlayHiddenByComplete) return;
+  if (!templateOverlayVisible()) return;
   const [name, side] = selectedTemplateOverlay.split('|');
   const t = templateData.find(v => v.name === name && v.enabled !== false);
   if (!t || !t.pattern) return;
@@ -3288,6 +3470,9 @@ function drawNext() {
 function initGame() {
   runStats = newRunStats();
   { const sp = document.getElementById('scorePanel'); if (sp) sp.style.display = isVsMode ? 'none' : 'flex'; }
+  soloStartAt = isVsMode ? 0 : performance.now();
+  { const tb = document.getElementById('statTimeBox'); if (tb) tb.style.display = !isVsMode && soloMode !== 'marathon' ? '' : 'none'; }
+  updateSoloTimer();
   updateScoreUi();
   board = Array.from({length: ROWS}, () => Array(COLS).fill(null)); hiddenRows = [];
   bag = []; nextQ = []; holdPiece = null; canHold = true;
@@ -4119,7 +4304,7 @@ function renderMyPage(d) {
   const sections = [
     ['レート（人間同士の対戦）', [['現在のレート', rate], ['最高レート', d.isDev ? d.devRating : (s.rated_games > 0 ? s.peak_rating : '-')], ['レート対象の試合', fmtN(s.rated_games)]]],
     ['COM戦レート（COMとの対戦）', [['現在のレート', s.cpu_rated_games >= 3 ? `${s.cpu_rating}${d.cpuRank ? `（${d.cpuRank}位）` : ''}` : `${s.cpu_rated_games > 0 ? s.cpu_rating + '（' : ''}ランク判定中（${s.cpu_rated_games}/3戦）${s.cpu_rated_games > 0 ? '）' : ''}`], ['最高レート', s.cpu_rated_games > 0 ? s.cpu_peak_rating : '-'], ['レート対象の試合', fmtN(s.cpu_rated_games)]]],
-    ['ソロ', [['最高スコア', s.best_score > 0 ? `${fmtN(s.best_score)}${d.soloRank ? `（${d.soloRank}位）` : ''}` : '-'], ['最高ライン数', s.best_lines || '-'], ['最高レベル', s.best_score > 0 ? s.best_level : '-'], ['プレイ回数', fmtN(s.solo_games)]]],
+    ['ソロ', [['ノーマル 最高スコア', s.best_score > 0 ? `${fmtN(s.best_score)}${d.soloRank ? `（${d.soloRank}位）` : ''}` : '-'], ['ノーマル 最高ライン数', s.best_lines || '-'], ['ノーマル 最高レベル', s.best_score > 0 ? s.best_level : '-'], ['40ライン 最速タイム', s.best_sprint_ms > 0 ? `${fmtTime(s.best_sprint_ms)}${d.sprintRank ? `（${d.sprintRank}位）` : ''}` : '-'], ['2分間 最高スコア', s.best_ultra_score > 0 ? `${fmtN(s.best_ultra_score)}${d.ultraRank ? `（${d.ultraRank}位）` : ''}` : '-'], ['プレイ回数（全モード）', fmtN(s.solo_games)]]],
     ['対戦', [['試合数', fmtN(s.vs_games)], ['勝利数', fmtN(s.vs_wins)], ['勝率', winRate], ['APM（平均）', apm], ['APM（最高）', s.best_apm > 0 ? s.best_apm.toFixed(1) : '-']]],
     ['全体', [['総試合数', fmtN(s.games)], ['KPP（1ピースあたりのキー入力）', kpp], ['PPS（1秒あたりのピース）', pps], ['総ピース数', fmtN(s.total_pieces)], ['総ライン数', fmtN(s.total_lines)], ['総プレイ時間', fmtDuration(s.total_ms)]]]
   ];
@@ -4154,17 +4339,19 @@ async function openRanking(type) {
   document.getElementById('btnRankSolo').className = rankingType === 'solo' ? '' : 'alt';
   document.getElementById('btnRankRating').className = rankingType === 'rating' ? '' : 'alt';
   document.getElementById('btnRankCpu').className = rankingType === 'cpu' ? '' : 'alt';
+  document.getElementById('btnRankSprint').className = rankingType === 'sprint' ? '' : 'alt';
+  document.getElementById('btnRankUltra').className = rankingType === 'ultra' ? '' : 'alt';
   const body = document.getElementById('rankingBody'); body.textContent = '読み込み中…';
   try {
     const d = await api('/leaderboard?type=' + rankingType, undefined, 'GET');
-    if (!d.rows.length) { body.textContent = rankingType === 'rating' ? 'まだランク入りしたプレイヤーはいません（人間同士の対戦を3回すると判定されます）' : rankingType === 'cpu' ? 'まだランク入りしたプレイヤーはいません（COMとの対戦を3回すると判定されます）' : 'まだスコアの記録がありません'; return; }
+    if (!d.rows.length) { body.textContent = rankingType === 'rating' ? 'まだランク入りしたプレイヤーはいません（人間同士の対戦を3回すると判定されます）' : rankingType === 'cpu' ? 'まだランク入りしたプレイヤーはいません（COMとの対戦を3回すると判定されます）' : rankingType === 'sprint' ? 'まだ40ラインをクリアした記録がありません' : 'まだスコアの記録がありません'; return; }
     body.replaceChildren(...d.rows.map((r, i) => {
       const row = document.createElement('div'); row.className = 'rank-row' + (r.id === d.me ? ' me' : '');
       const no = document.createElement('span'); no.className = 'no'; no.textContent = String(i + 1);
       const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.id;
       const ex = document.createElement('span'); ex.className = 'ex';
-      ex.textContent = rankingType === 'rating' ? `${r.vsGames}戦${r.wins}勝` : rankingType === 'cpu' ? `${r.games}戦` : `LV${r.level} / ${r.lines}ライン`;
-      const vl = document.createElement('span'); vl.className = 'vl'; vl.textContent = fmtN(r.value);
+      ex.textContent = rankingType === 'rating' ? `${r.vsGames}戦${r.wins}勝` : rankingType === 'cpu' ? `${r.games}戦` : (rankingType === 'sprint' || rankingType === 'ultra') ? `${r.games}回` : `LV${r.level} / ${r.lines}ライン`;
+      const vl = document.createElement('span'); vl.className = 'vl'; vl.textContent = rankingType === 'sprint' ? fmtTime(r.value) : fmtN(r.value);
       row.append(no, nm, ex, vl); return row;
     }));
   } catch (e) { body.textContent = '読み込めませんでした: ' + (e.message || ''); }
@@ -4176,6 +4363,8 @@ document.getElementById('btnOpenRanking').onclick = () => openRanking('solo');
 document.getElementById('btnRankSolo').onclick = () => openRanking('solo');
 document.getElementById('btnRankRating').onclick = () => openRanking('rating');
 document.getElementById('btnRankCpu').onclick = () => openRanking('cpu');
+document.getElementById('btnRankSprint').onclick = () => openRanking('sprint');
+document.getElementById('btnRankUltra').onclick = () => openRanking('ultra');
 document.getElementById('btnRankingBack').onclick = () => switchScreen('lobbyScreen');
 
 let adminReplayCache = [];
@@ -4552,7 +4741,7 @@ document.getElementById('btnCpuTest').onclick = async () => {
 
 
 // ---- 開発者: 戦績の編集（開発者アカウント同士のテスト対戦などで崩れた戦績の補正用）----
-const STAT_EDIT_LABELS = { games: '総試合数', solo_games: 'ソロ回数', vs_games: '対戦試合数', vs_wins: '対戦の勝利数', best_score: 'ソロ最高スコア', best_lines: 'ソロ最高ライン', best_level: 'ソロ最高レベル', total_pieces: '総ピース数', total_keys: '総キー入力', total_attack: '総攻撃ライン', total_lines: '総ライン数', total_ms: '総プレイ時間(ms)', vs_ms: '対戦時間(ms)', best_apm: '最高APM', rating: '対人レート', rated_games: '対人レート試合数', peak_rating: '対人レート最高', cpu_rating: 'COM戦レート', cpu_rated_games: 'COM戦レート試合数', cpu_peak_rating: 'COM戦レート最高' };
+const STAT_EDIT_LABELS = { games: '総試合数', solo_games: 'ソロ回数', vs_games: '対戦試合数', vs_wins: '対戦の勝利数', best_score: 'ソロ最高スコア', best_lines: 'ソロ最高ライン', best_level: 'ソロ最高レベル', total_pieces: '総ピース数', total_keys: '総キー入力', total_attack: '総攻撃ライン', total_lines: '総ライン数', total_ms: '総プレイ時間(ms)', vs_ms: '対戦時間(ms)', best_sprint_ms: '40ライン最速タイム(ms・0=記録なし)', best_ultra_score: '2分間の最高スコア', best_apm: '最高APM', rating: '対人レート', rated_games: '対人レート試合数', peak_rating: '対人レート最高', cpu_rating: 'COM戦レート', cpu_rated_games: 'COM戦レート試合数', cpu_peak_rating: 'COM戦レート最高' };
 async function openStatsEditor(id) {
   const box = document.getElementById('adminStatsEditor'); box.style.display = 'flex'; box.textContent = '読み込み中…';
   try {
