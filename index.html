@@ -113,6 +113,9 @@
       display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
       margin-top: 12px; width: 100%; max-width: 400px;
     }
+    html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }   /* 連打（ダブルタップ）で拡大されない */
+    button, select, input, canvas { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    #gameScreen, #gameScreen * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* 長押しで文字や画像が選択されない */
     .controls button { height: var(--tc-h, 60px); opacity: var(--tc-op, 1); font-size: 1.3rem; padding: 0; border-radius: 8px; }
     .stat-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
     .stat-table th { text-align: left; color: var(--accent); font-size: .8rem; padding: 8px 0 3px; border-bottom: 1px solid var(--border); }
@@ -208,8 +211,8 @@
     <div class="lobby-card">
       <h2>モード選択</h2>
       <h2>ソロプレイ</h2>
-      <label id="soloBuildableSeedRow" style="display:none;font-size:.75rem;color:var(--sub);align-items:center;gap:6px;justify-content:center"><input id="ensureTemplatePieces" type="checkbox" style="width:auto">テンプレが組めるツモ順で開始（管理者）</label>
-      <select id="soloMode" style="width:100%;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="marathon">ノーマル（無制限・スコアを競う）</option><option value="sprint">40ライン（最速タイムを競う）</option><option value="ultra">2分間（スコアを競う）</option></select>
+      <label id="soloBuildableSeedRow" style="display:none;font-size:.75rem;color:var(--sub);align-items:center;gap:6px;justify-content:center"><input id="ensureTemplatePieces" type="checkbox" style="width:auto">テンプレが組めるツモ順で開始（パフェ積みはパフェまで届く順）　※ソロ・COM戦・対人戦（ホスト）に適用（管理者）</label>
+      <select id="soloMode" style="width:100%;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="marathon">ノーマル（無制限・スコアを競う）</option><option value="sprint">40ライン（最速タイムを競う）</option><option value="ultra">2分間（スコアを競う）</option><option value="daily">デイリー（今日の共通ツモ順・2分間）</option></select>
       <button id="btnSolo">ソロプレイ開始</button>
       <div style="display:flex;gap:6px"><button id="btnOpenMyPage" class="alt" style="flex:1">マイページ</button><button id="btnOpenRanking" class="alt" style="flex:1">ランキング</button></div>
       <div id="playerLabel" style="font-size:.8rem;color:var(--sub);text-align:center"></div>
@@ -221,6 +224,8 @@
         <select id="roomMax" style="width:auto;flex:0 0 auto;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option></select>
         <label for="roomVisibility" style="font-size:.8rem;color:var(--sub);white-space:nowrap">公開設定</label>
         <select id="roomVisibility" style="width:auto;flex:0 0 auto;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="private">非公開</option><option value="public">公開</option></select>
+        <label for="roomSpectate" style="font-size:.8rem;color:var(--sub);white-space:nowrap">観戦</label>
+        <select id="roomSpectate" style="width:auto;flex:0 0 auto;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="1">許可</option><option value="0">禁止</option></select>
       </div>
       <button id="btnCreateRoom" class="alt" style="white-space:nowrap">部屋を作る</button>
       <div style="display:flex; gap:6px;">
@@ -250,6 +255,7 @@
         <div id="roomCount" style="color:var(--sub)"></div>
         <div id="roomCpuRow" style="display:none;align-items:center;gap:6px;flex-wrap:wrap"><select id="roomCpuLevel" style="width:auto;flex:1 1 9em;min-width:0;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 6px"></select><button id="btnAddCpu" class="alt" style="width:auto;min-width:0;padding:6px 12px;white-space:nowrap">COMを追加</button></div>
         <label id="roomPublicRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><input id="roomPublicToggle" type="checkbox" style="width:auto"> 部屋一覧に公開する</label>
+        <label id="roomSpectateRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><input id="roomSpectateToggle" type="checkbox" style="width:auto"> 観戦を許可する</label>
         <div id="roomTeamRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><span>対戦形式</span><select id="roomTeamMode" style="width:auto"><option value="0">個人戦（全員が敵）</option><option value="4">チーム戦（A〜Dから選ぶ）</option></select></div>
         <div id="roomRoster" style="display:flex;flex-direction:column;gap:2px"></div>
         <div id="roomHint" style="font-size:.75rem;color:var(--sub)"></div>
@@ -278,7 +284,7 @@
   <div id="rankingScreen" class="screen">
     <div class="lobby-card">
       <h2>ランキング</h2>
-      <div style="display:flex;gap:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><button id="btnRankSolo" style="flex:1 1 30%">ノーマル</button><button id="btnRankSprint" class="alt" style="flex:1 1 30%">40ライン</button><button id="btnRankUltra" class="alt" style="flex:1 1 30%">2分間</button><button id="btnRankRating" class="alt" style="flex:1 1 45%">対戦レート</button><button id="btnRankCpu" class="alt" style="flex:1 1 45%">COM戦レート</button></div></div>
+      <div style="display:flex;gap:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><button id="btnRankSolo" style="flex:1 1 30%">ノーマル</button><button id="btnRankSprint" class="alt" style="flex:1 1 30%">40ライン</button><button id="btnRankUltra" class="alt" style="flex:1 1 30%">2分間</button><button id="btnRankDaily" class="alt" style="flex:1 1 30%">デイリー</button><button id="btnRankRating" class="alt" style="flex:1 1 45%">対戦レート</button><button id="btnRankCpu" class="alt" style="flex:1 1 45%">COM戦レート</button></div></div>
       <div id="rankingBody" style="display:flex;flex-direction:column;gap:2px;font-size:.85rem;color:var(--sub)"></div>
       <button id="btnRankingBack" class="alt">ロビーへ戻る</button>
     </div>
@@ -667,6 +673,10 @@ const KICK_I = {
   '3-0': [[0,0],[1,0],[-2,0],[1,-2],[-2,1]],  '0-3': [[0,0],[-1,0],[2,0],[-1,2],[-2,-1]]
 };
 
+// ミノは盤面（見える20段）のさらに上、21〜22段目に出現する（ガイドライン準拠）。空いていれば出現直後に1段落ちて SPAWN_Y に来る。
+// ゲームオーバー: ①出現位置に既にブロックがある（窒息） ②ミノを完全に盤面の上（21段目以上）で固定した（ロックアウト）。
+// おじゃまで積み上がっても、見えない部分は40段まで残り、出現位置に被らなければ続けられる。
+const SPAWN_Y_RAW = -2, SPAWN_Y = -1;
 let board = [], cur = null, holdPiece = null, canHold = true;
 // 画面の上にはみ出した段（hiddenRows[0] が画面のすぐ上の段）。中開けRENなどで、はみ出して積んだ分も残す
 const HIDDEN_MAX = 20;
@@ -993,7 +1003,12 @@ function softStep() { if (move(0, 1)) { runStats.score += 1; updateScoreUi(); re
 
 
 // ---- ソロのモード: ノーマル（無制限）/ 40ライン（最速タイム）/ 2分間（スコア）----
-const SOLO_MODES = { marathon: 'ノーマル', sprint: '40ライン', ultra: '2分間' };
+const SOLO_MODES = { marathon: 'ノーマル', sprint: '40ライン', ultra: '2分間', daily: 'デイリー' };
+const isTimedMode = m => m === 'ultra' || m === 'daily';   // 2分で終わるモード
+// デイリー: 日付（日本時間）から全員共通のシードを作る（サーバーと同じ式）。全員が同じツモ順で、2分間のスコアを競う
+const jstDayStr = (offset = 0) => new Date(Date.now() + 9 * 3600e3 + offset * 86400e3).toISOString().slice(0, 10);
+const dailySeedOf = day => { let h = 2166136261; const t = day + '-wtvs-daily'; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h % 1000000000; };
+let dailyDate = '';
 const SPRINT_LINES = 40, ULTRA_MS = 120000;
 let soloMode = 'marathon', soloStartAt = 0;
 try { const v = localStorage.getItem('p2pTetrisSoloModeV1'); if (SOLO_MODES[v]) soloMode = v; } catch (_) {}
@@ -1001,7 +1016,7 @@ const fmtTime = ms => { ms = Math.max(0, Math.round(ms)); return `${Math.floor(m
 const soloElapsed = () => (soloStartAt ? performance.now() - soloStartAt : 0);
 function updateSoloTimer() {
   const el = document.getElementById('statTime'); if (!el || isVsMode || !soloStartAt) return;
-  el.textContent = fmtTime(soloMode === 'ultra' ? ULTRA_MS - soloElapsed() : soloElapsed());
+  el.textContent = fmtTime(isTimedMode(soloMode) ? ULTRA_MS - soloElapsed() : soloElapsed());
 }
 function finishSolo(result, msg) {   // 40ライン達成・2分終了など、ゲームオーバー以外の終わり方
   if (isEnded) return;
@@ -1028,7 +1043,10 @@ async function flushStatQueue() {
 }
 function onStatsResult(r, p) {
   if (!r || r.skipped || r.duplicate) return;
-  if (p.mode === 'solo') {
+  if (p.mode === 'solo' && p.soloMode === 'daily') {
+    const el = document.getElementById('rematchStatus');
+    el.textContent = [el.textContent, r.dailyRank ? `今日のデイリー ${r.dailyRank}位（ベスト ${fmtN(r.dailyBest)}）` : '', r.newBest ? '今日のベスト更新！' : ''].filter(Boolean).join('　');
+  } else if (p.mode === 'solo') {
     if (r.newBest) { const el = document.getElementById('rematchStatus'); el.textContent = [el.textContent, '自己ベスト更新！'].filter(Boolean).join('　'); }
   } else if (r.ratingChange != null) {
     const el = document.getElementById('rankingText');
@@ -1045,7 +1063,7 @@ function submitStats(result, ms) {
   const vs = isVsMode;
   const opponents = vs && !vsTeams ? vsRoster.filter(r => r.seat !== mySeat && !/^COM /.test(r.name)).map(r => r.name) : [];
   const cpuOpponents = vs && !vsTeams && vsRoster.length === 2 ? vsRoster.filter(r => r.seat !== mySeat && /^COM /.test(r.name)).map(r => r.cpuRating || (/^COM Lv(\d+)/.test(r.name) ? CPU_RATING_BASE[cpuLevelOf(RegExp.$1)] : 1000)) : [];
-  sendStats({ reportId: newReportId(), mode: vs ? 'vs' : 'solo', result, score: rs.score, lines: rs.lines, level: rs.level, pieces: rs.pieces, keys: rs.keys, attack: rs.attack, durationMs: ms, opponents, cpuOpponents, soloMode: vs ? undefined : soloMode, timeMs: rs.timeMs || 0 }, true);
+  sendStats({ reportId: newReportId(), mode: vs ? 'vs' : 'solo', result, score: rs.score, lines: rs.lines, level: rs.level, pieces: rs.pieces, keys: rs.keys, attack: rs.attack, durationMs: ms, opponents, cpuOpponents, soloMode: vs ? undefined : soloMode, timeMs: rs.timeMs || 0, dailyDate: !vs && soloMode === 'daily' ? dailyDate : undefined, teamMode: vs && !!vsTeams, opponentNames: vs ? vsRoster.filter(r => r.seat !== mySeat).map(r => r.name) : undefined }, true);
 }
 
 const VS_REPLAY_KEY = 'p2pTetrisVsReplaysV1', VS_REPLAY_MAX = 50, REPLAY_CLOUD_MAX_BYTES = 50 * 1024, VS_GUEST_WAIT_MS = 4000;
@@ -1069,6 +1087,7 @@ function finishRun(result = 'lose') {
   p.seed = queueSeed;
   p.host = run;
   p.expectedGuests = isVsMode ? vsRoster.filter(r => r.seat !== 0 && !r.left).length : 0;
+  p.cpuOnly = isVsMode && isHost && guests.length === 0 && cpuPlayers.length > 0;   // 相手がCOMだけの対戦は、ソロと同じく、どちらを選んでもクラウドに保存する
   showSavePrompt(true);
 }
 const haveAllGuestReplays = p => Object.keys(p.guests || {}).length >= (p.expectedGuests || 0);
@@ -1090,7 +1109,17 @@ function discardReplayNow() {
   if (p) { clearTimeout(p.timer); p.finalized = true; }
   showSavePrompt(false);
 }
-function showSavePrompt(show) { document.getElementById('replaySavePrompt').style.display = show ? '' : 'none'; }
+let savePromptTimer = null;
+function showSavePrompt(show) {
+  document.getElementById('replaySavePrompt').style.display = show ? '' : 'none';
+  const btns = ['btnReplaySave', 'btnReplayDiscard'].map(id => document.getElementById(id));
+  clearTimeout(savePromptTimer);
+  if (show) {   // 操作中に勝敗がついても、勢いで選んでしまわないよう、出てから少しの間は押せない（キー連打で選択中のボタンが押されるのも防ぐ）
+    btns.forEach(b => { b.disabled = true; });
+    try { if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); } catch (_) {}
+    savePromptTimer = setTimeout(() => btns.forEach(b => { b.disabled = false; }), 1500);
+  } else btns.forEach(b => { b.disabled = false; });
+}
 // Leaving a result screen (new game, rematch, lobby): make sure the run reached the cloud, then forget it.
 function settlePendingReplay() {
   const p = pendingReplay;
@@ -1105,12 +1134,12 @@ function answerReplayPrompt(wantSave) {
   if (!p || p.answered) return;
   p.answered = true;
   p.wantSave = wantSave;
-  if (p.mode === 'solo' || (p.mode === 'vs' && !wantSave) || haveAllGuestReplays(p) || !vsHasPeers()) finalizeReplay(p, true);
+  if (p.mode === 'solo' || (p.mode === 'vs' && !wantSave && !p.cpuOnly) || haveAllGuestReplays(p) || !vsHasPeers()) finalizeReplay(p, true);
   else armReplayTimer(p);
 }
 // 対戦中に答えた時は、試合が終わってから最大4秒だけ他の参加者のデータを待つ
 function armReplayTimer(p) {
-  if (!p || p.finalized || p.timer || !p.answered || !p.wantSave) return;
+  if (!p || p.finalized || p.timer || !p.answered || (!p.wantSave && !p.cpuOnly)) return;
   if (p.mode === 'vs' && roomState !== 'result' && vsHasPeers()) return;
   p.timer = setTimeout(() => finalizeReplay(p, true), VS_GUEST_WAIT_MS);
 }
@@ -1152,7 +1181,7 @@ function slimReplayEvents(ev) {
 }
 async function finalizeReplay(p, force = false) {
   if (!p || p.finalized || !p.host) return;
-  if (p.mode === 'vs' && !p.wantSave) { p.finalized = true; clearTimeout(p.timer); return; } // 対戦: 「保存しない」/未回答ならクラウドにも保存しない
+  if (p.mode === 'vs' && !p.wantSave && !p.cpuOnly) { p.finalized = true; clearTimeout(p.timer); return; } // 人間との対戦: 「保存しない」/未回答ならクラウドにも保存しない（COM戦は除く）
   if (p.mode === 'vs' && !haveAllGuestReplays(p) && !force && vsHasPeers()) return;
   p.finalized = true;
   clearTimeout(p.timer);
@@ -1271,10 +1300,15 @@ async function startSoloGame() {
   document.getElementById('matchModeLabel').textContent = `ソロプレイ（${SOLO_MODES[soloMode]}）`;
   document.getElementById('rematchArea').classList.remove('active');
   let seed;
-  if (adminMode && document.getElementById('ensureTemplatePieces').checked) {
-    const found = findBuildableSeed();
-    if (found) { seed = found.seed; toast(`「${found.template}」が組めるツモ順で開始します`); }
-    else { seed = Math.floor(Math.random() * 1000000000); toast('組めるシードが見つからないためランダムで開始します'); }
+  if (soloMode === 'daily') {
+    dailyDate = jstDayStr(); seed = dailySeedOf(dailyDate);   // 今日の共通ツモ順（何度挑戦しても同じ）
+    document.getElementById('matchModeLabel').textContent = `ソロプレイ（デイリー ${dailyDate}）`;
+  } else if (wantBuildableSeed()) {
+    if (seedSearching) return;
+    seedSearching = true; toast('組めるツモ順を探しています…');
+    let found = null; try { found = await findBuildableSeedAsync(8000); } finally { seedSearching = false; }
+    if (found) { seed = found.seed; toast(`「${found.template}」${found.pc ? '（パフェまで届く順）' : ''}が組めるツモ順で開始します`); }
+    else { seed = Math.floor(Math.random() * 1000000000); toast('組めるツモ順が見つからないため、ランダムで開始します'); }
   } else {
     seed = Math.floor(Math.random() * 1000000000);
   }
@@ -1444,14 +1478,14 @@ function cpuLockRows(rows, type, x, y, r) {
 // 実際のルール（回転・キック）で到達できる設置位置をすべて列挙
 const CPU_VIS = new Uint32Array(4 * 40 * 24 * 3);
 let cpuVisGen = 0;
-function cpuPlacements(rows, type) {
+function cpuPlacements(rows, type, sy = SPAWN_Y) {
   const out = [];
-  if (cpuHit(rows, type, 3, 0, 0)) return out;
+  if (cpuHit(rows, type, 3, sy, 0)) return out;
   if (++cpuVisGen > 4000000000) { CPU_VIS.fill(0); cpuVisGen = 1; }
   const enc = (x, y, r, f) => (((r * 40 + (y + 4)) * 24 + (x + 4)) * 3 + f);
   const isT = type === 'T', canRot = type !== 'O', kicks = type === 'I' ? KICK_I : KICK_STD;
-  const stack = [[3, 0, 0, 0]], seenCells = new Set();
-  CPU_VIS[enc(3, 0, 0, 0)] = cpuVisGen;
+  const stack = [[3, sy, 0, 0]], seenCells = new Set();
+  CPU_VIS[enc(3, sy, 0, 0)] = cpuVisGen;
   const push = (x, y, r, f) => { const k = enc(x, y, r, f); if (CPU_VIS[k] !== cpuVisGen) { CPU_VIS[k] = cpuVisGen; stack.push([x, y, r, f]); } };
   while (stack.length) {
     const [x, y, r, f] = stack.pop();
@@ -1487,11 +1521,11 @@ function cpuCellKey(type, x, y, r) {
 }
 // 1) 出現位置（いちばん上）で回転・左右移動を済ませて、そのまま落とすだけで置ける場所は、必ずその手順にする（落としてから直前で回転入れしない）
 // 2) それで置けない場所（潜り込み・スピン）だけ、すべての操作を使った経路探索にする
-function cpuFindPath(rows, type, tx, ty, tr, tf) {
-  return cpuFindPathImpl(rows, type, tx, ty, tr, tf, true) || cpuFindPathImpl(rows, type, tx, ty, tr, tf, false);
+function cpuFindPath(rows, type, tx, ty, tr, tf, sy = SPAWN_Y) {
+  return cpuFindPathImpl(rows, type, tx, ty, tr, tf, true, sy) || cpuFindPathImpl(rows, type, tx, ty, tr, tf, false, sy);
 }
-function cpuFindPathImpl(rows, type, tx, ty, tr, tf, topOnly) {
-  if (cpuHit(rows, type, 3, 0, 0)) return null;
+function cpuFindPathImpl(rows, type, tx, ty, tr, tf, topOnly, sy) {
+  if (cpuHit(rows, type, 3, sy, 0)) return null;
   if (++cpuPathCur > 4000000000) { cpuPathGen.fill(0); cpuPathCur = 1; }
   const enc = (x, y, r, f) => (((r * 40 + (y + 4)) * 24 + (x + 4)) * 3 + f);
   const dec = k => { const f = k % 3; k = (k - f) / 3; const xx = k % 24; k = (k - xx) / 24; const yy = k % 40; return [xx - 4, yy - 4, (k - yy) / 40, f]; };
@@ -1500,7 +1534,7 @@ function cpuFindPathImpl(rows, type, tx, ty, tr, tf, topOnly) {
   const hpush = (c, k) => { heap.push([c, k]); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
   const hpop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
   const relax = (from, c, x, y, r, f) => { const k = enc(x, y, r, f); if (cpuPathGen[k] !== cpuPathCur || c < cpuPathCost[k]) { cpuPathGen[k] = cpuPathCur; cpuPathCost[k] = c; cpuPathPrev[k] = from; hpush(c, k); } };
-  const start = enc(3, 0, 0, 0);
+  const start = enc(3, sy, 0, 0);
   cpuPathGen[start] = cpuPathCur; cpuPathCost[start] = 0; cpuPathPrev[start] = -1; hpush(0, start);
   const tKey = cpuCellKey(type, tx, ty, tr);
   let goal = -1, goalAny = -1;
@@ -1512,7 +1546,7 @@ function cpuFindPathImpl(rows, type, tx, ty, tr, tf, topOnly) {
     if (grounded && cpuCellKey(type, x, y, r) === tKey) { if (!isT || f === tf) { goal = k; break; } if (goalAny < 0) goalAny = k; }
     const mc = c + 1 + 0.02 * y;   // 下に行くほど左右移動・回転を少しだけ高く（=上で済ませる経路を選ぶ）
     if (!grounded) relax(k, c + 1, x, y + 1, r, 0);
-    if (topOnly && y > 0) continue;   // 上だけの探索: 落とし始めたら、あとは落とすだけ
+    if (topOnly && y > sy) continue;   // 上だけの探索: 落とし始めたら、あとは落とすだけ
     if (!cpuHit(rows, type, x - 1, y, r)) relax(k, mc, x - 1, y, r, 0);
     if (!cpuHit(rows, type, x + 1, y, r)) relax(k, mc, x + 1, y, r, 0);
     if (canRot) for (const dir of [1, -1]) {
@@ -1651,19 +1685,31 @@ class CpuEngine {
     while (out.length < n) { const p = CPU_TYPES.slice(); for (let i = 6; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; } out.push(...p); }
     return out.slice(0, n);
   }
+  _hitHid(type, x, y, r) {   // 盤面の上（見えない段）に積まれたブロックとの重なり
+    const cs = CPU_CELLS[type][r];
+    for (let i = 0; i < 4; i++) { const yy = y + cs[i][1]; if (yy < 0 && (((this.hid[-yy - 1] | 0) >> (x + cs[i][0])) & 1)) return true; }
+    return false;
+  }
+  // ミノを出現させる（盤面の上の21〜22段目。そこに既にブロックがあれば窒息。空いていれば1段落ちる）
+  _enter(type, t) {
+    const dead = cpuHit(this.rows, type, 3, SPAWN_Y_RAW, 0) || this._hitHid(type, 3, SPAWN_Y_RAW, 0);
+    const y = dead || cpuHit(this.rows, type, 3, SPAWN_Y, 0) || this._hitHid(type, 3, SPAWN_Y, 0) ? SPAWN_Y_RAW : SPAWN_Y;
+    this.cur = { type, x: 3, y, r: 0 };
+    this._ev([t, type, 3, y, 0]);
+    if (dead) { this.alive = false; return false; }
+    return true;
+  }
   spawn(t) {
     this._fillQueue();
     const type = this.queue.shift();
-    this.cur = { type, x: 3, y: 0, r: 0 }; this.canHold = true;
-    this._ev([t, type, 3, 0, 0]);
-    if (cpuHit(this.rows, type, 3, 0, 0)) { this.alive = false; return false; }
-    return true;
+    this.canHold = true;
+    return this._enter(type, t);
   }
   doHold(t) {
     if (!this.canHold || !this.cur || !this.alive) return false;
     const out = this.cur.type;
     if (!this.hold) { this.hold = out; this.spawn(t); }
-    else { const h = this.hold; this.hold = out; this.cur = { type: h, x: 3, y: 0, r: 0 }; this._ev([t, h, 3, 0, 0]); if (cpuHit(this.rows, h, 3, 0, 0)) this.alive = false; }
+    else { const h = this.hold; this.hold = out; this._enter(h, t); }
     this.canHold = false;
     return this.alive;
   }
@@ -1681,6 +1727,7 @@ class CpuEngine {
     const spin = type === 'T' ? cpuSpinKind(this.rows, x, y, r, f) : null;
     this._ev([t, type, x, y, r]); this._ev([t, 'L']);
     const cs = CPU_CELLS[type][r];
+    if (cs.every(c => y + c[1] < 0)) { this.alive = false; return { dead: true, lockOut: true }; }   // ロックアウト: 全体が盤面の上で固定された
     for (let i = 0; i < 4; i++) { const yy = y + cs[i][1], xx = x + cs[i][0]; if (yy < 0) { const h = -yy - 1; if (h < HIDDEN_MAX) { this.hid[h] = (this.hid[h] | 0) | (1 << xx); if (!this.hidGrid[h]) this.hidGrid[h] = Array(COLS).fill(null); this.hidGrid[h][xx] = type; } continue; } this.rows[yy] |= 1 << xx; this.grid[yy][xx] = type; }
     let cleared = 0;
     for (let k = ROWS - 1; k >= 0; k--) if (this.rows[k] === CPU_FULL) { this.rows.splice(k, 1); this.rows.unshift(this.hid.shift() | 0); this.grid.splice(k, 1); this.grid.unshift(this.hidGrid.shift() || Array(COLS).fill(null)); cleared++; k++; }
@@ -1915,7 +1962,7 @@ class TetrisAI {
       if (performance.now() > deadline) break;
     }
     if (!roots.length) { // 置ける場所が無い
-      const pl = cpuPlacements(eng.rows, eng.cur.type)[0];
+      const pl = cpuPlacements(eng.rows, eng.cur.type, eng.cur.y)[0];
       return pl ? { hold: false, x: pl.x, y: pl.y, r: pl.r, f: pl.f, kind: 'search' } : { hold: false, x: 3, y: 0, r: 0, f: 0, kind: 'search' };
     }
     // 最も深く読めた候補どうしで比較（読み切れなかった候補は一段低く扱う）
@@ -1978,7 +2025,7 @@ class CpuPlayer {
   // 決めた設置位置までの入力列（移動・回転・落下）を、速さの設定に合わせて時間つきの手順にする
   _buildQueue(eng, plan) {
     const P = this.ai.p, type = eng.cur.type;
-    const path = cpuFindPath(eng.rows, type, plan.x, plan.y, plan.r, this._effectiveF(eng, plan));
+    const path = cpuFindPath(eng.rows, type, plan.x, plan.y, plan.r, this._effectiveF(eng, plan), eng.cur.y);
     if (!path) return null;
     const S = path.states;
     const hard = Math.random() < P.hardDropRate, soft = Math.random() < P.softRate;
@@ -2053,6 +2100,7 @@ let spectators = [];             // host only: [{conn, name}]
 const spectateLast = new Map();  // host only: seat -> {board, cur}（途中から観戦に入った人に、いまの盤面をすぐ見せる）
 let lastEndMsg = null;           // host only: 直近のEND（結果画面で観戦に入った人用）
 let isSpectator = false;         // 自分が観戦者か
+let roomAllowSpectate = true;    // host only: 観戦を許可するか（部屋を作る時に選び、部屋の中でも切り替えられる）
 const MAX_SPECTATORS = 8;
 let mySeat = 0, myPlace = 0, roomMax = 2, roomState = 'idle', roomCode = '';
 let vsRoster = [], waitingRoster = [], rematchReady = [], rematchTotal = 0, rankingSummary = '';
@@ -2102,7 +2150,7 @@ function renderRoomPanel() {
   panel.style.display = inRoom ? 'flex' : 'none';
   document.getElementById('roomListBox').style.display = peer ? 'none' : 'flex';
   document.getElementById('cpuBox').style.display = peer ? 'none' : 'flex';
-  for (const id of ['btnCreateRoom', 'btnJoinRoom', 'roomMax', 'roomVisibility', 'roomInput']) document.getElementById(id).disabled = !!peer;
+  for (const id of ['btnCreateRoom', 'btnJoinRoom', 'btnSpectateRoom', 'roomMax', 'roomVisibility', 'roomSpectate', 'roomInput']) document.getElementById(id).disabled = !!peer;
   if (!inRoom) return;
   if (isHost) normalizeTeams();
   const tm = t => (roomTeams ? t : null);
@@ -2112,6 +2160,8 @@ function renderRoomPanel() {
   const teamRow = document.getElementById('roomTeamRow'); teamRow.style.display = isHost ? 'flex' : 'none'; document.getElementById('roomTeamMode').value = String(roomTeams);
   const pubRow = document.getElementById('roomPublicRow'); pubRow.style.display = isHost ? 'flex' : 'none';
   document.getElementById('roomPublicToggle').checked = roomPublic;
+  document.getElementById('roomSpectateRow').style.display = isHost ? 'flex' : 'none'; document.getElementById('roomSpectateToggle').checked = roomAllowSpectate;
+  document.getElementById('btnInviteSpectate').style.display = isHost && !roomAllowSpectate ? 'none' : '';
   document.getElementById('roomRoster').replaceChildren(...list.map(p => {
     const d = document.createElement('div'); d.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:nowrap';
     const label = document.createElement('span'); label.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; label.textContent = `${p.name}${p.seat === 0 ? '（ホスト）' : ''}${p.seat === mySeat && !isHost ? '（あなた）' : ''}`; label.title = p.name; d.append(label);
@@ -2151,7 +2201,7 @@ function leaveRoom() {
 function roomCountNow() { return 1 + guests.filter(g => g.conn && g.conn.open).length + cpuPlayers.length; }
 function announceRoom() {   // 公開の部屋は、待機中だけでなく対戦中も一覧に出す（観戦できる）
   if (!isHost || !roomPublic || !authToken || !['waiting', 'playing', 'result'].includes(roomState)) return;
-  api('/rooms/announce', { code: roomCode, max: roomMax, count: roomCountNow(), state: roomState === 'waiting' ? 'waiting' : 'playing' }).catch(() => {});
+  api('/rooms/announce', { code: roomCode, max: roomMax, count: roomCountNow(), state: roomState === 'waiting' ? 'waiting' : 'playing', spectate: roomAllowSpectate }).catch(() => {});
 }
 function startRoomAnnounce() {
   clearInterval(roomAnnounceTimer);
@@ -2164,6 +2214,13 @@ function stopRoomAnnounce() {
   if (roomPublic && roomCode && authToken) api('/rooms/close', { code: roomCode }).catch(() => {});
   roomPublic = false;
 }
+document.getElementById('roomSpectateToggle').onchange = (e) => {
+  if (!isHost) { e.target.checked = roomAllowSpectate; return; }
+  roomAllowSpectate = e.target.checked;
+  if (!roomAllowSpectate && spectators.length) { for (const sp of spectators) rejectConn(sp.conn, '観戦が禁止されました'); spectators = []; }   // 禁止にしたら、いま見ている人も退出させる
+  announceRoom(); renderRoomPanel();
+  toast(roomAllowSpectate ? '観戦を許可しました' : '観戦を禁止しました');
+};
 document.getElementById('roomPublicToggle').onchange = (e) => {
   if (!isHost || roomState !== 'waiting') { e.target.checked = roomPublic; return; }
   if (e.target.checked) { roomPublic = true; startRoomAnnounce(); toast('部屋を公開しました'); }
@@ -2181,6 +2238,7 @@ function renderRoomList(rooms) {
     const name = document.createElement('span'); name.className = 'room-name'; name.textContent = `${cleanName(r.host)}　${r.count}/${r.max}人${playing ? '・対戦中' : ''}`;
     const btns = document.createElement('span'); btns.style.cssText = 'display:flex;gap:6px;flex:0 0 auto';
     if (canJoin) { const btn = document.createElement('button'); btn.textContent = '参加'; btn.onclick = () => { if (peer) return; document.getElementById('roomInput').value = r.code; document.getElementById('btnJoinRoom').onclick(); }; btns.append(btn); }
+    if (r.spectate === false && !canJoin) { const lock = document.createElement('span'); lock.style.cssText = 'font-size:.72rem;color:var(--sub)'; lock.textContent = '観戦不可'; btns.append(lock); row.append(name, btns); return row; }
     const sb = document.createElement('button'); sb.className = 'alt'; sb.textContent = '観戦'; sb.onclick = () => { if (peer) return; document.getElementById('roomInput').value = r.code; document.getElementById('btnSpectateRoom').onclick(); }; btns.append(sb);
     row.append(name, btns); return row;
   }));
@@ -2223,7 +2281,7 @@ async function shareInvite(spectate) {
   }
   try { await navigator.clipboard.writeText(url); toast(spectate ? '観戦リンクをコピーしました' : '招待リンクをコピーしました'); } catch (_) { prompt('リンクをコピーしてください', url); }
 }
-document.getElementById('btnStartMatch').onclick = () => startMatchAsHost();
+document.getElementById('btnStartMatch').onclick = async () => { if (seedSearching) return; await prepareMatchSeed(); startMatchAsHost(); };
 
 document.getElementById('btnCreateRoom').onclick = () => {
   if (peer) return;
@@ -2234,6 +2292,7 @@ document.getElementById('btnCreateRoom').onclick = () => {
   peer.on('open', () => {
     isHost = true; roomState = 'waiting';
     roomPublic = document.getElementById('roomVisibility').value === 'public';
+    roomAllowSpectate = document.getElementById('roomSpectate').value !== '0';
     document.getElementById('netStatus').textContent = `部屋を作成しました（最大${roomMax}人・${roomPublic ? '公開' : '非公開'}）`;
     startRoomAnnounce();
     toast(`部屋コード: ${roomCode} を共有してください`);
@@ -2432,12 +2491,13 @@ function onGuestConnection(c) {
     if (g) return onGuestData(g, d);
     if (sp || !d || typeof d !== 'object' || d.type !== 'HELLO') return;
     if (d.spectator) {
+      if (!roomAllowSpectate) return rejectConn(c, 'この部屋は観戦できません');
       if (spectators.length >= MAX_SPECTATORS) return rejectConn(c, '観戦者がいっぱいです');
       sp = { conn: c, name: cleanName(d.name) }; spectators.push(sp);
       sendSpectateInit(sp); toast(`${sp.name} さんが観戦に入りました`);
       return;
     }
-    if (roomState !== 'waiting' || guests.length + cpuPlayers.length >= roomMax - 1) return rejectConn(c, roomState !== 'waiting' ? '対戦中のため参加できません（観戦はできます）' : '満員です（観戦はできます）');
+    if (roomState !== 'waiting' || guests.length + cpuPlayers.length >= roomMax - 1) return rejectConn(c, (roomState !== 'waiting' ? '対戦中のため参加できません' : '満員です') + (roomAllowSpectate ? '（観戦はできます）' : ''));
     g = { conn: c, seat: 0, name: '?', alive: true, wantsRematch: false };
     guests.push(g); assignSeats();
     onGuestData(g, d);
@@ -2454,7 +2514,8 @@ function sendRoster() {
   announceRoom();
 }
 function newRound() {
-  vsRule.seed = Math.floor(Math.random() * 1000000);
+  vsRule.seed = pendingBuildableSeed != null ? pendingBuildableSeed : Math.floor(Math.random() * 1000000);
+  pendingBuildableSeed = null;
   vsRule.round = Math.random().toString(36).slice(2, 10);
 }
 // ---- COM runtime (host only) ----
@@ -2483,12 +2544,13 @@ function submitCpuReplay(c, result) {
 }
 function submitCpuReplays(winner) { const ws = Array.isArray(winner) ? winner : [winner]; for (const c of cpuPlayers) submitCpuReplay(c, ws.includes(c.seat) ? 'win' : 'lose'); }
 // ネットワークなしで COM とだけ対戦する
-function startCpuMatch(levels) {
-  if (peer) return;
+async function startCpuMatch(levels) {
+  if (peer || seedSearching) return;
   leaveRoom();
   isHost = true; roomState = 'waiting'; roomMax = 1 + levels.length; mySeat = 0;
   cpuPlayers = levels.map(v => ({ ...cpuChoice(v), name: '', seat: 0, runner: null, submitted: false }));
   cpuPlayers.forEach((c, i) => { c.name = cpuNameFor(c, i); });
+  await prepareMatchSeed();
   startMatchAsHost();
 }
 function fillCpuLevelSelect(el, def) {
@@ -2734,6 +2796,7 @@ function tryStartRematch() {
   if (!isHost || roomState !== 'result' || !rematchRequested) return;
   guests = guests.filter(g => g.conn && g.conn.open);
   if ((!guests.length && !cpuPlayers.length) || !guests.every(g => g.wantsRematch)) return;
+  if (wantBuildableSeed() && (!vsRule.nextMode || vsRule.nextMode === 'common')) { const f = findBuildableSeed(1500); if (f) { pendingBuildableSeed = f.seed; toast(`「${f.template}」${f.pc ? '（パフェまで届く順）' : ''}が組めるツモ順で再戦します`); } }   // 再戦は短い探索（最大1.5秒）
   newRound(); assignSeats(); prepareTeams();
   vsRoster = makeRoster(); roomState = 'playing';
   spectateLast.clear(); lastEndMsg = null;
@@ -2756,7 +2819,11 @@ function resetForRematch() {
 document.getElementById('btnBackToLobby').onclick = () => {
   if (autoBuildRunning) stopAutoBuild('自動積み停止');
   runStartedAt = 0;
-  discardReplayNow();
+  { const p = pendingReplay;
+    if (p && p.cpuOnly && p.answered && !p.finalized) {   // COM戦で答えた後に、決着前に抜けた: その時点までのCOMの記録を添えて保存する
+      for (const c of cpuPlayers) submitCpuReplay(c, 'lose');
+      pendingReplay = null; showSavePrompt(false); finalizeReplay(p, true);
+    } else discardReplayNow(); }
   isEnded = true;
   leaveRoom();
   clearRematchArea();
@@ -2769,7 +2836,7 @@ document.getElementById('btnBackToLobby').onclick = () => {
 function gameLoop(timestamp) {
   if (!lastDropTime) lastDropTime = timestamp;
   if (document.getElementById('gameScreen').classList.contains('active') && !isEnded && cur) {
-    if (!isVsMode && soloStartAt) { updateSoloTimer(); if (soloMode === 'ultra' && soloElapsed() >= ULTRA_MS) { finishSolo('win', `TIME UP!　SCORE ${runStats.score.toLocaleString()}（LEVEL ${runStats.level} / ${runStats.lines}ライン）`); render(); requestAnimationFrame(gameLoop); return; } }
+    if (!isVsMode && soloStartAt) { updateSoloTimer(); if (isTimedMode(soloMode) && soloElapsed() >= ULTRA_MS) { finishSolo('win', `TIME UP!　SCORE ${runStats.score.toLocaleString()}（LEVEL ${runStats.level} / ${runStats.lines}ライン）`); render(); requestAnimationFrame(gameLoop); return; } }
     if (timestamp - lastDropTime >= currentGravity()) {
       if (move(0, 1)) lastDropTime = timestamp;
       else lastDropTime = timestamp;
@@ -2806,11 +2873,12 @@ function spawnPiece() {
     if (bag.length === 0) refillBag();
     nextQ.push(bag.shift());
   }
-  cur = { type: nextQ.shift(), x: 3, y: 0, r: 0, lastRot: false, lastKickIndex: -1 };
+  const type = nextQ.shift(), blocked = checkCollision(3, SPAWN_Y_RAW, type, 0);   // 出現位置（21〜22段目）にブロックがあれば窒息
+  cur = { type, x: 3, y: blocked || checkCollision(3, SPAWN_Y, type, 0) ? SPAWN_Y_RAW : SPAWN_Y, r: 0, lastRot: false, lastKickIndex: -1 };
   canHold = true; lockMoves = 0; groundedAt = 0;
   recordReplayPosition();
 
-  if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
+  if (blocked) {
     isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishRun();
   } else {
     sendPosNow();
@@ -2918,7 +2986,10 @@ function lockPiece() {
   if (isEnded || !cur) return;
   const spin = isTSpin();
   const m = getShapeMatrix(cur.type, cur.r);
-  // 盤面の上にはみ出したマスは hiddenRows に残す（ライン消去で降りてくる）。ゲームオーバーは「次のミノが出現できない時」だけ（spawnPiece / HOLD で判定）
+  // ロックアウト: ミノ全体が盤面の上（21段目以上）で固定されたらゲームオーバー（一部でも盤面の中にあればセーフ）
+  { let inField = false; m.forEach((row, r) => row.forEach((val) => { if (val && cur.y + r >= 0) inField = true; }));
+    if (!inField) { isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishRun(); return; } }
+  // 盤面の上にはみ出したマスは hiddenRows に残す（ライン消去で降りてくる。おじゃまで押し上げられた分と合わせて40段まで）
   m.forEach((row, r) => row.forEach((val, c) => {
     if (!val) return;
     const y = cur.y + r, x = cur.x + c;
@@ -3038,11 +3109,12 @@ function doHold() {
     holdPiece = outgoing;
     spawnPiece();
   } else {
-    cur = { type: holdPiece, x: 3, y: 0, r: 0, lastRot: false, lastKickIndex: -1 };
+    const blocked = checkCollision(3, SPAWN_Y_RAW, holdPiece, 0);
+    cur = { type: holdPiece, x: 3, y: blocked || checkCollision(3, SPAWN_Y, holdPiece, 0) ? SPAWN_Y_RAW : SPAWN_Y, r: 0, lastRot: false, lastKickIndex: -1 };
     holdPiece = outgoing;
     groundedAt = 0; lockMoves = 0;
     recordReplayPosition();
-    if (checkCollision(cur.x, cur.y, cur.type, cur.r)) {
+    if (blocked) {
       isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishRun();
     } else sendPosNow();
   }
@@ -3726,7 +3798,7 @@ function peekFuturePieces(maxCount) {
 }
 
 // ---- 自動積みプランナー（7bagの確定ツモ + HOLD を使った完全探索） ----
-const AUTO_SPAWN = { x: 3, y: 0, rot: 0 };
+const AUTO_SPAWN = { x: 3, y: SPAWN_Y, rot: 0 };
 const AUTO_ACTIONS = ['CW', 'CCW', 'L', 'R', 'SD', 'D'];
 
 function variantRows(variant) { return variant.pattern; }
@@ -3917,6 +3989,7 @@ function templatePieceCount(variant) {
 // 重くなりやすいので、(1) 直前の計画どおりに置いている間は続きをそのまま使う、(2) 同じ状況の再計算はしない、
 // (3) 探索は「小さい上限で全テンプレを試す → だめなら大きい上限」の2段階にして、組めないテンプレに時間を使わない、
 // (4) パフェ到達チェック（パフェ積みのみ）は合計の時間に上限をつける。
+let autoPlanTimedOut = false;
 let autoPlanLast = null;                 // { plan, sig } 追従用（直前に出した計画）
 let autoPlanMemo = { key: '', plan: null };
 let templateSigAt = -1e9, templateSigVal = '';
@@ -3955,16 +4028,17 @@ function planAutoBuildCore(startPose) {
   const firstStart = startPose || { x: cur.x, y: cur.y, rot: cur.r };
   const boardRows = board.map(row => row.reduce((m, v, c) => (v ? m | (1 << c) : m), 0));
   const variants = autoCandidateVariants();
-  const t0 = performance.now(), tEnd = t0 + 900;   // 全体の探索時間の上限
+  const t0 = performance.now(), tEnd = t0 + 4000;   // 全体の探索時間の上限（途中で打ち切って「組めない」と誤判定しないよう、十分に長く取る）
   let tailSpent = 0; const tailFailed = new Set(), impossible = new Set();
+  autoPlanTimedOut = false;
   try {
     for (const nodeLimit of [400, 6000]) {   // 1周目: 組めるテンプレはたいてい数十ノードで見つかる。組めないものは早く切り上げる
       for (const variant of variants) {
-        if (performance.now() > tEnd) return null;
+        if (performance.now() > tEnd) { autoPlanTimedOut = true; return null; }
         const isPc = !!cpuIsPcVariant(variant);
         if (impossible.has(variant.name)) continue;   // 1周目で「組めない」と確定したものは再挑戦しない
         if (isPc && (tailFailed.has(variant.name) || tailSpent > 250)) continue;   // パフェ到達チェックに使う時間にも上限
-        templateSolveDeadline = tEnd;
+        templateSolveDeadline = Math.min(tEnd, performance.now() + 1200);   // 1つのテンプレに使う時間の上限（組めないテンプレに時間を取られて、後ろの組めるテンプレに届かないのを防ぐ）
         const seq = [cur.type, ...peekFuturePieces(templatePieceCount(variant) + (isPc ? 12 : 8))];
         const plan = solveTemplate(board, seq, holdPiece, canHold, variant, firstStart, nodeLimit);
         if (!plan) { if (!templateLastCut) impossible.add(variant.name); continue; }
@@ -3983,20 +4057,55 @@ function planAutoBuildCore(startPose) {
   } finally { templateSolveDeadline = Infinity; }
 }
 
-// Used by the solo lobby to pick a seed whose 7-bag order can build the template.
-function findBuildableSeed(maxTries = 400) {
-  const variants = autoCandidateVariants();
-  if (!variants.length) return null;
-  const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-  for (let t = 0; t < maxTries; t++) {
-    const seed = Math.floor(Math.random() * 1000000000);
-    for (const variant of variants) {
-      const seq = generateBagPieces(seededRandom(seed), templatePieceCount(variant) + 15);
-      // The first piece is the active piece; the rest is the NEXT/bag order.
-      if (solveTemplate(empty, seq, null, true, variant, AUTO_SPAWN, 3000)) return { seed, template: variant.name };
-    }
+// 組めるツモ順（シード）を探す。選んでいるテンプレ（なければ有効なテンプレ全部）が、空の盤面から組めるシードを探す。
+// パフェ積みは、組み終えた後に残りのツモ（HOLD含む）でパフェに届くシードだけを選ぶ。ソロ・COM戦・対人戦（ホスト）で使う。
+function trySeedForTemplates(seed, variants, empty, emptyRows) {
+  for (const variant of variants) {
+    const isPc = !!cpuIsPcVariant(variant);
+    // 先頭は出現中のミノ、その後ろがNEXTと次のbag
+    const seq = generateBagPieces(seededRandom(seed), templatePieceCount(variant) + (isPc ? 12 : 15));
+    const plan = solveTemplate(empty, seq, null, true, variant, AUTO_SPAWN, 3000);
+    if (!plan) continue;
+    if (isPc && !cpuPcTail({ rows: emptyRows, hold: null }, seq, plan, 4000)) continue;
+    return { seed, template: variant.name, pc: isPc };
   }
   return null;
+}
+function findBuildableSeed(maxMs = 1500) {
+  const variants = autoCandidateVariants();
+  if (!variants.length) return null;
+  const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0), t0 = performance.now();
+  while (performance.now() - t0 < maxMs) {
+    const found = trySeedForTemplates(Math.floor(Math.random() * 1000000000), variants, empty, emptyRows);
+    if (found) return found;
+  }
+  return null;
+}
+async function findBuildableSeedAsync(maxMs = 8000) {   // 画面が固まらないよう、途中で処理を譲りながら探す
+  const variants = autoCandidateVariants();
+  if (!variants.length) return null;
+  const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0), t0 = performance.now();
+  let lastYield = t0;
+  while (performance.now() - t0 < maxMs) {
+    const found = trySeedForTemplates(Math.floor(Math.random() * 1000000000), variants, empty, emptyRows);
+    if (found) return found;
+    if (performance.now() - lastYield > 40) { await new Promise(r => setTimeout(r, 0)); lastYield = performance.now(); }
+  }
+  return null;
+}
+let pendingBuildableSeed = null, seedSearching = false;
+const wantBuildableSeed = () => adminMode && document.getElementById('ensureTemplatePieces').checked;
+// 対戦（COM戦・対人戦）の開始前に呼ぶ。ホストが「組めるツモ順」を指定している時、全員共通のツモ順（common）でそのシードを使う
+async function prepareMatchSeed() {
+  pendingBuildableSeed = null;
+  if (!wantBuildableSeed()) return;
+  if (vsRule.nextMode && vsRule.nextMode !== 'common') { toast('ツモ順が各自バラバラの設定のため、組めるツモ順の指定は使えません'); return; }
+  seedSearching = true; toast('組めるツモ順を探しています…');
+  try {
+    const found = await findBuildableSeedAsync(8000);
+    if (found) { pendingBuildableSeed = found.seed; toast(`「${found.template}」${found.pc ? '（パフェまで届く順）' : ''}が組めるツモ順で開始します`); }
+    else toast('組めるツモ順が見つからないため、ランダムで開始します');
+  } finally { seedSearching = false; }
 }
 
 function curPoseIs(s) { return cur && cur.x === s.x && cur.y === s.y && cur.r === s.rot; }
@@ -4100,7 +4209,7 @@ async function startAutoBuild() {
     const plan = planAutoBuild();
     if (!plan) {
       const sel = getSelectedTemplateVariantName();
-      stopAutoBuild(sel ? `自動積み停止：このツモ順では「${sel}」を組めません（パフェ積みはパフェできる時のみ組みます）` : '自動積み停止：このツモ順で組めるテンプレがありません（パフェ積みはパフェできる時のみ組みます）');
+      stopAutoBuild((autoPlanTimedOut ? '自動積み停止：探索が時間切れになりました（もう一度試すか、テンプレを選んでください）' : sel ? `自動積み停止：このツモ順では「${sel}」を組めません（パフェ積みはパフェできる時のみ組みます）` : '自動積み停止：このツモ順で組めるテンプレがありません（パフェ積みはパフェできる時のみ組みます）'));
       return;
     }
     const variant = plan.variant;
@@ -4249,6 +4358,13 @@ bindTapButton('btnRotL', () => rotate(-1));
 bindTapButton('btnRotR', () => rotate(1));
 bindTapButton('btnHold', doHold);
 
+// ゲーム画面では、長押しのメニュー・文字選択・ピンチ拡大を止める（操作の邪魔になるため）
+{ const inGame = e => { const g = document.getElementById('gameScreen'); return g && g.classList.contains('active') && (!e.target || !e.target.closest || !e.target.closest('input, select, textarea')); };
+  document.addEventListener('contextmenu', e => { if (inGame(e)) e.preventDefault(); });
+  document.addEventListener('selectstart', e => { if (inGame(e)) e.preventDefault(); });
+  document.addEventListener('gesturestart', e => { if (inGame(e)) e.preventDefault(); });
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', e => { const now = Date.now(); if (inGame(e) && now - lastTouchEnd < 350) e.preventDefault(); lastTouchEnd = now; }, { passive: false }); }   // 素早い2回タップのズームを止める
 // ---- タッチ操作のカスタマイズ（このブラウザに保存）----
 const TOUCH_KEY = 'p2pTetrisTouchV1';
 const TOUCH_DEFAULT = { size: 60, opacity: 100, layout: 'standard', hold: 'bottom', das: 150, arr: 30, sd: 20, vibrate: false };
@@ -4304,6 +4420,7 @@ function renderMyPage(d) {
   const sections = [
     ['レート（人間同士の対戦）', [['現在のレート', rate], ['最高レート', d.isDev ? d.devRating : (s.rated_games > 0 ? s.peak_rating : '-')], ['レート対象の試合', fmtN(s.rated_games)]]],
     ['COM戦レート（COMとの対戦）', [['現在のレート', s.cpu_rated_games >= 3 ? `${s.cpu_rating}${d.cpuRank ? `（${d.cpuRank}位）` : ''}` : `${s.cpu_rated_games > 0 ? s.cpu_rating + '（' : ''}ランク判定中（${s.cpu_rated_games}/3戦）${s.cpu_rated_games > 0 ? '）' : ''}`], ['最高レート', s.cpu_rated_games > 0 ? s.cpu_peak_rating : '-'], ['レート対象の試合', fmtN(s.cpu_rated_games)]]],
+    ['デイリー', [['今日のベスト', d.daily && d.daily.score > 0 ? `${fmtN(d.daily.score)}${d.daily.rank ? `（${d.daily.rank}位）` : ''}` : '未挑戦'], ['今日の挑戦回数', d.daily ? fmtN(d.daily.plays) : '-'], ['連続挑戦日数', d.daily ? `${d.daily.streak}日` : '-']]],
     ['ソロ', [['ノーマル 最高スコア', s.best_score > 0 ? `${fmtN(s.best_score)}${d.soloRank ? `（${d.soloRank}位）` : ''}` : '-'], ['ノーマル 最高ライン数', s.best_lines || '-'], ['ノーマル 最高レベル', s.best_score > 0 ? s.best_level : '-'], ['40ライン 最速タイム', s.best_sprint_ms > 0 ? `${fmtTime(s.best_sprint_ms)}${d.sprintRank ? `（${d.sprintRank}位）` : ''}` : '-'], ['2分間 最高スコア', s.best_ultra_score > 0 ? `${fmtN(s.best_ultra_score)}${d.ultraRank ? `（${d.ultraRank}位）` : ''}` : '-'], ['プレイ回数（全モード）', fmtN(s.solo_games)]]],
     ['対戦', [['試合数', fmtN(s.vs_games)], ['勝利数', fmtN(s.vs_wins)], ['勝率', winRate], ['APM（平均）', apm], ['APM（最高）', s.best_apm > 0 ? s.best_apm.toFixed(1) : '-']]],
     ['全体', [['総試合数', fmtN(s.games)], ['KPP（1ピースあたりのキー入力）', kpp], ['PPS（1秒あたりのピース）', pps], ['総ピース数', fmtN(s.total_pieces)], ['総ライン数', fmtN(s.total_lines)], ['総プレイ時間', fmtDuration(s.total_ms)]]]
@@ -4323,6 +4440,52 @@ function renderMyPage(d) {
   }
   if (d.isDev) { const n = document.createElement('div'); n.style.cssText = 'font-size:.72rem;color:var(--sub);margin-bottom:6px'; n.textContent = '開発者はレートのランキングには載りません（ソロスコアは載ります）'; vis.append(document.createElement('br'), n); vis.style.flexWrap = 'wrap'; }
   body.replaceChildren(vis, table, note);
+  loadMyPageExtras(body);
+}
+
+// ---- マイページ: レート推移のグラフ・対戦履歴 ----
+function buildRatingSvg(series) {
+  if (!series.length) { const t = document.createElement('div'); t.style.cssText = 'font-size:.8rem;color:var(--sub);padding:8px 0'; t.textContent = 'まだレート対象の対戦がありません'; return t; }
+  const pts = [series[0].rbefore, ...series.map(r => r.rafter)];
+  const W = 320, H = 140, L = 38, R = 8, T = 10, B = 18, min = Math.min(...pts), max = Math.max(...pts), span = Math.max(40, max - min), lo = min - span * 0.12, hi = max + span * 0.12;
+  const X = i => L + (W - L - R) * (pts.length > 1 ? i / (pts.length - 1) : 0.5), Y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  const NS = 'http://www.w3.org/2000/svg', el = (n, a) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%' }); svg.style.cssText = 'background:#11111b;border:1px solid var(--border);border-radius:8px';
+  for (const v of [min, max]) { svg.append(el('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), stroke: '#313244', 'stroke-dasharray': '3 3' })); const t = el('text', { x: L - 4, y: Y(v) + 3, 'text-anchor': 'end', fill: '#a6adc8', 'font-size': 9 }); t.textContent = String(v); svg.append(t); }
+  svg.append(el('polyline', { points: pts.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' '), fill: 'none', stroke: '#89b4fa', 'stroke-width': 2 }));
+  pts.forEach((v, i) => svg.append(el('circle', { cx: X(i), cy: Y(v), r: i === pts.length - 1 ? 3.5 : 2, fill: i === pts.length - 1 ? '#a6e3a1' : '#89b4fa' })));
+  const last = el('text', { x: W - R, y: H - 4, 'text-anchor': 'end', fill: '#a6e3a1', 'font-size': 10 }); last.textContent = `現在 ${pts[pts.length - 1]}（${pts.length - 1}戦）`; svg.append(last);
+  return svg;
+}
+function buildRatingChart(rh) {
+  const box = document.createElement('div'), head = document.createElement('div'), host = document.createElement('div');
+  head.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:4px'; const title = document.createElement('b'); title.textContent = 'レート推移（直近100戦まで）'; title.style.flex = '1'; head.append(title);
+  const draw = kind => { host.replaceChildren(buildRatingSvg(kind === 'cpu' ? rh.cpu : rh.human)); bH.className = kind === 'cpu' ? 'alt' : ''; bC.className = kind === 'cpu' ? '' : 'alt'; };
+  const mk = (t, k) => { const b = document.createElement('button'); b.textContent = t; b.style.cssText = 'width:auto;min-width:0;padding:3px 10px;font-size:.75rem'; b.onclick = () => draw(k); return b; };
+  const bH = mk('対人', 'human'), bC = mk('COM戦', 'cpu'); head.append(bH, bC); box.append(head, host); draw(rh.human.length || !rh.cpu.length ? 'human' : 'cpu');
+  return box;
+}
+function buildHistoryList(rows) {
+  const box = document.createElement('div'); const title = document.createElement('b'); title.textContent = '対戦履歴（直近20戦）'; box.append(title);
+  if (!rows.length) { const t = document.createElement('div'); t.style.cssText = 'font-size:.8rem;color:var(--sub);padding:6px 0'; t.textContent = 'まだ対戦履歴がありません'; box.append(t); return box; }
+  const KIND = { human: '対人', cpu: 'COM', team: 'チーム', other: '対戦' };
+  for (const r of rows) {
+    const row = document.createElement('div'); row.className = 'rank-row'; row.style.cssText = 'gap:6px;flex-wrap:nowrap';
+    const dt = new Date(r.at), when = `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+    const res = document.createElement('b'); res.textContent = r.result === 'win' ? '勝' : r.result === 'quit' ? '中断' : '負'; res.style.cssText = `flex:0 0 2.2em;text-align:center;color:${r.result === 'win' ? '#a6e3a1' : '#f38ba8'}`;
+    const info = document.createElement('span'); info.className = 'nm'; info.title = r.opponents.join('・'); info.textContent = `${KIND[r.kind] || '対戦'}　vs ${r.opponents.join('・') || '-'}`;
+    const ex = document.createElement('span'); ex.className = 'ex'; ex.style.flex = '0 0 auto'; ex.textContent = `${when}・${Math.round(r.durationMs / 1000)}秒`;
+    const ch = document.createElement('span'); ch.className = 'vl'; ch.style.cssText = 'flex:0 0 3.2em;text-align:right'; if (r.ratingKind) { const dlt = r.ratingAfter - r.ratingBefore; ch.textContent = (dlt >= 0 ? '+' : '') + dlt; ch.style.color = dlt >= 0 ? '#a6e3a1' : '#f38ba8'; } else { ch.textContent = '-'; ch.style.color = 'var(--sub)'; }
+    row.append(res, info, ex, ch); box.append(row);
+  }
+  return box;
+}
+async function loadMyPageExtras(body) {
+  const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;margin-top:12px'; body.append(wrap);
+  try {
+    const [rh, hs] = await Promise.all([api('/stats/rating-history', undefined, 'GET'), api('/stats/history?limit=20', undefined, 'GET')]);
+    wrap.replaceChildren(buildRatingChart(rh), buildHistoryList(hs.rows));
+  } catch (_) { wrap.textContent = '対戦履歴を読み込めませんでした'; }
 }
 async function openMyPage() {
   if (!account) return switchScreen('accountScreen');
@@ -4331,7 +4494,13 @@ async function openMyPage() {
   try { renderMyPage(await api('/stats/me', undefined, 'GET')); }
   catch (e) { body.textContent = '読み込めませんでした: ' + (e.message || ''); }
 }
-let rankingType = 'solo';
+let rankingType = 'solo', rankingDayOffset = 0;
+function buildDailyNav(d) {
+  const nav = document.createElement('div'); nav.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:.8rem';
+  const mk = (label, disabled, delta) => { const b = document.createElement('button'); b.className = 'alt'; b.textContent = label; b.disabled = disabled; b.style.cssText = 'width:auto;min-width:0;padding:4px 10px;font-size:.75rem'; b.onclick = () => { rankingDayOffset += delta; openRanking(); }; return b; };
+  const t = document.createElement('div'); t.style.cssText = 'flex:1;text-align:center;color:var(--text)'; t.textContent = `${d.day}${d.offset === 0 ? '（今日）' : ''}　全員同じツモ順`;
+  nav.append(mk('◀ 前の日', d.offset >= 6, 1), t, mk('次の日 ▶', d.offset <= 0, -1)); return nav;
+}
 async function openRanking(type) {
   if (!account) return switchScreen('accountScreen');
   if (type) rankingType = type;
@@ -4341,16 +4510,18 @@ async function openRanking(type) {
   document.getElementById('btnRankCpu').className = rankingType === 'cpu' ? '' : 'alt';
   document.getElementById('btnRankSprint').className = rankingType === 'sprint' ? '' : 'alt';
   document.getElementById('btnRankUltra').className = rankingType === 'ultra' ? '' : 'alt';
+  document.getElementById('btnRankDaily').className = rankingType === 'daily' ? '' : 'alt';
   const body = document.getElementById('rankingBody'); body.textContent = '読み込み中…';
   try {
-    const d = await api('/leaderboard?type=' + rankingType, undefined, 'GET');
-    if (!d.rows.length) { body.textContent = rankingType === 'rating' ? 'まだランク入りしたプレイヤーはいません（人間同士の対戦を3回すると判定されます）' : rankingType === 'cpu' ? 'まだランク入りしたプレイヤーはいません（COMとの対戦を3回すると判定されます）' : rankingType === 'sprint' ? 'まだ40ラインをクリアした記録がありません' : 'まだスコアの記録がありません'; return; }
-    body.replaceChildren(...d.rows.map((r, i) => {
+    const d = await api('/leaderboard?type=' + rankingType + (rankingType === 'daily' ? '&offset=' + rankingDayOffset : ''), undefined, 'GET');
+    const nav = rankingType === 'daily' ? buildDailyNav(d) : null;
+    if (!d.rows.length) { body.textContent = rankingType === 'rating' ? 'まだランク入りしたプレイヤーはいません（人間同士の対戦を3回すると判定されます）' : rankingType === 'cpu' ? 'まだランク入りしたプレイヤーはいません（COMとの対戦を3回すると判定されます）' : rankingType === 'sprint' ? 'まだ40ラインをクリアした記録がありません' : 'まだスコアの記録がありません'; { const t = document.createElement('div'); t.textContent = rankingType === 'daily' ? 'この日の記録はまだありません' : body.textContent; body.replaceChildren(...(nav ? [nav] : []), t); } return; }
+    body.replaceChildren(...(nav ? [nav] : []), ...d.rows.map((r, i) => {
       const row = document.createElement('div'); row.className = 'rank-row' + (r.id === d.me ? ' me' : '');
       const no = document.createElement('span'); no.className = 'no'; no.textContent = String(i + 1);
       const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.id;
       const ex = document.createElement('span'); ex.className = 'ex';
-      ex.textContent = rankingType === 'rating' ? `${r.vsGames}戦${r.wins}勝` : rankingType === 'cpu' ? `${r.games}戦` : (rankingType === 'sprint' || rankingType === 'ultra') ? `${r.games}回` : `LV${r.level} / ${r.lines}ライン`;
+      ex.textContent = rankingType === 'rating' ? `${r.vsGames}戦${r.wins}勝` : rankingType === 'cpu' ? `${r.games}戦` : rankingType === 'daily' ? `LV${r.level} / ${r.lines}ライン・${r.games}回` : (rankingType === 'sprint' || rankingType === 'ultra') ? `${r.games}回` : `LV${r.level} / ${r.lines}ライン`;
       const vl = document.createElement('span'); vl.className = 'vl'; vl.textContent = rankingType === 'sprint' ? fmtTime(r.value) : fmtN(r.value);
       row.append(no, nm, ex, vl); return row;
     }));
@@ -4365,6 +4536,7 @@ document.getElementById('btnRankRating').onclick = () => openRanking('rating');
 document.getElementById('btnRankCpu').onclick = () => openRanking('cpu');
 document.getElementById('btnRankSprint').onclick = () => openRanking('sprint');
 document.getElementById('btnRankUltra').onclick = () => openRanking('ultra');
+document.getElementById('btnRankDaily').onclick = () => { rankingDayOffset = 0; openRanking('daily'); };
 document.getElementById('btnRankingBack').onclick = () => switchScreen('lobbyScreen');
 
 let adminReplayCache = [];
@@ -4377,9 +4549,10 @@ function adminButton(label, onClick, cls) {
   return b;
 }
 
-function showAdminTab(name) {
+function showAdminTab(name, auto) {
   document.querySelectorAll('.admin-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   ['Players', 'Replays', 'Templates', 'Dev'].forEach(n => document.getElementById('adminTab' + n).classList.toggle('active', n === name));
+  if (auto) return;   // セッションの定期更新などで呼ばれた時は、見ているタブの内容を作り直さない（リプレイ再生中に一覧が更新されて、画面が上へ飛ぶのを防ぐ）
   if (name === 'Templates') { stopReplayPlayback(); document.getElementById('replayPlayer').style.display = 'none'; }
   if (name === 'Players') refreshCloudPlayers();
   if (name === 'Replays') refreshCloudReplays();
@@ -4404,7 +4577,7 @@ function applyAdminTabs() {
   document.getElementById('bulkDeleteBox').style.display = hasPerm('replay.delete') ? 'flex' : 'none';
   const active = document.querySelector('.admin-tab.active');
   const keep = active && vis[active.dataset.tab] ? active.dataset.tab : order.find(n => vis[n]);
-  if (keep) showAdminTab(keep);
+  if (keep) showAdminTab(keep, !!active && active.dataset.tab === keep);
   return !!keep;
 }
 function openAdminScreen() {
@@ -5104,7 +5277,7 @@ function renderCloudReplays() {
 }
 async function refreshCloudReplays() {
   const root = document.getElementById('cloudReplays');
-  root.textContent = '読み込み中…';
+  if (!root.children.length) root.textContent = '読み込み中…';   // 一覧がある時は消さずに、読み込めたら差し替える（高さが変わって画面が動くのを防ぐ）
   try {
     await fetchAdminReplays();
     updateReplayUserOptions();
