@@ -2190,7 +2190,7 @@ function renderRoomPanel() {
 function leaveRoom() {
   const p = peer;
   stopRoomAnnounce(); stopCpus(); cpuPlayers = [];
-  peer = null; conn = null; guests = []; spectators = []; spectateLast.clear(); lastEndMsg = null; isSpectator = false; specView.clear(); isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = ''; roomTeams = 0; hostTeam = 0; vsTeams = 0; teamOutOrder = [];
+  seedPrefetch = null; rematchSeeding = false; peer = null; conn = null; guests = []; spectators = []; spectateLast.clear(); lastEndMsg = null; isSpectator = false; specView.clear(); isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = ''; roomTeams = 0; hostTeam = 0; vsTeams = 0; teamOutOrder = [];
   if (p) { try { p.destroy(); } catch (_) {} }
   oppView.clear();
   const ob = document.getElementById('oppBoards'); ob.classList.remove('active'); ob.replaceChildren();
@@ -2698,6 +2698,7 @@ function applyDead(seat, place) {
   if (v) { v.dead = true; v.title.textContent = `${v.name} ✕${place | 0 ? (place | 0) + '位' : ''}`; v.canvas.style.opacity = '.45'; }
 }
 function applyEnd(d) {
+  if (isHost) startSeedPrefetch();   // 結果を見ている間に、次の対戦用の「組めるツモ順」を裏で探しておく
   roomState = 'result';
   const rank = Array.isArray(d.ranking) ? d.ranking : [];
   for (const r of rank) { const v = vsRoster.find(x => x.seat === r.seat); if (v) v.place = r.place | 0; }
@@ -2781,7 +2782,7 @@ document.getElementById('btnRematch').onclick = () => {
   if (!isVsMode) { if (isEnded) startSoloGame(); return; }
   if (!isEnded || rematchRequested || roomState !== 'result' || !vsHasPeers()) return;
   rematchRequested = true;
-  if (isHost) { broadcastRematchStatus(); tryStartRematch(); } else safeSend(conn, { type: 'REMATCH' });
+  if (isHost) { startSeedPrefetch(); broadcastRematchStatus(); tryStartRematch(); } else safeSend(conn, { type: 'REMATCH' });
   updateRematchStatus();
 };
 function broadcastRematchStatus() {
@@ -2796,7 +2797,17 @@ function tryStartRematch() {
   if (!isHost || roomState !== 'result' || !rematchRequested) return;
   guests = guests.filter(g => g.conn && g.conn.open);
   if ((!guests.length && !cpuPlayers.length) || !guests.every(g => g.wantsRematch)) return;
-  if (wantBuildableSeed() && (!vsRule.nextMode || vsRule.nextMode === 'common')) { const f = findBuildableSeed(1500); if (f) { pendingBuildableSeed = f.seed; toast(`「${f.template}」${f.pc ? '（パフェまで届く順）' : ''}が組めるツモ順で再戦します`); } }   // 再戦は短い探索（最大1.5秒）
+  if (wantBuildableSeed() && (!vsRule.nextMode || vsRule.nextMode === 'common')) {
+    // 再戦でも、最初の対戦と同じだけ時間をかけて探す（以前は1.5秒で諦めてランダムになり、再戦を重ねると効かなくなっていた）。
+    // 対戦が終わった時点から裏で探し始めているので、ふつうは待たずに始まる
+    if (rematchSeeding) return;
+    if (!seedPrefetch) startSeedPrefetch();
+    const job = seedPrefetch;
+    if (job && !job.done) { rematchSeeding = true; toast('組めるツモ順を探しています…'); job.promise.then(() => { rematchSeeding = false; tryStartRematch(); }); return; }
+    if (job && job.found) { pendingBuildableSeed = job.found.seed; toast(`「${job.found.template}」${job.found.pc ? '（パフェまで届く順）' : ''}が組めるツモ順で再戦します`); }
+    else if (job) toast('組めるツモ順が見つからないため、ランダムで再戦します');
+    seedPrefetch = null;
+  }
   newRound(); assignSeats(); prepareTeams();
   vsRoster = makeRoster(); roomState = 'playing';
   spectateLast.clear(); lastEndMsg = null;
@@ -4093,7 +4104,15 @@ async function findBuildableSeedAsync(maxMs = 8000) {   // 画面が固まらな
   }
   return null;
 }
-let pendingBuildableSeed = null, seedSearching = false;
+let pendingBuildableSeed = null, seedSearching = false, rematchSeeding = false;
+let seedPrefetch = null;   // { promise, done, found } 対戦が終わった時点から、次の対戦用の「組めるツモ順」を裏で探しておく
+function startSeedPrefetch() {
+  if (!isHost || !wantBuildableSeed() || (vsRule.nextMode && vsRule.nextMode !== 'common')) return;
+  if (seedPrefetch || pendingBuildableSeed != null) return;
+  const job = { found: null, done: false };
+  job.promise = findBuildableSeedAsync(12000).then(f => { job.found = f; job.done = true; return f; }).catch(() => { job.done = true; return null; });
+  seedPrefetch = job;
+}
 const wantBuildableSeed = () => adminMode && document.getElementById('ensureTemplatePieces').checked;
 // 対戦（COM戦・対人戦）の開始前に呼ぶ。ホストが「組めるツモ順」を指定している時、全員共通のツモ順（common）でそのシードを使う
 async function prepareMatchSeed() {
