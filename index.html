@@ -515,6 +515,18 @@
       </div>
       <div id="cpuBattleStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">ツモ順ライブラリ（組めるツモ順の蓄積）</div>
+      <div class="muted" style="font-size:.78rem">有効なテンプレごとに、「組めるツモ順（パフェ積みはパフェまで届く順）」をバックグラウンドで探し続けて、サーバーに貯めます。ソロ・COM戦・対人戦の「組めるツモ順で開始」は、まずここから選ぶので、その場で探すより確実で、すぐ始まります（見つからない時だけ、短い時間で探します）。シードは数値だけなので、1テンプレあたり最大4,000個でも約24KBです。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button id="btnSeedCollect">蓄積を開始</button>
+        <button id="btnSeedStop" class="danger" style="display:none">停止</button>
+        <span style="font-size:.8rem">並列数</span><select id="seedCollectPar" style="width:auto"></select>
+        <span style="font-size:.8rem">1テンプレ</span><input type="number" id="seedCollectTarget" value="300" min="10" max="4000" step="10" style="width:5em"><span style="font-size:.8rem">個まで</span>
+        <button id="btnSeedRefresh" class="alt">一覧を更新</button>
+      </div>
+      <div id="seedCollectStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
+      <div id="seedBankList" style="display:flex;flex-direction:column;gap:2px;font-size:.8rem"></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <div style="font-weight:700">全員の戦績・レート（非公開の人も含む）</div>
       <div class="muted" style="font-size:.78rem">開発者のレートは1850固定です。非公開にしているプレイヤーも、ここでは確認できます。</div>
       <button id="btnAdminStats" class="alt">読み込む</button>
@@ -1306,8 +1318,8 @@ async function startSoloGame() {
   } else if (wantBuildableSeed()) {
     if (seedSearching) return;
     seedSearching = true; toast('組めるツモ順を探しています…');
-    let found = null; try { found = await findBuildableSeedAsync(8000); } finally { seedSearching = false; }
-    if (found) { seed = found.seed; toast(`「${found.template}」${found.pc ? '（パフェまで届く順）' : ''}が組めるツモ順で開始します`); }
+    let found = null; try { found = await resolveBuildableSeed(3000); } finally { seedSearching = false; }
+    if (found) { seed = found.seed; toast(seedFoundText(found) + 'で開始します'); }
     else { seed = Math.floor(Math.random() * 1000000000); toast('組めるツモ順が見つからないため、ランダムで開始します'); }
   } else {
     seed = Math.floor(Math.random() * 1000000000);
@@ -2803,8 +2815,8 @@ function tryStartRematch() {
     if (rematchSeeding) return;
     if (!seedPrefetch) startSeedPrefetch();
     const job = seedPrefetch;
-    if (job && !job.done) { rematchSeeding = true; toast('組めるツモ順を探しています…'); job.promise.then(() => { rematchSeeding = false; tryStartRematch(); }); return; }
-    if (job && job.found) { pendingBuildableSeed = job.found.seed; toast(`「${job.found.template}」${job.found.pc ? '（パフェまで届く順）' : ''}が組めるツモ順で再戦します`); }
+    if (job && !job.done) { job.gentle = false; if (job.skipDelay) job.skipDelay(); rematchSeeding = true; toast('組めるツモ順を探しています…'); job.promise.then(() => { rematchSeeding = false; tryStartRematch(); }); return; }   // 再戦を押したら、全力で探す
+    if (job && job.found) { pendingBuildableSeed = job.found.seed; toast(seedFoundText(job.found) + 'で再戦します'); }
     else if (job) toast('組めるツモ順が見つからないため、ランダムで再戦します');
     seedPrefetch = null;
   }
@@ -3945,7 +3957,7 @@ function solveTemplate(startBoard, seq, startHold, startCanHold, variant, firstS
   };
   function rec(b, i, hold, canHoldNow, filledNow, isFirst) {
     if (filledNow >= total) return [];
-    if (i >= seq.length || nodes > nodeLimit || ((nodes & 31) === 0 && performance.now() > templateSolveDeadline)) return null;
+    if (i >= seq.length || nodes > nodeLimit || ((nodes & 3) === 0 && performance.now() > templateSolveDeadline)) return null;
     const key = autoBoardKey(b) + '|' + i + '|' + (hold || '-') + '|' + (canHoldNow ? 1 : 0);
     if (fail.has(key)) return null;
     nodes++;
@@ -4070,16 +4082,19 @@ function planAutoBuildCore(startPose) {
 
 // 組めるツモ順（シード）を探す。選んでいるテンプレ（なければ有効なテンプレ全部）が、空の盤面から組めるシードを探す。
 // パフェ積みは、組み終えた後に残りのツモ（HOLD含む）でパフェに届くシードだけを選ぶ。ソロ・COM戦・対人戦（ホスト）で使う。
+// 1つのテンプレについて、このシードで組めるか（パフェ積みはパフェまで届くか）を調べる。1回の計算は短い時間（ms）に収める
+function trySeedForVariant(seed, variant, empty, emptyRows, budgetMs = 40, tailNodes = 3000) {
+  const isPc = !!cpuIsPcVariant(variant);
+  const seq = generateBagPieces(seededRandom(seed), templatePieceCount(variant) + (isPc ? 12 : 15));   // 先頭は出現中のミノ、その後ろがNEXTと次のbag
+  templateSolveDeadline = performance.now() + budgetMs;
+  let plan = null;
+  try { plan = solveTemplate(empty, seq, null, true, variant, AUTO_SPAWN, 1500); } finally { templateSolveDeadline = Infinity; }
+  if (!plan) return null;
+  if (isPc && !cpuPcTail({ rows: emptyRows, hold: null }, seq, plan, tailNodes)) return null;   // パフェ到達チェック（そっと探す時は探索量を減らして、1回を短く）
+  return { seed, template: variant.name, pc: isPc };
+}
 function trySeedForTemplates(seed, variants, empty, emptyRows) {
-  for (const variant of variants) {
-    const isPc = !!cpuIsPcVariant(variant);
-    // 先頭は出現中のミノ、その後ろがNEXTと次のbag
-    const seq = generateBagPieces(seededRandom(seed), templatePieceCount(variant) + (isPc ? 12 : 15));
-    const plan = solveTemplate(empty, seq, null, true, variant, AUTO_SPAWN, 3000);
-    if (!plan) continue;
-    if (isPc && !cpuPcTail({ rows: emptyRows, hold: null }, seq, plan, 4000)) continue;
-    return { seed, template: variant.name, pc: isPc };
-  }
+  for (const variant of variants) { const f = trySeedForVariant(seed, variant, empty, emptyRows); if (f) return f; }
   return null;
 }
 function findBuildableSeed(maxMs = 1500) {
@@ -4092,25 +4107,88 @@ function findBuildableSeed(maxMs = 1500) {
   }
   return null;
 }
-async function findBuildableSeedAsync(maxMs = 8000) {   // 画面が固まらないよう、途中で処理を譲りながら探す
+// 画面が固まらないよう、短い計算ごとに処理を譲りながら探す（1回の計算は最大で数十ms）。
+// state.gentle が true の間は「裏でそっと」探す（計算 約12ms → 休み 40ms ＝ CPU使用は2割ほど）。操作中の画面に影響しないようにするため。
+async function findBuildableSeedAsync(maxMs = 3000, state = {}) {
   const variants = autoCandidateVariants();
   if (!variants.length) return null;
   const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0), t0 = performance.now();
-  let lastYield = t0;
+  let sliceStart = performance.now();
   while (performance.now() - t0 < maxMs) {
-    const found = trySeedForTemplates(Math.floor(Math.random() * 1000000000), variants, empty, emptyRows);
-    if (found) return found;
-    if (performance.now() - lastYield > 40) { await new Promise(r => setTimeout(r, 0)); lastYield = performance.now(); }
+    if (state.shouldStop && state.shouldStop()) return null;   // 部屋を出た等で不要になったら止める
+    const seed = Math.floor(Math.random() * 1000000000);
+    for (const variant of variants) {
+      const found = trySeedForVariant(seed, variant, empty, emptyRows, state.gentle ? 15 : 40, state.gentle ? 700 : 3000);
+      if (found) return found;
+      const slice = state.gentle ? 12 : 30;
+      if (performance.now() - sliceStart > slice) { await new Promise(r => setTimeout(r, state.gentle ? 40 : 0)); sliceStart = performance.now(); }
+    }
   }
   return null;
 }
+
+// ---- ツモ順ライブラリ（開発者）----
+// そのテンプレが組める（パフェ積みはパフェまで届く）シードを、サーバーに貯めておき、対戦・ソロの開始時にそこから選ぶ。
+const SEED_RULES_VERSION = 'r2';   // 出現位置・操作などのルールを変えたら上げる（古いライブラリは使われなくなる）
+function tplKeyOf(variant) {
+  let h = 2166136261; const t = SEED_RULES_VERSION + '|' + variantRows(variant).join('/') + '|' + (cpuIsPcVariant(variant) ? 'P' : 'N');
+  for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return SEED_RULES_VERSION + '_' + h.toString(16).padStart(8, '0');
+}
+const seedBankCache = new Map();   // key -> { seeds, at }
+let recentBankSeeds = [];
+try { recentBankSeeds = JSON.parse(localStorage.getItem('p2pSeedRecentV1') || '[]').filter(Number.isFinite).slice(-300); } catch (_) {}
+function rememberBankSeed(seed) { recentBankSeeds.push(seed); recentBankSeeds = recentBankSeeds.slice(-300); try { localStorage.setItem('p2pSeedRecentV1', JSON.stringify(recentBankSeeds)); } catch (_) {} }
+async function bankSeedsFor(key) {
+  const c = seedBankCache.get(key);
+  if (c && Date.now() - c.at < 600000) return c.seeds;
+  try { const d = await api('/seed-bank?key=' + encodeURIComponent(key), undefined, 'GET'); seedBankCache.set(key, { seeds: d.seeds.slice(), at: Date.now() }); return d.seeds.slice(); }
+  catch (_) { return []; }
+}
+// ライブラリから、組めるツモ順を選ぶ（優先度の高いテンプレから。直近に使ったシードは避け、念のため組めるか確かめてから使う）
+async function pickSeedFromBank() {
+  if (!account) return null;
+  const variants = autoCandidateVariants();
+  if (!variants.length) return null;
+  const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0);
+  for (const variant of variants) {
+    const key = tplKeyOf(variant), all = await bankSeedsFor(key);
+    if (!all.length) continue;
+    const recent = new Set(recentBankSeeds);
+    let pool = all.filter(x => !recent.has(x)); if (!pool.length) pool = all.slice();
+    const bad = [];
+    for (let tries = 0; tries < 4 && pool.length; tries++) {
+      const seed = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+      if (trySeedForVariant(seed, variant, empty, emptyRows, 80, 3000)) {
+        rememberBankSeed(seed);
+        if (bad.length) reportBadSeeds(key, bad);
+        return { seed, template: variant.name, pc: !!cpuIsPcVariant(variant), fromBank: true };
+      }
+      bad.push(seed);   // 組めなくなっていたシード（ルール変更など）は、ライブラリから外す
+    }
+    if (bad.length) reportBadSeeds(key, bad);
+  }
+  return null;
+}
+function reportBadSeeds(key, seeds) {
+  const c = seedBankCache.get(key); if (c) c.seeds = c.seeds.filter(x => !seeds.includes(x));
+  api('/seed-bank/remove', { key, seeds }).catch(() => {});
+}
+// ライブラリ → なければ短い時間だけその場で探す
+async function resolveBuildableSeed(liveMs = 3000, state = {}) {
+  const b = await pickSeedFromBank();
+  if (b) return b;
+  return findBuildableSeedAsync(liveMs, state);
+}
+const seedFoundText = f => `「${f.template}」${f.pc ? '（パフェまで届く順）' : ''}が組めるツモ順${f.fromBank ? '（ライブラリから）' : ''}`;
+
 let pendingBuildableSeed = null, seedSearching = false, rematchSeeding = false;
 let seedPrefetch = null;   // { promise, done, found } 対戦が終わった時点から、次の対戦用の「組めるツモ順」を裏で探しておく
 function startSeedPrefetch() {
   if (!isHost || !wantBuildableSeed() || (vsRule.nextMode && vsRule.nextMode !== 'common')) return;
   if (seedPrefetch || pendingBuildableSeed != null) return;
-  const job = { found: null, done: false };
-  job.promise = findBuildableSeedAsync(12000).then(f => { job.found = f; job.done = true; return f; }).catch(() => { job.done = true; return null; });
+  const job = { found: null, done: false, gentle: true, shouldStop: () => !isHost || roomState === 'idle' };   // 結果を見ている間の裏の探索は、画面の動きを妨げないよう控えめに行う
+  job.promise = new Promise(r => { const t = setTimeout(r, 1500); job.skipDelay = () => { clearTimeout(t); r(); }; }).then(() => resolveBuildableSeed(6000, job)).then(f => { job.found = f; job.done = true; return f; }).catch(() => { job.done = true; return null; });
   seedPrefetch = job;
 }
 const wantBuildableSeed = () => adminMode && document.getElementById('ensureTemplatePieces').checked;
@@ -4121,8 +4199,8 @@ async function prepareMatchSeed() {
   if (vsRule.nextMode && vsRule.nextMode !== 'common') { toast('ツモ順が各自バラバラの設定のため、組めるツモ順の指定は使えません'); return; }
   seedSearching = true; toast('組めるツモ順を探しています…');
   try {
-    const found = await findBuildableSeedAsync(8000);
-    if (found) { pendingBuildableSeed = found.seed; toast(`「${found.template}」${found.pc ? '（パフェまで届く順）' : ''}が組めるツモ順で開始します`); }
+    const found = await resolveBuildableSeed(3000);
+    if (found) { pendingBuildableSeed = found.seed; toast(seedFoundText(found) + 'で開始します'); }
     else toast('組めるツモ順が見つからないため、ランダムで開始します');
   } finally { seedSearching = false; }
 }
@@ -4796,7 +4874,25 @@ function cpuBattleWorkerSource() {
     for (const k of ['Option', 'Image', 'Audio', 'HTMLElement', 'HTMLCanvasElement', 'Event', 'MouseEvent', 'KeyboardEvent', 'FileReader', 'Notification', 'ResizeObserver', 'IntersectionObserver', 'MutationObserver', 'Peer']) if (!(k in self)) self[k] = __noop;
   `;
   const handler = `
-    ;self.onmessage = (e) => {
+    ;let __seedStop = false; const __seedDrop = new Set();
+    async function __seedLoop(d) {
+      const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0);
+      let sliceStart = performance.now();
+      while (!__seedStop) {
+        const seed = Math.floor(Math.random() * 1000000000);
+        for (const j of d.jobs) {
+          if (__seedStop) break;
+          if (__seedDrop.has(j.key)) continue;
+          if (trySeedForVariant(seed, j.variant, empty, emptyRows, 80, 3000)) self.postMessage({ type: 'seed', key: j.key, seed });
+          if (performance.now() - sliceStart > 60) { await new Promise(r => setTimeout(r, 0)); sliceStart = performance.now(); }   // 停止などのメッセージを受け取れるよう、時々処理を譲る
+        }
+      }
+      self.postMessage({ type: 'seedDone' });
+    }
+    self.onmessage = (e) => {
+      if (e.data.job === 'seedStop') { __seedStop = true; return; }
+      if (e.data.job === 'seedDrop') { __seedDrop.add(e.data.key); return; }
+      if (e.data.job === 'seeds') { __seedStop = false; __seedLoop(e.data); return; }
       const { entries, n, common, fast, id } = e.data;
       const es = entries.map(c => ({ ...c, params: fast ? cpuFastParams(c.params) : c.params }));
       for (let i = 0; i < n; i++) {
@@ -4962,6 +5058,112 @@ async function openStatsEditor(id) {
     box.replaceChildren(title, note, grid, msg, bar);
   } catch (e) { box.textContent = '読み込めませんでした: ' + e.message; }
 }
+
+// ---- ツモ順ライブラリの蓄積（開発者タブ）----
+const seedCollector = { running: false, workers: [], pending: new Map(), counts: new Map(), jobs: [], target: 300, found: 0, startAt: 0, flushTimer: null, statusTimer: null, onMain: false };
+const fmtSec = ms => `${Math.floor(ms / 60000)}分${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}秒`;
+function seedStatus(text) { document.getElementById('seedCollectStatus').textContent = text; }
+async function refreshSeedBankList() {
+  const box = document.getElementById('seedBankList');
+  try {
+    const d = await api('/seed-bank/summary', undefined, 'GET');
+    const byKey = new Map(d.rows.map(r => [r.key, r]));
+    const variants = getTemplateVariants().filter(variantIsValid), seen = new Set(), nodes = [];
+    const row = (name, pc, count, key, stale) => {
+      const el = document.createElement('div'); el.className = 'rank-row'; el.style.gap = '6px';
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = name + (pc ? '［パフェ］' : '') + (stale ? '（現在のテンプレにない）' : ''); nm.title = nm.textContent;
+      const vl = document.createElement('span'); vl.className = 'vl'; vl.textContent = `${count.toLocaleString()}個`;
+      const bt = document.createElement('button'); bt.className = 'alt'; bt.textContent = '空にする'; bt.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:2px 8px;font-size:.7rem';
+      bt.onclick = async () => { if (!confirm(`「${name}」のライブラリを空にします。よろしいですか？`)) return; try { await api('/seed-bank/remove', { key, all: true }); seedBankCache.delete(key); refreshSeedBankList(); } catch (e) { toast('削除できませんでした: ' + e.message); } };
+      el.append(nm, vl, bt); return el;
+    };
+    for (const v of variants) { const key = tplKeyOf(v); seen.add(key); const r = byKey.get(key); nodes.push(row(v.name, !!cpuIsPcVariant(v), r ? r.count : 0, key, false)); }
+    for (const r of d.rows) if (!seen.has(r.key)) nodes.push(row(r.name || r.key, !!r.pc, r.count, r.key, true));
+    box.replaceChildren(...nodes);
+    if (!nodes.length) box.textContent = '有効なテンプレがありません';
+    return byKey;
+  } catch (e) { box.textContent = '読み込めませんでした: ' + e.message; return new Map(); }
+}
+async function flushSeedPending(force) {
+  const c = seedCollector;
+  for (const job of c.jobs) {
+    const list = c.pending.get(job.key); if (!list || !list.length) continue;
+    if (!force && list.length < 30) continue;
+    c.pending.set(job.key, []);
+    for (let i = 0; i < list.length; i += 500) {
+      try {
+        const r = await api('/seed-bank/add', { key: job.key, name: job.name, pc: job.pc, seeds: list.slice(i, i + 500) });
+        c.counts.set(job.key, r.count); seedBankCache.delete(job.key);
+        if (r.capped || r.count >= c.target) { c.workers.forEach(w => w.postMessage({ job: 'seedDrop', key: job.key })); job.done = true; }
+      } catch (e) { (c.pending.get(job.key) || []).push(...list.slice(i, i + 500)); }
+    }
+  }
+  if (c.running && c.jobs.length && c.jobs.every(j => j.done)) stopSeedCollect('すべてのテンプレが目標数に達しました');
+}
+function seedStatusTick() {
+  const c = seedCollector; if (!c.running) return;
+  seedStatus(`蓄積中… ${fmtSec(Date.now() - c.startAt)}　見つかった ${c.found} 個（並列 ${c.onMain ? '1（このページ内）' : c.workers.length}）\n` + c.jobs.map(j => `${j.name}${j.pc ? '［パフェ］' : ''}: ${(c.counts.get(j.key) || 0) + (c.pending.get(j.key) || []).length} / ${c.target}${j.done ? '（達成）' : ''}`).join('\n'));
+}
+async function stopSeedCollect(reason) {
+  const c = seedCollector; if (!c.running) return;
+  c.running = false; clearInterval(c.flushTimer); clearInterval(c.statusTimer);
+  c.workers.forEach(w => { try { w.postMessage({ job: 'seedStop' }); w.terminate(); } catch (_) {} }); c.workers = [];
+  c.jobs.forEach(j => { j.done = true; });
+  await flushSeedPending(true);
+  document.getElementById('btnSeedCollect').style.display = ''; document.getElementById('btnSeedStop').style.display = 'none';
+  seedStatus(`${reason || '停止しました'}（今回 ${c.found} 個を追加）`);
+  refreshSeedBankList();
+}
+async function startSeedCollect() {
+  const c = seedCollector; if (c.running) return;
+  const variants = getTemplateVariants().filter(variantIsValid);
+  if (!variants.length) { seedStatus('有効なテンプレがありません'); return; }
+  c.target = Math.max(10, Math.min(4000, parseInt(document.getElementById('seedCollectTarget').value, 10) || 300));
+  const byKey = await refreshSeedBankList();
+  c.jobs = variants.map(v => ({ key: tplKeyOf(v), name: v.name, pc: !!cpuIsPcVariant(v), variant: v, done: false }));
+  c.pending = new Map(); c.counts = new Map(); c.found = 0; c.startAt = Date.now();
+  for (const j of c.jobs) { const n = byKey.has(j.key) ? byKey.get(j.key).count : 0; c.counts.set(j.key, n); c.pending.set(j.key, []); if (n >= c.target) j.done = true; }
+  if (c.jobs.every(j => j.done)) { seedStatus('すべてのテンプレが目標数に達しています（目標を増やすか、空にしてください）'); return; }
+  c.running = true; c.onMain = false;
+  document.getElementById('btnSeedCollect').style.display = 'none'; document.getElementById('btnSeedStop').style.display = '';
+  const par = Math.max(1, parseInt(document.getElementById('seedCollectPar').value, 10) || 1);
+  const jobsMsg = c.jobs.filter(j => !j.done).map(j => ({ key: j.key, variant: j.variant }));
+  const onSeed = (key, seed) => {
+    const job = c.jobs.find(j => j.key === key); if (!job || job.done) return;
+    const list = c.pending.get(key) || c.pending.set(key, []).get(key);
+    list.push(seed); c.found++;
+    if ((c.counts.get(key) || 0) + list.length >= c.target) { job.done = true; c.workers.forEach(w => w.postMessage({ job: 'seedDrop', key })); flushSeedPending(true); }   // 目標数に届いたテンプレの探索は止める
+  };
+  let started = false;
+  try {
+    if (typeof Worker !== 'undefined') {
+      const url = URL.createObjectURL(new Blob([cpuBattleWorkerSource()], { type: 'text/javascript' }));
+      for (let i = 0; i < par; i++) {
+        const w = new Worker(url); c.workers.push(w);
+        w.onmessage = ev => { if (ev.data.type === 'seed') onSeed(ev.data.key, ev.data.seed); };
+        w.onerror = () => {};
+        w.postMessage({ job: 'seeds', jobs: jobsMsg });
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 5000); started = true;
+    }
+  } catch (_) { c.workers = []; started = false; }
+  if (!started) {   // Workerが使えない環境: このページの中で、そっと探す
+    c.onMain = true;
+    const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0);
+    (async () => { while (c.running) { const seed = Math.floor(Math.random() * 1000000000); for (const j of c.jobs) { if (!c.running) break; if (j.done) continue; if (trySeedForVariant(seed, j.variant, empty, emptyRows, 15, 700)) onSeed(j.key, seed); await new Promise(r => setTimeout(r, 30)); } } })();
+  }
+  c.flushTimer = setInterval(() => flushSeedPending(false), 15000);
+  c.statusTimer = setInterval(seedStatusTick, 1000); seedStatusTick();
+}
+{
+  const sel = document.getElementById('seedCollectPar'), cores = Math.max(1, (navigator.hardwareConcurrency || 4) - 1);
+  for (let i = 1; i <= Math.min(8, cores); i++) sel.append(new Option(`${i}`, String(i)));
+  sel.value = String(Math.max(1, Math.min(4, Math.floor(cores / 2))));
+}
+document.getElementById('btnSeedCollect').onclick = startSeedCollect;
+document.getElementById('btnSeedStop').onclick = () => stopSeedCollect('停止しました');
+document.getElementById('btnSeedRefresh').onclick = refreshSeedBankList;
+window.addEventListener('beforeunload', () => { if (seedCollector.running) { try { flushSeedPending(true); } catch (_) {} } });
 document.getElementById('btnAdminStats').onclick = async () => {
   const body = document.getElementById('adminStatsBody'); body.textContent = '読み込み中…';
   try {
