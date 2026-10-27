@@ -523,6 +523,7 @@
         <span style="font-size:.8rem">並列数</span><select id="seedCollectPar" style="width:auto"></select>
         <span style="font-size:.8rem">1テンプレ</span><input type="number" id="seedCollectTarget" value="300" min="10" max="4000" step="10" style="width:5em"><span style="font-size:.8rem">個まで</span>
         <button id="btnSeedRefresh" class="alt">一覧を更新</button>
+        <span style="font-size:.8rem">末尾から削除する数</span><input type="number" id="seedRemoveN" value="3" min="1" max="4000" style="width:4.5em">
       </div>
       <div id="seedCollectStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
       <div id="seedBankList" style="display:flex;flex-direction:column;gap:2px;font-size:.8rem"></div>
@@ -2464,14 +2465,14 @@ function onHostData(d) {
       renderRoomPanel(); break;
     case 'FULL': toast(String(d.reason || '参加できません')); leaveRoom(); break;
     case 'RULE':
-      vsRule = d.rule; setRosterFromHost(d); roomState = 'playing'; startVsGame(); break;
+      vsRule = d.rule; setRosterFromHost(d); roomState = 'playing'; afterPersonalSeed(startVsGame); break;
     case 'POS': drawOpp(d.p, d.board, d.cur); break;
     case 'LOCK': drawOpp(d.p, d.board, null); break;
     case 'ATTACK': receiveAttack(d.holes); break;
     case 'DEAD': applyDead(d.p, d.place); break;
     case 'END': applyEnd(d); break;
     case 'REMATCH_STATUS': rematchReady = Array.isArray(d.ready) ? d.ready : []; rematchTotal = d.total | 0; updateRematchStatus(); break;
-    case 'REMATCH_START': vsRule = d.rule; setRosterFromHost(d); roomState = 'playing'; resetForRematch(); break;
+    case 'REMATCH_START': vsRule = d.rule; setRosterFromHost(d); roomState = 'playing'; afterPersonalSeed(resetForRematch); break;
   }
 }
 function onHostClosed() {
@@ -2813,6 +2814,8 @@ function tryStartRematch() {
     // 再戦でも、最初の対戦と同じだけ時間をかけて探す（以前は1.5秒で諦めてランダムになり、再戦を重ねると効かなくなっていた）。
     // 対戦が終わった時点から裏で探し始めているので、ふつうは待たずに始まる
     if (rematchSeeding) return;
+    // 結果画面でテンプレの表示・選択を変えた場合、先に探しておいたツモ順は前のテンプレ用なので捨てて、いまのテンプレで探し直す
+    if (seedPrefetch && seedPrefetch.sig !== freshTemplateSig()) { seedPrefetch.shouldStop = () => true; seedPrefetch = null; }
     if (!seedPrefetch) startSeedPrefetch();
     const job = seedPrefetch;
     if (job && !job.done) { job.gentle = false; if (job.skipDelay) job.skipDelay(); rematchSeeding = true; toast('組めるツモ順を探しています…'); job.promise.then(() => { rematchSeeding = false; tryStartRematch(); }); return; }   // 再戦を押したら、全力で探す
@@ -2825,7 +2828,7 @@ function tryStartRematch() {
   spectateLast.clear(); lastEndMsg = null;
   for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'REMATCH_START', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
   for (const sp of spectators) safeSend(sp.conn, { type: 'REMATCH_START', rule: { ...vsRule }, roster: vsRoster, you: -1 });
-  resetForRematch();
+  afterPersonalSeed(resetForRematch);
 }
 function resetForRematch() {
   settlePendingReplay();
@@ -3580,7 +3583,9 @@ function initGame() {
 
   rngCallCount = 0;
   // Every mode uses a seeded 7-bag; VS "random" mode just uses a private seed.
-  queueSeed = (!isVsMode || vsRule.nextMode === 'common') ? (Number(vsRule.seed) >>> 0) : Math.floor(Math.random() * 1000000000);
+  // 「各自バラバラ」のツモ順でも、「組めるツモ順で開始」を入れている人は、自分用の組めるシードを使う
+  queueSeed = (!isVsMode || vsRule.nextMode === 'common') ? (Number(vsRule.seed) >>> 0) : (personalSeed ? personalSeed.seed : Math.floor(Math.random() * 1000000000));
+  personalSeed = null;
   rnd = seededRandom(queueSeed);
 
   spawnPiece(); drawHold();
@@ -4034,13 +4039,16 @@ function reuseAutoPlan(bKey, sig) {
   }
   return null;
 }
+// 自動積みも次の1手ガイドも、ミノがまだ出現位置の列・向きのままなら、出現位置を出発点に探索する（同じ計画になる）。動かした後だけ現在位置から探す
+function autoPlanStartPose() { return cur && cur.x === AUTO_SPAWN.x && cur.r === AUTO_SPAWN.rot ? AUTO_SPAWN : undefined; }
 function planAutoBuild(startPose) {
   if (!cur) return null;
   const bKey = autoBoardKey(board), sig = templateSig();
   if (!startPose || (startPose.x === AUTO_SPAWN.x && startPose.y === AUTO_SPAWN.y && startPose.rot === AUTO_SPAWN.rot)) {
     const re = reuseAutoPlan(bKey, sig); if (re) return re;
   }
-  const memoKey = [bKey, cur.type, cur.x, cur.y, cur.r, holdPiece, canHold, nextQ.join(''), bag.join(''), sig].join('|');
+  const fs0 = startPose || { x: cur.x, y: cur.y, rot: cur.r };
+  const memoKey = [bKey, cur.type, fs0.x, fs0.y, fs0.rot, holdPiece, canHold, nextQ.join(''), bag.join(''), sig].join('|');   // 探索の出発位置で区別する（ガイドと自動積みで同じ計画を共有するため）
   if (autoPlanMemo.key === memoKey) return autoPlanMemo.plan;
   const plan = planAutoBuildCore(startPose);
   autoPlanMemo = { key: memoKey, plan };
@@ -4062,7 +4070,7 @@ function planAutoBuildCore(startPose) {
         if (impossible.has(variant.name)) continue;   // 1周目で「組めない」と確定したものは再挑戦しない
         if (isPc && (tailFailed.has(variant.name) || tailSpent > 250)) continue;   // パフェ到達チェックに使う時間にも上限
         templateSolveDeadline = Math.min(tEnd, performance.now() + 1200);   // 1つのテンプレに使う時間の上限（組めないテンプレに時間を取られて、後ろの組めるテンプレに届かないのを防ぐ）
-        const seq = [cur.type, ...peekFuturePieces(templatePieceCount(variant) + (isPc ? 12 : 8))];
+        const seq = [cur.type, ...peekFuturePieces(templateSeqLen(variant, isPc) - 1)];
         const plan = solveTemplate(board, seq, holdPiece, canHold, variant, firstStart, nodeLimit);
         if (!plan) { if (!templateLastCut) impossible.add(variant.name); continue; }
         if (isPc) {
@@ -4083,18 +4091,22 @@ function planAutoBuildCore(startPose) {
 // 組めるツモ順（シード）を探す。選んでいるテンプレ（なければ有効なテンプレ全部）が、空の盤面から組めるシードを探す。
 // パフェ積みは、組み終えた後に残りのツモ（HOLD含む）でパフェに届くシードだけを選ぶ。ソロ・COM戦・対人戦（ホスト）で使う。
 // 1つのテンプレについて、このシードで組めるか（パフェ積みはパフェまで届くか）を調べる。1回の計算は短い時間（ms）に収める
-function trySeedForVariant(seed, variant, empty, emptyRows, budgetMs = 40, tailNodes = 3000) {
+// 探索は「ノード数」で打ち切る（ゲーム内の自動積みと同じ6000）。時間は安全のための上限だけにする。
+// 以前は短い時間（15〜80ms）で打ち切っていたため、背の高い・手数の多いテンプレでは、組めるツモ順を取りこぼして0個のままになっていた。
+// 時間切れで null になった場合は trySeedForVariant.lastCut が true（「組めない」と確定したわけではない）
+const templateSeqLen = (variant, isPc) => templatePieceCount(variant) + (isPc ? 12 : 15);
+function trySeedForVariant(seed, variant, empty, emptyRows, budgetMs = 1500, tailNodes = 4000) {
   const isPc = !!cpuIsPcVariant(variant);
-  const seq = generateBagPieces(seededRandom(seed), templatePieceCount(variant) + (isPc ? 12 : 15));   // 先頭は出現中のミノ、その後ろがNEXTと次のbag
+  const seq = generateBagPieces(seededRandom(seed), templateSeqLen(variant, isPc));   // 先頭は出現中のミノ、その後ろがNEXTと次のbag
   templateSolveDeadline = performance.now() + budgetMs;
   let plan = null;
-  try { plan = solveTemplate(empty, seq, null, true, variant, AUTO_SPAWN, 1500); } finally { templateSolveDeadline = Infinity; }
+  try { plan = solveTemplate(empty, seq, null, true, variant, AUTO_SPAWN, 6000); trySeedForVariant.lastCut = templateLastCut; } finally { templateSolveDeadline = Infinity; }
   if (!plan) return null;
   if (isPc && !cpuPcTail({ rows: emptyRows, hold: null }, seq, plan, tailNodes)) return null;   // パフェ到達チェック（そっと探す時は探索量を減らして、1回を短く）
   return { seed, template: variant.name, pc: isPc };
 }
 function trySeedForTemplates(seed, variants, empty, emptyRows) {
-  for (const variant of variants) { const f = trySeedForVariant(seed, variant, empty, emptyRows); if (f) return f; }
+  for (const variant of variants) { const f = trySeedForVariant(seed, variant, empty, emptyRows, 600); if (f) return f; }
   return null;
 }
 function findBuildableSeed(maxMs = 1500) {
@@ -4118,7 +4130,7 @@ async function findBuildableSeedAsync(maxMs = 3000, state = {}) {
     if (state.shouldStop && state.shouldStop()) return null;   // 部屋を出た等で不要になったら止める
     const seed = Math.floor(Math.random() * 1000000000);
     for (const variant of variants) {
-      const found = trySeedForVariant(seed, variant, empty, emptyRows, state.gentle ? 15 : 40, state.gentle ? 700 : 3000);
+      const found = trySeedForVariant(seed, variant, empty, emptyRows, state.gentle ? 300 : 600, state.gentle ? 1500 : 4000);
       if (found) return found;
       const slice = state.gentle ? 12 : 30;
       if (performance.now() - sliceStart > slice) { await new Promise(r => setTimeout(r, state.gentle ? 40 : 0)); sliceStart = performance.now(); }
@@ -4159,12 +4171,12 @@ async function pickSeedFromBank() {
     const bad = [];
     for (let tries = 0; tries < 4 && pool.length; tries++) {
       const seed = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
-      if (trySeedForVariant(seed, variant, empty, emptyRows, 80, 3000)) {
+      if (trySeedForVariant(seed, variant, empty, emptyRows, 2500, 4000)) {
         rememberBankSeed(seed);
         if (bad.length) reportBadSeeds(key, bad);
         return { seed, template: variant.name, pc: !!cpuIsPcVariant(variant), fromBank: true };
       }
-      bad.push(seed);   // 組めなくなっていたシード（ルール変更など）は、ライブラリから外す
+      if (!trySeedForVariant.lastCut) bad.push(seed);   // 時間切れで確かめきれなかったものは外さない。組めなくなっていたシード（ルール変更など）は、ライブラリから外す
     }
     if (bad.length) reportBadSeeds(key, bad);
   }
@@ -4183,11 +4195,23 @@ async function resolveBuildableSeed(liveMs = 3000, state = {}) {
 const seedFoundText = f => `「${f.template}」${f.pc ? '（パフェまで届く順）' : ''}が組めるツモ順${f.fromBank ? '（ライブラリから）' : ''}`;
 
 let pendingBuildableSeed = null, seedSearching = false, rematchSeeding = false;
+let personalSeed = null;   // { seed, sig } 各自バラバラのツモ順の対戦で、自分の盤面用に選んだ「組めるツモ順」
+const needPersonalSeed = () => wantBuildableSeed() && vsRule.nextMode && vsRule.nextMode !== 'common';
+async function preparePersonalSeed() {
+  if (!wantBuildableSeed()) { personalSeed = null; return; }
+  const sig = freshTemplateSig();
+  if (personalSeed && personalSeed.sig === sig) return;
+  personalSeed = null; seedSearching = true; toast('自分用の組めるツモ順を探しています…');
+  try { const f = await resolveBuildableSeed(3000); if (f) { personalSeed = { seed: f.seed, sig }; toast(seedFoundText(f) + 'で開始します'); } else toast('組めるツモ順が見つからないため、ランダムで開始します'); }
+  finally { seedSearching = false; }
+}
+const afterPersonalSeed = fn => needPersonalSeed() ? preparePersonalSeed().then(fn, fn) : fn();
 let seedPrefetch = null;   // { promise, done, found } 対戦が終わった時点から、次の対戦用の「組めるツモ順」を裏で探しておく
+function freshTemplateSig() { templateSigAt = -1e9; return templateSig(); }   // テンプレの選択・設定が変わっていないか確かめる用（キャッシュなしで署名を作る）
 function startSeedPrefetch() {
   if (!isHost || !wantBuildableSeed() || (vsRule.nextMode && vsRule.nextMode !== 'common')) return;
   if (seedPrefetch || pendingBuildableSeed != null) return;
-  const job = { found: null, done: false, gentle: true, shouldStop: () => !isHost || roomState === 'idle' };   // 結果を見ている間の裏の探索は、画面の動きを妨げないよう控えめに行う
+  const job = { found: null, done: false, gentle: true, sig: freshTemplateSig(), shouldStop: () => !isHost || roomState === 'idle' };   // 結果を見ている間の裏の探索は、画面の動きを妨げないよう控えめに行う
   job.promise = new Promise(r => { const t = setTimeout(r, 1500); job.skipDelay = () => { clearTimeout(t); r(); }; }).then(() => resolveBuildableSeed(6000, job)).then(f => { job.found = f; job.done = true; return f; }).catch(() => { job.done = true; return null; });
   seedPrefetch = job;
 }
@@ -4196,7 +4220,7 @@ const wantBuildableSeed = () => adminMode && document.getElementById('ensureTemp
 async function prepareMatchSeed() {
   pendingBuildableSeed = null;
   if (!wantBuildableSeed()) return;
-  if (vsRule.nextMode && vsRule.nextMode !== 'common') { toast('ツモ順が各自バラバラの設定のため、組めるツモ順の指定は使えません'); return; }
+  { const mode = document.getElementById('cfgNextMode').value; if (mode && mode !== 'common') { vsRule.nextMode = mode; await preparePersonalSeed(); return; } }   // 各自バラバラ: 自分の盤面だけ組めるツモ順にする
   seedSearching = true; toast('組めるツモ順を探しています…');
   try {
     const found = await resolveBuildableSeed(3000);
@@ -4263,7 +4287,7 @@ function autoExecPath(b, type, start, target) {
     for (const action of ['L', 'R', 'CW', 'CCW', 'D']) {
       const n = autoStep(b, type, s, action);
       if (!n) continue;
-      const cost = action === 'D' ? 1 : 1 + 0.05 * (s.y + 3);
+      const cost = action === 'D' ? 0.001 : 1 + 1.5 * Math.max(0, s.y + 3);   // 落下は安く、移動・回転は低い位置ほど高くする（高い所で回転・移動してから落とす。ハードドロップで置ける所をソフトドロップ＋回転入れにしない）
       const nk = key(n), nd = d + cost;
       if (dist.has(nk) && dist.get(nk) <= nd) continue;
       dist.set(nk, nd); prev.set(nk, [k, action]); push(nd, n);
@@ -4303,7 +4327,7 @@ async function startAutoBuild() {
   if (!(await waitAuto(30, token))) return;
   let replans = 0;
   while (autoBuildRunning && token === autoBuildToken && !isEnded && replans++ < 8) {
-    const plan = planAutoBuild();
+    const plan = planAutoBuild(replans === 1 ? autoPlanStartPose() : undefined);   // 1回目はガイドと同じ出発点、やり直しの時は現在位置から
     if (!plan) {
       const sel = getSelectedTemplateVariantName();
       stopAutoBuild((autoPlanTimedOut ? '自動積み停止：探索が時間切れになりました（もう一度試すか、テンプレを選んでください）' : sel ? `自動積み停止：このツモ順では「${sel}」を組めません（パフェ積みはパフェできる時のみ組みます）` : '自動積み停止：このツモ順で組めるテンプレがありません（パフェ積みはパフェできる時のみ組みます）'));
@@ -4883,7 +4907,7 @@ function cpuBattleWorkerSource() {
         for (const j of d.jobs) {
           if (__seedStop) break;
           if (__seedDrop.has(j.key)) continue;
-          if (trySeedForVariant(seed, j.variant, empty, emptyRows, 80, 3000)) self.postMessage({ type: 'seed', key: j.key, seed });
+          if (trySeedForVariant(seed, j.variant, empty, emptyRows, 2500, 4000)) self.postMessage({ type: 'seed', key: j.key, seed });
           if (performance.now() - sliceStart > 60) { await new Promise(r => setTimeout(r, 0)); sliceStart = performance.now(); }   // 停止などのメッセージを受け取れるよう、時々処理を譲る
         }
       }
@@ -5073,9 +5097,11 @@ async function refreshSeedBankList() {
       const el = document.createElement('div'); el.className = 'rank-row'; el.style.gap = '6px';
       const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = name + (pc ? '［パフェ］' : '') + (stale ? '（現在のテンプレにない）' : ''); nm.title = nm.textContent;
       const vl = document.createElement('span'); vl.className = 'vl'; vl.textContent = `${count.toLocaleString()}個`;
+      const bl = document.createElement('button'); bl.className = 'alt'; bl.textContent = '末尾を削除'; bl.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:2px 8px;font-size:.7rem';
+      bl.onclick = async () => { const n = Math.max(1, Math.min(4000, parseInt(document.getElementById('seedRemoveN').value, 10) || 3)); try { const r = await api('/seed-bank/remove', { key, last: n }); seedBankCache.delete(key); toast(`最後の${n}個を削除しました（残り ${r.count}個）`); refreshSeedBankList(); } catch (e) { toast('削除できませんでした: ' + e.message); } };
       const bt = document.createElement('button'); bt.className = 'alt'; bt.textContent = '空にする'; bt.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:2px 8px;font-size:.7rem';
       bt.onclick = async () => { if (!confirm(`「${name}」のライブラリを空にします。よろしいですか？`)) return; try { await api('/seed-bank/remove', { key, all: true }); seedBankCache.delete(key); refreshSeedBankList(); } catch (e) { toast('削除できませんでした: ' + e.message); } };
-      el.append(nm, vl, bt); return el;
+      el.append(nm, vl, bl, bt); return el;
     };
     for (const v of variants) { const key = tplKeyOf(v); seen.add(key); const r = byKey.get(key); nodes.push(row(v.name, !!cpuIsPcVariant(v), r ? r.count : 0, key, false)); }
     for (const r of d.rows) if (!seen.has(r.key)) nodes.push(row(r.name || r.key, !!r.pc, r.count, r.key, true));
@@ -5091,8 +5117,10 @@ async function flushSeedPending(force) {
     if (!force && list.length < 30) continue;
     c.pending.set(job.key, []);
     for (let i = 0; i < list.length; i += 500) {
+      const room = c.target - (c.counts.get(job.key) || 0);   // 目標数を超えないよう、送る数を絞る（サーバー側にも上限を渡す）
+      if (room <= 0) { job.done = true; c.workers.forEach(w => w.postMessage({ job: 'seedDrop', key: job.key })); break; }
       try {
-        const r = await api('/seed-bank/add', { key: job.key, name: job.name, pc: job.pc, seeds: list.slice(i, i + 500) });
+        const r = await api('/seed-bank/add', { key: job.key, name: job.name, pc: job.pc, limit: c.target, seeds: list.slice(i, Math.min(i + 500, i + room)) });
         c.counts.set(job.key, r.count); seedBankCache.delete(job.key);
         if (r.capped || r.count >= c.target) { c.workers.forEach(w => w.postMessage({ job: 'seedDrop', key: job.key })); job.done = true; }
       } catch (e) { (c.pending.get(job.key) || []).push(...list.slice(i, i + 500)); }
@@ -5150,7 +5178,7 @@ async function startSeedCollect() {
   if (!started) {   // Workerが使えない環境: このページの中で、そっと探す
     c.onMain = true;
     const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0);
-    (async () => { while (c.running) { const seed = Math.floor(Math.random() * 1000000000); for (const j of c.jobs) { if (!c.running) break; if (j.done) continue; if (trySeedForVariant(seed, j.variant, empty, emptyRows, 15, 700)) onSeed(j.key, seed); await new Promise(r => setTimeout(r, 30)); } } })();
+    (async () => { while (c.running) { const seed = Math.floor(Math.random() * 1000000000); for (const j of c.jobs) { if (!c.running) break; if (j.done) continue; if (trySeedForVariant(seed, j.variant, empty, emptyRows, 1500, 4000)) onSeed(j.key, seed); await new Promise(r => setTimeout(r, 30)); } } })();
   }
   c.flushTimer = setInterval(() => flushSeedPending(false), 15000);
   c.statusTimer = setInterval(seedStatusTick, 1000); seedStatusTick();
