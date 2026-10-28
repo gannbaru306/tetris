@@ -521,6 +521,7 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button id="btnCpuLeagueRun" style="flex:1;min-width:9em">総当たりを開始</button>
         <span style="font-size:.82rem">1組み合わせ</span><input type="number" id="cpuLeagueN" value="10" min="2" max="200" style="width:4.5em"><span style="font-size:.82rem">戦</span>
+        <span style="font-size:.82rem">並列数</span><select id="cpuLeaguePar" style="width:auto"></select>
         <button id="btnCpuLeagueStop" class="danger" style="display:none">中止</button>
         <button id="btnCpuLeagueApply" class="alt" style="display:none">この値を基準値に反映</button>
         <button id="btnCpuLeagueReset" class="alt">初期値に戻す</button>
@@ -1467,6 +1468,8 @@ const cpuRatingOf = c => (c && c.custom && Number.isFinite(c.rating) ? c.rating 
 let cpuCustom = [];   // [{ id, name, base(1〜10), params }]
 const cpuCustomOf = id => cpuCustom.find(p => p.id === id);
 // ---- 難易度の自動調整COM: 勝つと強く、負けると弱くなる（レベルは小数。となりのレベルの性能を混ぜて作る）----
+// 並列数: 選べる上限は論理コア数（最大16）、初期値はコア数-1（画面と他の作業のために1つ残す）
+const cpuParMax = () => Math.max(1, Math.min(16, navigator.hardwareConcurrency || 4)), cpuParDefault = () => Math.max(1, Math.min(16, (navigator.hardwareConcurrency || 4) - 1));
 const CPU_AUTO_KEY = 'cpuAutoV1';
 let cpuAuto = { level: 3, streak: 0 };   // streak: 正=連勝、負=連敗
 try { const o = JSON.parse(localStorage.getItem(CPU_AUTO_KEY) || 'null'); if (o && Number.isFinite(o.level)) cpuAuto = { level: Math.max(1, Math.min(10, o.level)), streak: o.streak | 0 }; } catch (_) {}
@@ -1507,10 +1510,12 @@ function applyCpuCustom(list) {
 }
 
 // ---- 盤面ビットマスク演算（行ごとの整数。bit x = x列が埋まっている）----
+const CPU_FLAT = {};   // 高速化: セルの相対位置を平らな数値配列にしておく
 function cpuHit(rows, type, x, y, r) {
-  const cells = CPU_CELLS[type][r];
-  for (let i = 0; i < 4; i++) {
-    const nx = x + cells[i][0], ny = y + cells[i][1];
+  let t = CPU_FLAT[type]; if (!t) { t = CPU_FLAT[type] = CPU_CELLS[type].map(cs => Int8Array.from(cs.flat())); }
+  const c = t[r];
+  for (let i = 0; i < 8; i += 2) {
+    const nx = x + c[i], ny = y + c[i + 1];
     if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
     if (ny >= 0 && ((rows[ny] >> nx) & 1)) return true;
   }
@@ -1553,28 +1558,35 @@ function cpuLockRows(rows, type, x, y, r) {
 // 実際のルール（回転・キック）で到達できる設置位置をすべて列挙
 const CPU_VIS = new Uint32Array(4 * 40 * 24 * 3);
 let cpuVisGen = 0;
+// 高速化: 探索の途中経過を配列の組ではなく数値の列で持ち、重複の判定も文字列でなく数値で行う（出てくる順序と内容は従来と同じ）
+const CPU_KICK_TBL = {};
+function cpuKickTbl(type) {
+  const k = type === 'I' ? 'I' : 'S'; if (CPU_KICK_TBL[k]) return CPU_KICK_TBL[k];
+  const src = type === 'I' ? KICK_I : KICK_STD, t = [[], [], [], []];
+  for (let r = 0; r < 4; r++) for (let n = 0; n < 4; n++) t[r][n] = src[r + '-' + n] || null;
+  return (CPU_KICK_TBL[k] = t);
+}
 function cpuPlacements(rows, type, sy = SPAWN_Y) {
   const out = [];
   if (cpuHit(rows, type, 3, sy, 0)) return out;
   if (++cpuVisGen > 4000000000) { CPU_VIS.fill(0); cpuVisGen = 1; }
-  const enc = (x, y, r, f) => (((r * 40 + (y + 4)) * 24 + (x + 4)) * 3 + f);
-  const isT = type === 'T', canRot = type !== 'O', kicks = type === 'I' ? KICK_I : KICK_STD;
-  const stack = [[3, sy, 0, 0]], seenCells = new Set();
-  CPU_VIS[enc(3, sy, 0, 0)] = cpuVisGen;
-  const push = (x, y, r, f) => { const k = enc(x, y, r, f); if (CPU_VIS[k] !== cpuVisGen) { CPU_VIS[k] = cpuVisGen; stack.push([x, y, r, f]); } };
+  const isT = type === 'T', canRot = type !== 'O', kt = cpuKickTbl(type), cellsOf = CPU_CELLS[type];
+  const stack = [3, sy, 0, 0], seenCells = new Set();   // x, y, r, f を4つずつ並べる
+  CPU_VIS[(((0 * 40 + (sy + 4)) * 24 + (3 + 4)) * 3 + 0)] = cpuVisGen;
+  const push = (x, y, r, f) => { const k = (((r * 40 + (y + 4)) * 24 + (x + 4)) * 3 + f); if (CPU_VIS[k] !== cpuVisGen) { CPU_VIS[k] = cpuVisGen; stack.push(x, y, r, f); } };
   while (stack.length) {
-    const [x, y, r, f] = stack.pop();
+    const f = stack.pop(), r = stack.pop(), y = stack.pop(), x = stack.pop();
     if (cpuHit(rows, type, x, y + 1, r)) {
-      const cs = CPU_CELLS[type][r];
-      let key = isT ? f + ':' : '';
-      const idx = []; for (let i = 0; i < 4; i++) idx.push((y + cs[i][1] + 4) * 16 + (x + cs[i][0] + 4));
-      idx.sort((a, b) => a - b); key += idx.join(',');
+      const cs = cellsOf[r];
+      let a = (y + cs[0][1] + 4) * 16 + (x + cs[0][0] + 4), b = (y + cs[1][1] + 4) * 16 + (x + cs[1][0] + 4), c = (y + cs[2][1] + 4) * 16 + (x + cs[2][0] + 4), d = (y + cs[3][1] + 4) * 16 + (x + cs[3][0] + 4), t;
+      if (a > b) { t = a; a = b; b = t; } if (c > d) { t = c; c = d; d = t; } if (a > c) { t = a; a = c; c = t; } if (b > d) { t = b; b = d; d = t; } if (b > c) { t = b; b = c; c = t; }   // 4つを小さい順に
+      const key = (((a * 1024 + b) * 1024 + c) * 1024 + d) * 4 + (isT ? f : 0);
       if (!seenCells.has(key)) { seenCells.add(key); out.push({ x, y, r, f }); }
     } else push(x, y + 1, r, 0);
     if (!cpuHit(rows, type, x - 1, y, r)) push(x - 1, y, r, 0);
     if (!cpuHit(rows, type, x + 1, y, r)) push(x + 1, y, r, 0);
-    if (canRot) for (const dir of [1, -1]) {
-      const nr = (r + dir + 4) % 4, ks = kicks[r + '-' + nr];
+    if (canRot) for (let di = 0; di < 2; di++) {
+      const nr = (r + (di === 0 ? 1 : -1) + 4) % 4, ks = kt[r][nr];
       for (let i = 0; i < ks.length; i++) {
         const nx = x + ks[i][0], ny = y - ks[i][1];
         if (!cpuHit(rows, type, nx, ny, nr)) { push(nx, ny, nr, isT ? (i === 4 ? 2 : 1) : 0); break; }
@@ -1703,6 +1715,7 @@ function cpuFindPC(rows, seq, hold, canHold, maxPieces, nodeBudget, timeMs = 30)
   let nodes = 0; const tEnd = performance.now() + timeMs;
   const feasible = (cells, remaining) => { for (let k = 0; k <= remaining; k++) if (k > 0 && (cells + 4 * k) % 10 === 0) return true; return cells === 0; };
   let kMax = maxPieces;   // 今回の探索で使うミノ数の上限（少ない数から順に増やす）
+  const pmemo = new Map();   // 同じ盤面・ミノの着手候補は、探索のやり直し（kを増やす時）も含めて使い回す
   function rec(rs, idx, h, ch, depth, cells) {
     if (nodes++ > nodeBudget || performance.now() > tEnd) return null;
     const remaining = kMax - depth;
@@ -1714,8 +1727,10 @@ function cpuFindPC(rows, seq, hold, canHold, maxPieces, nodeBudget, timeMs = 30)
     for (const o of options) {
       if (!o.piece) continue;
       const cands = [];
-      for (const p of cpuPlacements(rs, o.piece)) {
-        if (performance.now() > tEnd) return null;
+      const pk = o.piece + rs.join(','); let pls = pmemo.get(pk); if (!pls) { pls = cpuPlacements(rs, o.piece); pmemo.set(pk, pls); }
+      let pi = 0;
+      for (const p of pls) {
+        if ((++pi & 15) === 0 && performance.now() > tEnd) return null;
         const res = cpuLockRows(rs, o.piece, p.x, p.y, p.r);
         if (!res) continue;
         const nc = cells + 4 - res.cleared * COLS;
@@ -1853,7 +1868,7 @@ class CpuEngine {
 // パフェ積みテンプレかどうか（名前に「パフェ」「PC」を含む、またはテンプレ設定で pc を指定）
 function cpuIsPcVariant(v) { return !!(v && (v.pc || /パフェ|ﾊﾟﾌｪ|ＰＣ|\bPC\b|perfect/i.test(v.name || ''))) ? 1 : 0; }
 // テンプレを組み終えた盤面から、残りのツモ（ホールド含む）でパフェできるか調べて、その手順を返す
-function cpuPcTail(eng, seq, plan, nodeBudget) {
+function cpuPcTail(eng, seq, plan, nodeBudget, ms = 120) {
   let rows = eng.rows.slice(), hold = eng.hold, idx = 0;
   for (const st of plan.steps) {
     if (st.hold) { if (!hold) { hold = seq[idx]; idx += 2; } else { const h = hold; hold = seq[idx]; idx += 1; } } else idx += 1;
@@ -1864,7 +1879,7 @@ function cpuPcTail(eng, seq, plan, nodeBudget) {
   const rest = seq.slice(idx);
   if (!rest.length) return null;
   const maxPieces = Math.min(8, rest.length + (hold ? 1 : 0));
-  return cpuFindPC(rows, rest, hold, true, maxPieces, Math.min(nodeBudget, 6000), 120);   // ゲーム内の自動積みとツモ順探索で同じ条件（ノード数基準）
+  return cpuFindPC(rows, rest, hold, true, maxPieces, Math.min(nodeBudget, 6000), ms);   // ゲーム内の自動積みとツモ順探索は同じ条件（ノード数基準・120ms）。COMは1手ごとの待ち時間を抑えるため短く
 }
 
 // ---- 思考（TetrisAI）----
@@ -1883,7 +1898,7 @@ class TetrisAI {
   invalidate() { this.plan = null; this.pcPlan = null; }
   // テンプレ候補（「派生」を含む名前は derivRate で許可）
   _variants(allowDeriv) {
-    let v = getTemplateVariants().filter(variantIsValid);
+    let v = getTemplateVariants().filter(variantIsValid).filter(x => x.priority >= 0);   // 優先度がマイナスのネタ枠のテンプレは、COMは組まない
     if (!allowDeriv) v = v.filter(x => !/派生/.test(x.name));
     return v.sort((a, b) => (b.priority - a.priority) || (fireScore(b.name) - fireScore(a.name)));
   }
@@ -1897,18 +1912,19 @@ class TetrisAI {
     // パフェ積みは「パフェができる時だけ」。できない時は山岳積み2号など普通のテンプレを組み、パフェは後から探索で狙う
     const variants = this._variants(allowDeriv).filter(v => canPc || !cpuIsPcVariant(v)).sort((a, b) => (cpuIsPcVariant(b) - cpuIsPcVariant(a)));
     const sight = Math.max(6, Math.round(P.templateSight));
-    const t0 = performance.now(), budget = first ? 90 + P.templateSight * 4 : 45;
+    const t0 = performance.now(), budget = first ? Math.max(90 + P.templateSight * 4, P.templateRate >= 0.95 ? 420 : 0) : 45;   // 組む確率がほぼ1のCOMは、時間切れでテンプレを見つけられず地形を削り始めることがないよう、探索時間を長めにとる
     this.planned++;
     for (const variant of variants) {
       if (performance.now() - t0 > budget) break;
       const isPc = cpuIsPcVariant(variant);
+      if (isPc && performance.now() - t0 > budget * 0.45) continue;   // パフェ積みの確認に時間を使いすぎて、ふつうのテンプレまで届かないことがないようにする
       const seq = [eng.cur.type, ...eng.peek(isPc ? Math.max(sight, templatePieceCount(variant) + 8) : Math.min(sight, templatePieceCount(variant) + 4))];
       const key = eng.seed + '|' + eng.rngCalls + '|' + variant.name + '|' + variant.pattern.join('') + '|' + (eng.hold || '-') + (eng.canHold ? 1 : 0) + '|' + eng.rows.join(',');
       let plan = cpuPlanCache.get(key);
-      if (plan === undefined) { templateSolveDeadline = t0 + budget; plan = solveTemplate(eng.grid, seq, eng.hold, eng.canHold, variant, AUTO_SPAWN, 3000 + sight * 100); templateSolveDeadline = Infinity; cpuPlanCache.set(key, plan || null); if (cpuPlanCache.size > 200) cpuPlanCache.delete(cpuPlanCache.keys().next().value); }
+      if (plan === undefined) { templateSolveDeadline = t0 + budget; plan = solveTemplate(eng.grid, seq, eng.hold, eng.canHold, variant, AUTO_SPAWN, 800 + sight * 10); templateSolveDeadline = Infinity; cpuPlanCache.set(key, plan || null); if (cpuPlanCache.size > 200) cpuPlanCache.delete(cpuPlanCache.keys().next().value); }
       if (!plan) continue;
       if (isPc) {
-        const tail = cpuPcTail(eng, seq, plan, Math.max(4000, P.pcNodes));
+        const tail = cpuPcTail(eng, seq, plan, Math.max(4000, P.pcNodes), 30);
         if (!tail) continue;                       // このツモ順ではパフェに届かない → このテンプレは組まない
         return { ...plan, pcTail: tail };
       }
@@ -3989,24 +4005,60 @@ function autoStep(b, type, s, action) {
 }
 
 // BFS over every pose reachable with the real SRS movement rules.
+// 高速化: 盤面を行ごとのビットで持ち、形状・キックの表を先に作る（探索の順序と結果は従来と同じ）。同じ盤面・ミノ・出発位置の結果は使い回す
+const AUTO_CELLS = {}, AUTO_KICKS = {}, AUTO_REACH_CACHE = new Map();
+function autoCells(type, rot) {
+  const t = AUTO_CELLS[type] || (AUTO_CELLS[type] = []);
+  if (!t[rot]) { const m = getShapeMatrix(type, rot), out = []; for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) if (m[r][c]) out.push(c, r); t[rot] = out; }
+  return t[rot];
+}
+function autoKicks(type, rot, newR) {
+  const k = type + rot + newR; let v = AUTO_KICKS[k];
+  if (!v) v = AUTO_KICKS[k] = (type === 'I' ? KICK_I : KICK_STD)[`${rot}-${newR}`];
+  return v;
+}
 function autoReachable(b, type, start) {
+  const rows = new Array(ROWS);
+  for (let r = 0; r < ROWS; r++) { let m = 0; const row = b[r]; for (let c = 0; c < COLS; c++) if (row[c]) m |= 1 << c; rows[r] = m; }
+  const ckey = type + '|' + start.x + ',' + start.y + ',' + start.rot + '|' + rows.join(',');
+  const cached = AUTO_REACH_CACHE.get(ckey);
+  if (cached) return cached;
+  const hit = (x, y, rot) => {
+    const cl = autoCells(type, rot);
+    for (let i = 0; i < 8; i += 2) { const xx = x + cl[i], yy = y + cl[i + 1]; if (xx < 0 || xx >= COLS || yy >= ROWS) return true; if (yy >= 0 && ((rows[yy] >> xx) & 1)) return true; }
+    return false;
+  };
   const key = s => s.rot * 1000 + (s.y + 10) * 30 + (s.x + 10);
   const seen = new Map();
-  if (checkCollisionOnBoard(b, start.x, start.y, type, start.rot)) return seen;
+  seen.keyOf = key;
+  if (hit(start.x, start.y, start.rot)) return seen;
   seen.set(key(start), { s: start, prev: null, action: null });
   const queue = [start];
+  const rotate = (s, dir) => {
+    if (type === 'O') return null;
+    const newR = (s.rot + dir + 4) % 4, kicks = autoKicks(type, s.rot, newR);
+    for (let i = 0; i < kicks.length; i++) { const nx = s.x + kicks[i][0], ny = s.y - kicks[i][1]; if (!hit(nx, ny, newR)) return { x: nx, y: ny, rot: newR }; }
+    return null;
+  };
   for (let qi = 0; qi < queue.length; qi++) {
-    const s = queue[qi];
-    for (const action of AUTO_ACTIONS) {
-      const n = autoStep(b, type, s, action);
+    const s = queue[qi], sk = key(s);
+    for (const action of AUTO_ACTIONS) {   // ['CW', 'CCW', 'L', 'R', 'SD', 'D'] の順（従来と同じ）
+      let n = null;
+      if (action === 'CW') n = rotate(s, 1);
+      else if (action === 'CCW') n = rotate(s, -1);
+      else if (action === 'L') n = hit(s.x - 1, s.y, s.rot) ? null : { x: s.x - 1, y: s.y, rot: s.rot };
+      else if (action === 'R') n = hit(s.x + 1, s.y, s.rot) ? null : { x: s.x + 1, y: s.y, rot: s.rot };
+      else if (action === 'SD') { let y = s.y; while (!hit(s.x, y + 1, s.rot)) y++; n = y === s.y ? null : { x: s.x, y, rot: s.rot }; }
+      else n = hit(s.x, s.y + 1, s.rot) ? null : { x: s.x, y: s.y + 1, rot: s.rot };
       if (!n) continue;
       const k = key(n);
       if (seen.has(k)) continue;
-      seen.set(k, { s: n, prev: key(s), action });
+      seen.set(k, { s: n, prev: sk, action });
       queue.push(n);
     }
   }
-  seen.keyOf = key;
+  if (AUTO_REACH_CACHE.size >= 300) AUTO_REACH_CACHE.delete(AUTO_REACH_CACHE.keys().next().value);
+  AUTO_REACH_CACHE.set(ckey, seen);
   return seen;
 }
 
@@ -4238,6 +4290,7 @@ function trySeedForVariant(seed, variant, empty, emptyRows, budgetMs = 1500, tai
 // 火力は、組み終わりの盤面・ホールド・残りのツモから、次の数手（ホールドも含む）を幅つき探索して、B2Bなし・REN0から始めた時の最大攻撃量（パフェのボーナス込み）
 function tplBoardRows(b) { return b.map(row => { let m = 0; for (let c = 0; c < COLS; c++) if (row[c]) m |= 1 << c; return m; }); }
 function tplFireSearch(rows0, hold0, rest, depthMax, beam, pcOpt) {
+  const placeMemo = new Map();
   let best = 0, pcBest = -1, pcTries = 0;   // pcBest: パフェまで届く手順での攻撃量の最大（届かなければ -1）
   const po = pcOpt || {}, pcMax = po.tries == null ? 12 : po.tries, popc = m => { let n = 0; for (const r of m) n += CPU_POP[r]; return n; };
   let level = [{ rows: rows0, hold: hold0, idx: 0, b2b: false, ren: -1, atk: 0 }];
@@ -4250,7 +4303,8 @@ function tplFireSearch(rows0, hold0, rest, depthMax, beam, pcOpt) {
       else if (st.idx + 1 < rest.length) opts.push({ piece: rest[st.idx + 1], nh: rest[st.idx], nidx: st.idx + 2 });
       for (const o of opts) {
         if (!o.piece) continue;
-        for (const p of cpuPlacements(st.rows, o.piece)) {
+        const pk = o.piece + st.rows.join(','); let pls = placeMemo.get(pk); if (!pls) { pls = cpuPlacements(st.rows, o.piece); placeMemo.set(pk, pls); }   // 同じ盤面・ミノの着手候補は使い回す
+        for (const p of pls) {
           const res = cpuLockRows(st.rows, o.piece, p.x, p.y, p.r); if (!res) continue;
           const spin = o.piece === 'T' ? cpuSpinKind(st.rows, p.x, p.y, p.r, p.f) : null;
           const pc = res.cleared > 0 && res.rows.every(m => m === 0);
@@ -5136,6 +5190,11 @@ function cpuBattleWorkerSource() {
       if (e.data.job === 'seedStop') { __seedStop = true; return; }
       if (e.data.job === 'seedDrop') { __seedDrop.add(e.data.key); return; }
       if (e.data.job === 'seeds') { __seedStop = false; __seedLoop(e.data); return; }
+      if (e.data.job === 'oneBattle') {
+        let r; try { r = simulateCpuBattle(e.data.entries, { common: e.data.common, maxMs: e.data.maxMs || 300000 }); self.postMessage({ type: 'battle1', tag: e.data.tag, winner: r.winner, durationMs: r.durationMs }); }
+        catch (err) { self.postMessage({ type: 'battle1', tag: e.data.tag, winner: -2, error: String(err && err.message || err) }); }
+        return;
+      }
       if (e.data.job === 'tplEval') {
         const out = []; for (const k of e.data.ks) { let r; try { r = evalTemplateSample(tplEvalSeed(k), e.data.variant, e.data.o); } catch (err) { r = { built: false, pc: false, fire: 0, pcFire: -1 }; } out.push(r); }
         self.postMessage({ type: 'tplChunk', tag: e.data.tag, vi: e.data.vi, results: out }); return;
@@ -5160,7 +5219,7 @@ function runBattlesParallel(entries, n, opts, onBattle) {
     try {
       if (typeof Worker === 'undefined') return resolve(null);
       url = URL.createObjectURL(new Blob([cpuBattleWorkerSource()], { type: 'text/javascript' }));
-      const cores = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1)), count = Math.min(cores, n);
+      const cores = cpuParDefault(), count = Math.min(opts.par || cores, n);
       const per = Array.from({ length: count }, (_, i) => Math.floor(n / count) + (i < n % count ? 1 : 0));
       cpuBattleCancelHook = stop;
       per.forEach((k, wi) => {
@@ -5247,25 +5306,60 @@ document.getElementById('btnCpuBattleStop').onclick = () => { cpuBattleCancel = 
     const code = document.createElement('div'); code.style.cssText = 'font-size:.78rem;margin-top:4px;word-break:break-all'; code.textContent = 'const CPU_RATING_BASE = [0, ' + last.rating.join(', ') + '];'; box.append(code);
     $('btnCpuLeagueApply').style.display = '';
   }
-  function finish(msg) { $('btnCpuLeagueRun').disabled = false; $('btnCpuLeagueStop').style.display = 'none'; if (msg) $('cpuLeagueStatus').textContent = msg; }
+  function finish(msg) { clearInterval(timer); $('btnCpuLeagueRun').disabled = false; $('btnCpuLeagueStop').style.display = 'none'; if (msg) $('cpuLeagueStatus').textContent = msg; }
+  { const sel = $('cpuLeaguePar'); for (let i = 1; i <= cpuParMax(); i++) sel.append(new Option(String(i), String(i))); sel.value = String(cpuParDefault()); }
+  let timer = null, pool = null, stopWait = null;
+  function stopPool() { clearInterval(timer); timer = null; if (pool) { pool.workers.forEach(w => { try { w.terminate(); } catch (_) {} }); if (pool.url) URL.revokeObjectURL(pool.url); pool = null; } }
+  // 全45組×戦数を1つの待ち行列にして、あいた作業スレッドから順に処理する（組ごとに待ち合わせない）。経過時間は戦の終了を待たず、0.5秒ごとに更新する
   async function start() {
-    const n = Math.max(2, Math.min(200, parseInt($('cpuLeagueN').value, 10) || 10)), st = $('cpuLeagueStatus');
+    const n = Math.max(2, Math.min(200, parseInt($('cpuLeagueN').value, 10) || 10)), par = parseInt($('cpuLeaguePar').value, 10) || cpuParDefault(), st = $('cpuLeagueStatus');
     const pairs = []; for (let a = 1; a <= 10; a++) for (let b = a + 1; b <= 10; b++) pairs.push([a, b]);
     const W = Array.from({ length: 10 }, () => Array(10).fill(0)), Nn = Array.from({ length: 10 }, () => Array(10).fill(0));   // W[i][j]: iのjに対する得点
     const rows = Array.from({ length: 10 }, () => ({ w: 0, l: 0, d: 0, rate: 0 }));
-    cancel = false; $('btnCpuLeagueRun').disabled = true; $('btnCpuLeagueStop').style.display = ''; $('btnCpuLeagueApply').style.display = 'none'; $('cpuLeagueTable').textContent = '';
-    const t0 = performance.now(); let done = 0;
     const entry = lv => ({ level: lv, custom: null, label: 'Lv' + lv, params: { ...cpuParams[lv] } });
-    for (const [a, b] of pairs) {
-      if (cancel) break;
-      const ia = a - 1, ib = b - 1; let got = 0;
-      const add = r => { got++; Nn[ia][ib]++; Nn[ib][ia]++; if (r.winner === 0) { W[ia][ib] += 1; rows[ia].w++; rows[ib].l++; } else if (r.winner === 1) { W[ib][ia] += 1; rows[ib].w++; rows[ia].l++; } else { W[ia][ib] += .5; W[ib][ia] += .5; rows[ia].d++; rows[ib].d++; } };
-      const show = () => { const el = (performance.now() - t0) / 1000, frac = (done + got / n) / pairs.length; st.textContent = `対戦中… Lv${a} vs Lv${b}（${done + 1}/${pairs.length}組目、${got}/${n}戦）　経過 ${el.toFixed(0)}秒　残り約 ${(frac > 0.01 ? el / frac * (1 - frac) : 0).toFixed(0)}秒`; };
-      show();
-      const par = await runBattlesParallel([entry(a), entry(b)], n, { common: true, fast: false }, r => { add(r); show(); });
-      if (!par) { for (let i = 0; i < n && !cancel; i++) { await new Promise(r => setTimeout(r, 0)); add(simulateCpuBattle([entry(a), entry(b)], { common: true })); show(); } }
-      cpuBattleCancelHook = null; done++;
+    // 強い組ほど1戦が長いので、先に配って最後に長い戦が残らないようにする
+    const queue = []; for (let k = 0; k < n; k++) for (const [a, b] of pairs) queue.push({ a, b });
+    queue.sort((x, y) => (y.a + y.b) - (x.a + x.b));
+    const total = queue.length; let done = 0, errors = 0, active = new Map(), lastDone = performance.now();
+    cancel = false; $('btnCpuLeagueRun').disabled = true; $('btnCpuLeagueStop').style.display = ''; $('btnCpuLeagueApply').style.display = 'none'; $('cpuLeagueTable').textContent = '';
+    const t0 = performance.now();
+    const add = (a, b, winner) => {
+      const ia = a - 1, ib = b - 1; Nn[ia][ib]++; Nn[ib][ia]++;
+      if (winner === 0) { W[ia][ib] += 1; rows[ia].w++; rows[ib].l++; } else if (winner === 1) { W[ib][ia] += 1; rows[ib].w++; rows[ia].l++; } else { W[ia][ib] += .5; W[ib][ia] += .5; rows[ia].d++; rows[ib].d++; }
+      done++; lastDone = performance.now();
+    };
+    const show = () => {
+      const el = (performance.now() - t0) / 1000, frac = done / total, run = [...active.values()].map(j => `Lv${j.a}vsLv${j.b}`).join(' ');
+      st.textContent = `対戦中… ${done}/${total}戦（${Math.round(frac * 100)}%）　経過 ${el.toFixed(0)}秒　残り約 ${(frac > 0.02 ? el / frac * (1 - frac) : 0).toFixed(0)}秒　並列${par}` + (errors ? `　エラー${errors}件（引き分け扱い）` : '') + (run ? `\n実行中: ${run}` : '') + (performance.now() - lastDone > 60000 ? '\n（1戦が長引いています。強いCOM同士は1戦に時間がかかります）' : '');
+    };
+    timer = setInterval(show, 500); show();
+    const MAXMS = 150000;   // 1戦の上限（ゲーム内の2分30秒）。決着がつかなければ引き分け
+    let ok = false;
+    try {
+      if (typeof Worker === 'undefined') throw new Error('nw');
+      pool = { workers: [], url: URL.createObjectURL(new Blob([cpuBattleWorkerSource()], { type: 'text/javascript' })) };
+      await new Promise((resolve, reject) => {
+        stopWait = resolve; let live = 0, failed = false;
+        const pump = w => {
+          if (cancel) return;
+          const j = queue.shift();
+          if (!j) { if (--live === 0) resolve(); return; }
+          active.set(w, j); w.postMessage({ job: 'oneBattle', entries: [entry(j.a), entry(j.b)], common: true, maxMs: MAXMS, tag: 0 });
+        };
+        for (let i = 0; i < Math.min(par, total); i++) {
+          const w = new Worker(pool.url); pool.workers.push(w); live++;
+          w.onmessage = e => { if (e.data.type !== 'battle1') return; const j = active.get(w); active.delete(w); if (e.data.winner === -2) { errors++; add(j.a, j.b, -1); } else add(j.a, j.b, e.data.winner); pump(w); };
+          w.onerror = ev => { if (failed) return; failed = true; reject(new Error('worker')); };
+        }
+        pool.workers.forEach(pump);
+      });
+      ok = true;
+    } catch (e) {
+      if (!cancel && !ok && done === 0) {   // Workerが使えない環境: 画面の裏で順番に計算する
+        while (queue.length && !cancel) { const j = queue.shift(); active.set('main', j); await new Promise(r => setTimeout(r, 0)); add(j.a, j.b, simulateCpuBattle([entry(j.a), entry(j.b)], { common: true, maxMs: MAXMS }).winner); active.delete('main'); }
+      } else if (!cancel) { stopPool(); finish('並列実行が途中で失敗しました: ' + (e.message || e)); return; }
     }
+    stopPool();
     if (cancel) { finish('中止しました（途中までの結果は反映されません）'); return; }
     // 仮の引き分け0.1戦分ずつを足してから計算
     const S = W.map(r => r.slice()), N2 = Nn.map(r => r.slice());
@@ -5277,7 +5371,7 @@ document.getElementById('btnCpuBattleStop').onclick = () => { cpuBattleCancel = 
     finish(`完了（1組み合わせ${n}戦、${((performance.now() - t0) / 1000).toFixed(0)}秒）。「この値を基準値に反映」で、COM戦レートの計算に使われます。`); render();
   }
   $('btnCpuLeagueRun').onclick = start;
-  $('btnCpuLeagueStop').onclick = () => { cancel = true; if (cpuBattleCancelHook) cpuBattleCancelHook(); };
+  $('btnCpuLeagueStop').onclick = () => { cancel = true; stopPool(); if (stopWait) stopWait(); };
   $('btnCpuLeagueApply').onclick = () => {
     if (!last) return; for (let i = 0; i < 10; i++) CPU_RATING_BASE[i + 1] = last.rating[i];
     try { localStorage.setItem('cpuRatingBaseV1', JSON.stringify(CPU_RATING_BASE)); } catch (_) {}
@@ -5487,9 +5581,9 @@ async function startSeedCollect() {
   c.statusTimer = setInterval(seedStatusTick, 1000); seedStatusTick();
 }
 {
-  const sel = document.getElementById('seedCollectPar'), cores = Math.max(1, (navigator.hardwareConcurrency || 4) - 1);
-  for (let i = 1; i <= Math.min(8, cores); i++) sel.append(new Option(`${i}`, String(i)));
-  sel.value = String(Math.max(1, Math.min(4, Math.floor(cores / 2))));
+  const sel = document.getElementById('seedCollectPar');
+  for (let i = 1; i <= cpuParMax(); i++) sel.append(new Option(`${i}`, String(i)));
+  sel.value = String(cpuParDefault());
   if (window.__restoreSeedPar) window.__restoreSeedPar();
 }
 
@@ -5498,7 +5592,7 @@ async function startSeedCollect() {
   const $ = id => document.getElementById(id), KEY = 'tplEvalResultsV1';
   let run = null, last = null;
   try { last = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (_) {}
-  { const sel = $('tplEvalPar'); if (sel) { const cores = Math.max(1, (navigator.hardwareConcurrency || 4) - 1); for (let i = 1; i <= Math.min(8, cores); i++) sel.append(new Option(String(i), String(i))); sel.value = String(Math.max(1, Math.min(4, Math.floor(cores / 2)))); } }
+  { const sel = $('tplEvalPar'); if (sel) { for (let i = 1; i <= cpuParMax(); i++) sel.append(new Option(String(i), String(i))); sel.value = String(cpuParDefault()); } }
   const SKEY = 'tplEvalSettings';
   const loadSet = () => { try { return JSON.parse(localStorage.getItem(SKEY) || '{}'); } catch (_) { return {}; } };
   { const st = loadSet(); for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver', 'tplEvalBasis', 'tplEvalPenalty', 'tplEvalMaxPieces']) if (st[id] != null && $(id)) $(id).value = st[id]; if (st.tplEvalKeepNeg != null && $('tplEvalKeepNeg')) $('tplEvalKeepNeg').checked = !!st.tplEvalKeepNeg; }
