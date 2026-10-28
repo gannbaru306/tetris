@@ -257,6 +257,7 @@
         <label id="roomPublicRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><input id="roomPublicToggle" type="checkbox" style="width:auto"> 部屋一覧に公開する</label>
         <label id="roomSpectateRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><input id="roomSpectateToggle" type="checkbox" style="width:auto"> 観戦を許可する</label>
         <div id="roomTeamRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><span>対戦形式</span><select id="roomTeamMode" style="width:auto"><option value="0">個人戦（全員が敵）</option><option value="4">チーム戦（A〜Dから選ぶ）</option></select></div>
+        <div id="roomRuleRow" style="display:none;align-items:center;gap:8px;font-size:.8rem;flex-wrap:wrap"><span>全体の攻撃倍率</span><select id="roomAtkMul" style="width:auto"><option value="0.5">×0.5</option><option value="0.75">×0.75</option><option value="1" selected>×1（標準）</option><option value="1.25">×1.25</option><option value="1.5">×1.5</option><option value="2">×2</option></select><span style="color:var(--sub);font-size:.72rem">下の名前ごとの「攻」「被」は、強い人へのハンデです（攻＝その人が送る量、被＝その人が受ける量の倍率）</span></div>
         <div id="roomRoster" style="display:flex;flex-direction:column;gap:2px"></div>
         <div id="roomHint" style="font-size:.75rem;color:var(--sub)"></div>
         <button id="btnInvite" class="alt">招待リンクを共有・コピー</button>
@@ -514,6 +515,18 @@
         <button id="btnCpuBattleStop" class="danger" style="display:none">中止</button>
       </div>
       <div id="cpuBattleStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">COM総当たりリーグ（COM戦レートの基準値を自動計算）</div>
+      <div class="muted" style="font-size:.78rem">上の「COM同士の対戦」と同じ仕組みで、Lv1〜Lv10の全組み合わせ（45通り）を戦わせて、勝敗からレートを計算します。結果を「基準値に反映」すると、COM戦レートの計算に使われます（いまの値は等間隔の仮の値です）。保存先はこのブラウザだけなので、ほかの端末にも使う場合は、表示される数値の配列をコードの基準値に貼り付けてください。COMの性能は、保存済みの設定（編集中でない内容）が使われます。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button id="btnCpuLeagueRun" style="flex:1;min-width:9em">総当たりを開始</button>
+        <span style="font-size:.82rem">1組み合わせ</span><input type="number" id="cpuLeagueN" value="10" min="2" max="200" style="width:4.5em"><span style="font-size:.82rem">戦</span>
+        <button id="btnCpuLeagueStop" class="danger" style="display:none">中止</button>
+        <button id="btnCpuLeagueApply" class="alt" style="display:none">この値を基準値に反映</button>
+        <button id="btnCpuLeagueReset" class="alt">初期値に戻す</button>
+      </div>
+      <div id="cpuLeagueStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
+      <div id="cpuLeagueTable" style="overflow-x:auto"></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <div style="font-weight:700">ツモ順ライブラリ（組めるツモ順の蓄積）</div>
       <div class="muted" style="font-size:.78rem">有効なテンプレごとに、パフェ積みはパフェまで届く「組めるツモ順」をバックグラウンドで探し続けて、サーバーに貯めます。ソロ・COM戦・対人戦の「組めるツモ順で開始」は、まずここから選ぶので、その場で探すより確実ですぐ始まります。見つからない時だけ、短い時間で探します。シードは数値だけなので、1テンプレあたり最大4,000個でも約24KBです。</div>
@@ -1103,6 +1116,7 @@ function submitStats(result, ms) {
 const VS_REPLAY_KEY = 'p2pTetrisVsReplaysV1', VS_REPLAY_MAX = 50, REPLAY_CLOUD_MAX_BYTES = 50 * 1024, VS_GUEST_WAIT_MS = 4000;
 let pendingReplay = null;
 function finishRun(result = 'lose') {
+  cpuAutoOnResult(result);
   if (!account || !runStartedAt) return;
   const squeezed = squeezeIdle(replayEvents, Math.max(0, Math.round(replayNow())));
   const run = { name: account.id, result, durationMs: squeezed.durationMs, events: squeezed.events };
@@ -1445,24 +1459,51 @@ function cpuApplyParamOverrides(over) {
 const cpuLevelOf = lv => Math.min(10, Math.max(1, Math.round(Number(lv)) || 1));
 // COMの強さの基準レート（COM戦レートの計算に使う。人間戦のレートとは別）。強いCOMに勝つほど大きく上がる
 const CPU_RATING_BASE = [0, 600, 760, 920, 1080, 1240, 1400, 1560, 1720, 1880, 2040];
+const CPU_RATING_DEFAULT = CPU_RATING_BASE.slice();
+try { const o = JSON.parse(localStorage.getItem('cpuRatingBaseV1') || 'null'); if (Array.isArray(o) && o.length === 11 && o.slice(1).every(v => Number.isFinite(v))) for (let i = 1; i <= 10; i++) CPU_RATING_BASE[i] = Math.round(o[i]); } catch (_) {}   // 総当たりリーグで計算した基準値
 const cpuRatingOf = c => (c && c.custom && Number.isFinite(c.rating) ? c.rating : CPU_RATING_BASE[cpuLevelOf(c && c.level)]);
 
 // ---- 開発者が作るCOMのプリセット（名前つき・性能セット）。選択肢の値は 'c:<id>' ----
 let cpuCustom = [];   // [{ id, name, base(1〜10), params }]
 const cpuCustomOf = id => cpuCustom.find(p => p.id === id);
+// ---- 難易度の自動調整COM: 勝つと強く、負けると弱くなる（レベルは小数。となりのレベルの性能を混ぜて作る）----
+const CPU_AUTO_KEY = 'cpuAutoV1';
+let cpuAuto = { level: 3, streak: 0 };   // streak: 正=連勝、負=連敗
+try { const o = JSON.parse(localStorage.getItem(CPU_AUTO_KEY) || 'null'); if (o && Number.isFinite(o.level)) cpuAuto = { level: Math.max(1, Math.min(10, o.level)), streak: o.streak | 0 }; } catch (_) {}
+const cpuAutoSave = () => { try { localStorage.setItem(CPU_AUTO_KEY, JSON.stringify(cpuAuto)); } catch (_) {} };
+function cpuAutoChoice() {
+  const L = Math.max(1, Math.min(10, cpuAuto.level)), lo = Math.min(9, Math.floor(L)), hi = lo + 1, t = L - lo, a = cpuParams[lo], b = cpuParams[hi], p = {};
+  const INT = ['depth', 'beam', 'nextSight', 'missRank', 'templateSight', 'pcNodes'];
+  for (const k of Object.keys(a)) p[k] = typeof a[k] === 'number' && typeof b[k] === 'number' ? (INT.includes(k) ? Math.round(a[k] + (b[k] - a[k]) * t) : a[k] + (b[k] - a[k]) * t) : a[k];
+  return { level: cpuLevelOf(L), custom: 'auto', label: '自動 Lv' + L.toFixed(1), params: p, rating: Math.round(CPU_RATING_BASE[lo] + (CPU_RATING_BASE[hi] - CPU_RATING_BASE[lo]) * t) };
+}
+let cpuAutoRound = '';
+function cpuAutoOnResult(result) {
+  if (!isVsMode || !isHost || !cpuPlayers.some(c => c.custom === 'auto') || guests.some(g => g.conn && g.conn.open)) return;   // 人間の相手がいる対戦では調整しない
+  if (result !== 'win' && result !== 'lose') return;
+  if (cpuAutoRound === vsRule.round) return; cpuAutoRound = vsRule.round;
+  const win = result === 'win';
+  cpuAuto.streak = win ? (cpuAuto.streak > 0 ? cpuAuto.streak + 1 : 1) : (cpuAuto.streak < 0 ? cpuAuto.streak - 1 : -1);
+  const n = Math.abs(cpuAuto.streak), step = Math.min(0.8, 0.2 + 0.1 * (n - 1)), before = cpuAuto.level;   // 1回目は小さく、連続するほど大きく動く
+  cpuAuto.level = Math.max(1, Math.min(10, before + (win ? step : -step))); cpuAutoSave();
+  toast(`自動調整COM: Lv${before.toFixed(1)} → Lv${cpuAuto.level.toFixed(1)}（${win ? '勝ち' : '負け'}${n > 1 ? n + '連続' : ''}）`);
+}
+function cpuAutoRefresh() { let any = false; for (const c of cpuPlayers) if (c.custom === 'auto') { Object.assign(c, cpuAutoChoice()); any = true; } if (any) cpuPlayers.forEach((c, i) => { c.name = cpuNameFor(c, i); }); }
 function cpuChoice(value) {
   const v = String(value);
+  if (v === 'auto') return cpuAutoChoice();
   if (v.startsWith('c:')) { const p = cpuCustomOf(v.slice(2)); if (p) return { level: cpuLevelOf(p.base), custom: p.id, label: p.name, params: { ...p.params }, rating: Number.isFinite(p.rating) ? p.rating : CPU_RATING_BASE[cpuLevelOf(p.base)] }; }
   const lv = cpuLevelOf(v);
   return { level: lv, custom: null, label: 'Lv' + lv, params: undefined, rating: CPU_RATING_BASE[lv] };
 }
-function cpuOptionList(customList) {
+function cpuOptionList(customList, withAuto) {
   return [...Array.from({ length: 10 }, (_, k) => new Option(`Lv${k + 1}（${CPU_LEVEL_LABELS[k + 1]}）`, String(k + 1))),
+    ...(withAuto ? [new Option('自動調整（勝つと強く、負けると弱く）', 'auto')] : []),
     ...customList.map(p => new Option(`★${p.name}（Lv${cpuLevelOf(p.base)}基準）`, 'c:' + p.id))];
 }
 function applyCpuCustom(list) {
   cpuCustom = (Array.isArray(list) ? list : []).filter(p => p && p.id && p.name).map(p => ({ id: String(p.id), name: String(p.name), base: cpuLevelOf(p.base), params: { ...(p.params || {}) }, rating: Number.isFinite(Number(p.rating)) && p.rating !== null ? Number(p.rating) : null }));
-  for (const id of ['cpuLevel', 'roomCpuLevel']) { const el = document.getElementById(id); if (el) { const keep = el.value; el.replaceChildren(...cpuOptionList(cpuCustom)); el.value = [...el.options].some(o => o.value === keep) ? keep : '5'; } }
+  for (const id of ['cpuLevel', 'roomCpuLevel']) { const el = document.getElementById(id); if (el) { const keep = el.value; el.replaceChildren(...cpuOptionList(cpuCustom, true)); el.value = [...el.options].some(o => o.value === keep) ? keep : '5'; } }
 }
 
 // ---- 盤面ビットマスク演算（行ごとの整数。bit x = x列が埋まっている）----
@@ -2201,6 +2242,7 @@ function renderRoomPanel() {
   document.getElementById('roomCodeLabel').textContent = `部屋コード: ${roomCode}`;
   document.getElementById('roomCount').textContent = `参加者 ${list.length} / ${roomMax}人${isHost ? (roomPublic ? '・公開中' : '・非公開') : ''}${roomTeams ? '・チーム戦' : ''}`;
   const teamRow = document.getElementById('roomTeamRow'); teamRow.style.display = isHost ? 'flex' : 'none'; document.getElementById('roomTeamMode').value = String(roomTeams);
+  document.getElementById('roomRuleRow').style.display = isHost ? 'flex' : 'none'; document.getElementById('roomAtkMul').value = String(roomAtkMul);
   const pubRow = document.getElementById('roomPublicRow'); pubRow.style.display = isHost ? 'flex' : 'none';
   document.getElementById('roomPublicToggle').checked = roomPublic;
   document.getElementById('roomSpectateRow').style.display = isHost ? 'flex' : 'none'; document.getElementById('roomSpectateToggle').checked = roomAllowSpectate;
@@ -2215,6 +2257,11 @@ function renderRoomPanel() {
         sel.value = String(p.team); sel.onchange = () => { p.setTeam(parseInt(sel.value, 10)); sendRoster(); };   // ホストだけがチームを変更できる
         d.append(sel);
       } else { const tag = document.createElement('span'); tag.textContent = teamTag(p.team); tag.style.cssText = 'font-weight:700;color:' + TEAM_COLORS[p.team]; d.append(tag); }
+    }
+    if (isHost) {   // ハンデ（ホストだけが設定できる）。名前ごとに「攻」＝送る量の倍率、「被」＝受ける量の倍率
+      const hc = roomHcp.get(p.name) || { a: 1, r: 1 };
+      const mk = (label, list, key) => { const sel = document.createElement('select'); sel.title = key === 'a' ? '攻撃倍率（その人が送る量）' : '被弾倍率（その人が受ける量）'; sel.style.cssText = 'flex:0 0 auto;width:auto;padding:2px 4px;font-size:.72rem;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px'; for (const v of list) sel.append(new Option(label + '×' + v, String(v))); sel.value = String(hc[key]); sel.onchange = () => { const cur = roomHcp.get(p.name) || { a: 1, r: 1 }; cur[key] = parseFloat(sel.value); roomHcp.set(p.name, cur); }; return sel; };
+      d.append(mk('攻', HCP_ATK, 'a'), mk('被', HCP_RECV, 'r'));
     }
     if (isHost && p.cpuIndex !== undefined) { const b = document.createElement('button'); b.className = 'alt'; b.textContent = '外す'; b.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:2px 10px;font-size:.72rem'; b.onclick = () => { cpuPlayers.splice(p.cpuIndex, 1); cpuPlayers.forEach((c, k) => { c.name = cpuNameFor(c, k); }); sendRoster(); }; d.append(b); }
     return d;
@@ -2231,6 +2278,7 @@ function renderRoomPanel() {
   document.getElementById('btnLeaveRoom').textContent = isHost ? '部屋を閉じる' : '部屋を出る';
 }
 function leaveRoom() {
+  roomHcp.clear(); roomAtkMul = 1;
   const p = peer;
   stopRoomAnnounce(); stopCpus(); cpuPlayers = [];
   seedPrefetch = null; rematchSeeding = false; peer = null; conn = null; guests = []; spectators = []; spectateLast.clear(); lastEndMsg = null; isSpectator = false; specView.clear(); isHost = false; roomState = 'idle'; vsRoster = []; waitingRoster = []; rematchReady = []; myPlace = 0; mySeat = 0; rankingSummary = ''; roomTeams = 0; hostTeam = 0; vsTeams = 0; teamOutOrder = [];
@@ -2557,6 +2605,7 @@ function sendRoster() {
   announceRoom();
 }
 function newRound() {
+  cpuAutoRefresh(); hcpFrac.clear();
   vsRule.seed = pendingBuildableSeed != null ? pendingBuildableSeed : Math.floor(Math.random() * 1000000);
   pendingBuildableSeed = null;
   vsRule.round = Math.random().toString(36).slice(2, 10);
@@ -2597,7 +2646,7 @@ async function startCpuMatch(levels) {
   startMatchAsHost();
 }
 function fillCpuLevelSelect(el, def) {
-  el.replaceChildren(...cpuOptionList(cpuCustom));
+  el.replaceChildren(...cpuOptionList(cpuCustom, true));
   el.value = String(def);
 }
 fillCpuLevelSelect(document.getElementById('cpuLevel'), 5);
@@ -2606,6 +2655,7 @@ document.getElementById('btnCpuMatch').onclick = () => {
   const v = document.getElementById('cpuLevel').value, n = Math.max(1, Math.min(3, parseInt(document.getElementById('cpuCount').value, 10) || 1));
   startCpuMatch(Array(n).fill(v));
 };
+document.getElementById('roomAtkMul').onchange = () => { roomAtkMul = parseFloat(document.getElementById('roomAtkMul').value) || 1; };
 document.getElementById('roomTeamMode').onchange = () => { if (!isHost || roomState !== 'waiting') return; roomTeams = parseInt(document.getElementById('roomTeamMode').value, 10) ? 4 : 0; sendRoster(); };
 document.getElementById('btnAddCpu').onclick = () => {
   if (!isHost || roomState !== 'waiting') return;
@@ -2625,7 +2675,7 @@ function startMatchAsHost() {
   { normalizeTeams(); const used = new Set([hostTeam, ...guests.map(g => g.team), ...cpuPlayers.map(c => c.team)]).size; if (roomTeams && used < 2) { toast('2チーム以上に分けてください'); sendRoster(); return; } }
   prepareTeams();
   roomState = 'playing'; mySeat = 0;
-  vsRoster = makeRoster();
+  vsRoster = makeRoster(); applyRoomRules();
   spectateLast.clear(); lastEndMsg = null;
   for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'RULE', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
   for (const sp of spectators) safeSend(sp.conn, { type: 'RULE', rule: { ...vsRule }, roster: vsRoster, you: -1 });
@@ -2644,6 +2694,25 @@ function onGuestData(g, d) {
     case 'REMATCH': if (roomState === 'result') { g.wantsRematch = true; broadcastRematchStatus(); tryStartRematch(); } break;
   }
 }
+// ---- 部屋のルール: 全体の攻撃倍率と、人ごとのハンデ（攻撃・被弾の倍率）。ホストだけが設定し、攻撃はすべてホストを通るのでここで調整する ----
+const hcpFrac = new Map();   // 'から>へ' → 倍率で出た端数（次に持ち越して、合計では倍率どおりになる）
+let roomAtkMul = 1;
+const roomHcp = new Map();   // 名前 → { a: 攻撃倍率, r: 被弾倍率 }
+const HCP_ATK = [1, 0.9, 0.8, 0.7, 0.6, 0.5], HCP_RECV = [1, 1.1, 1.25, 1.5, 2];
+function scaledHoles(from, to, clean) {
+  const h = vsRule.hcp || {}, mul = (Number(vsRule.atkMul) || 1) * ((h[from] && h[from].a) || 1) * ((h[to] && h[to].r) || 1);
+  if (Math.abs(mul - 1) < 1e-9) return clean;
+  const key = from + '>' + to, total = clean.length * mul + (hcpFrac.get(key) || 0), k = Math.floor(total + 1e-9);
+  hcpFrac.set(key, total - k);
+  if (k <= 0) return [];
+  if (k <= clean.length) return clean.slice(0, k);
+  const out = clean.slice(); while (out.length < k && out.length < 40) out.push(clean[clean.length - 1]);   // 倍率が1より大きい時は、最後の穴をのばして増やす
+  return out;
+}
+function applyRoomRules() {   // 名簿ができた後に、倍率を席番号ごとにまとめて部屋のルールに入れる（ゲストにも送られる）
+  vsRule.atkMul = roomAtkMul; vsRule.hcp = {};
+  for (const r of vsRoster) { const h = roomHcp.get(r.name); if (h && (h.a !== 1 || h.r !== 1)) vsRule.hcp[r.seat] = { a: h.a, r: h.r }; }
+}
 function distributeAttack(fromSeat, holes) {
   if (!isHost || roomState !== 'playing' || !Array.isArray(holes) || holes.length > 40) return;
   const sender = vsRoster.find(r => r.seat === fromSeat);
@@ -2653,8 +2722,9 @@ function distributeAttack(fromSeat, holes) {
   for (const r of vsRoster) {
     if (!r.alive || r.seat === fromSeat) continue;
     if (vsTeams && r.team === sender.team) continue;   // チーム戦: 味方には攻撃が届かない
-    if (r.seat === 0) receiveAttack(clean);
-    else { const c = cpuBySeat(r.seat); if (c && c.runner) c.runner.receive(clean); else sendTo(r.seat, { type: 'ATTACK', holes: clean, from: fromSeat }); }
+    const hs = scaledHoles(fromSeat, r.seat, clean); if (!hs.length) continue;
+    if (r.seat === 0) receiveAttack(hs);
+    else { const c = cpuBySeat(r.seat); if (c && c.runner) c.runner.receive(hs); else sendTo(r.seat, { type: 'ATTACK', holes: hs, from: fromSeat }); }
   }
 }
 function onGuestClose(g) {
@@ -2854,7 +2924,7 @@ function tryStartRematch() {
     seedPrefetch = null;
   }
   newRound(); assignSeats(); prepareTeams();
-  vsRoster = makeRoster(); roomState = 'playing';
+  vsRoster = makeRoster(); applyRoomRules(); roomState = 'playing';
   spectateLast.clear(); lastEndMsg = null;
   for (const g of guests) { g.alive = true; g.wantsRematch = false; safeSend(g.conn, { type: 'REMATCH_START', rule: { ...vsRule }, roster: vsRoster, you: g.seat }); }
   for (const sp of spectators) safeSend(sp.conn, { type: 'REMATCH_START', rule: { ...vsRule }, roster: vsRoster, you: -1 });
@@ -5151,6 +5221,70 @@ document.getElementById('btnCpuBattleRun').onclick = async () => {
     names.map((nm, i) => `${nm}: ${agg[i].wins}勝（勝率 ${pct(agg[i].wins)}）/ 平均${(agg[i].pieces / total).toFixed(0)}ミノ / 平均APM ${(agg[i].ms > 0 ? agg[i].sent / (agg[i].ms / 60000) : 0).toFixed(1)}`).join('\n');
 };
 document.getElementById('btnCpuBattleStop').onclick = () => { cpuBattleCancel = true; if (cpuBattleCancelHook) cpuBattleCancelHook(); };
+
+// ---- COM総当たりリーグ: Lv1〜Lv10の全組み合わせを戦わせ、勝敗からレートの基準値を計算する ----
+(() => {
+  const $ = id => document.getElementById(id);
+  let last = null, cancel = false;
+  // 勝敗（引き分け0.5勝）から、ブラッドリー・テリー（Elo）のレートを最尤で求める。全組み合わせに仮の引き分け0.1戦分を足して、全勝・全敗でも値が飛ばないようにする
+  function fitElo(S, N, n) {
+    const r = Array(n).fill(0), tot = i => { let t = 0; for (let j = 0; j < n; j++) if (j !== i) t += N[i][j]; return t; };
+    for (let it = 0; it < 6000; it++) {
+      for (let i = 0; i < n; i++) {
+        let E = 0, Sc = 0; for (let j = 0; j < n; j++) if (j !== i) { E += N[i][j] / (1 + Math.pow(10, (r[j] - r[i]) / 400)); Sc += S[i][j]; }
+        r[i] += 100 * (Sc - E) / Math.max(1, tot(i));
+      }
+    }
+    return r;
+  }
+  function render() {
+    const box = $('cpuLeagueTable'); box.textContent = ''; if (!last) return;
+    const t = document.createElement('table'); t.style.cssText = 'border-collapse:collapse;font-size:.8rem;width:100%';
+    const row = (cells, head) => { const tr = document.createElement('tr'); for (const c of cells) { const td = document.createElement(head ? 'th' : 'td'); td.textContent = c; td.style.cssText = 'text-align:left;padding:2px 6px;border-bottom:1px solid var(--border);white-space:nowrap'; tr.append(td); } return tr; };
+    t.append(row(['レベル', '勝', '敗', '分', '勝率', '現在の基準値', '計算した値'], true));
+    for (let i = 0; i < 10; i++) { const x = last.rows[i]; t.append(row(['Lv' + (i + 1), x.w, x.l, x.d, (x.rate * 100).toFixed(1) + '%', CPU_RATING_BASE[i + 1], last.rating[i]])); }
+    box.append(t);
+    const code = document.createElement('div'); code.style.cssText = 'font-size:.78rem;margin-top:4px;word-break:break-all'; code.textContent = 'const CPU_RATING_BASE = [0, ' + last.rating.join(', ') + '];'; box.append(code);
+    $('btnCpuLeagueApply').style.display = '';
+  }
+  function finish(msg) { $('btnCpuLeagueRun').disabled = false; $('btnCpuLeagueStop').style.display = 'none'; if (msg) $('cpuLeagueStatus').textContent = msg; }
+  async function start() {
+    const n = Math.max(2, Math.min(200, parseInt($('cpuLeagueN').value, 10) || 10)), st = $('cpuLeagueStatus');
+    const pairs = []; for (let a = 1; a <= 10; a++) for (let b = a + 1; b <= 10; b++) pairs.push([a, b]);
+    const W = Array.from({ length: 10 }, () => Array(10).fill(0)), Nn = Array.from({ length: 10 }, () => Array(10).fill(0));   // W[i][j]: iのjに対する得点
+    const rows = Array.from({ length: 10 }, () => ({ w: 0, l: 0, d: 0, rate: 0 }));
+    cancel = false; $('btnCpuLeagueRun').disabled = true; $('btnCpuLeagueStop').style.display = ''; $('btnCpuLeagueApply').style.display = 'none'; $('cpuLeagueTable').textContent = '';
+    const t0 = performance.now(); let done = 0;
+    const entry = lv => ({ level: lv, custom: null, label: 'Lv' + lv, params: { ...cpuParams[lv] } });
+    for (const [a, b] of pairs) {
+      if (cancel) break;
+      const ia = a - 1, ib = b - 1; let got = 0;
+      const add = r => { got++; Nn[ia][ib]++; Nn[ib][ia]++; if (r.winner === 0) { W[ia][ib] += 1; rows[ia].w++; rows[ib].l++; } else if (r.winner === 1) { W[ib][ia] += 1; rows[ib].w++; rows[ia].l++; } else { W[ia][ib] += .5; W[ib][ia] += .5; rows[ia].d++; rows[ib].d++; } };
+      const show = () => { const el = (performance.now() - t0) / 1000, frac = (done + got / n) / pairs.length; st.textContent = `対戦中… Lv${a} vs Lv${b}（${done + 1}/${pairs.length}組目、${got}/${n}戦）　経過 ${el.toFixed(0)}秒　残り約 ${(frac > 0.01 ? el / frac * (1 - frac) : 0).toFixed(0)}秒`; };
+      show();
+      const par = await runBattlesParallel([entry(a), entry(b)], n, { common: true, fast: false }, r => { add(r); show(); });
+      if (!par) { for (let i = 0; i < n && !cancel; i++) { await new Promise(r => setTimeout(r, 0)); add(simulateCpuBattle([entry(a), entry(b)], { common: true })); show(); } }
+      cpuBattleCancelHook = null; done++;
+    }
+    if (cancel) { finish('中止しました（途中までの結果は反映されません）'); return; }
+    // 仮の引き分け0.1戦分ずつを足してから計算
+    const S = W.map(r => r.slice()), N2 = Nn.map(r => r.slice());
+    for (let i = 0; i < 10; i++) for (let j = 0; j < 10; j++) if (i !== j) { S[i][j] += .05; N2[i][j] += .1; }
+    const raw = fitElo(S, N2, 10), mean = raw.reduce((x, y) => x + y, 0) / 10, oldMean = CPU_RATING_BASE.slice(1).reduce((x, y) => x + y, 0) / 10;   // 全体の平均は今の基準値に合わせる
+    const rating = raw.map(v => Math.round(v - mean + oldMean));
+    rows.forEach((x, i) => { const g = x.w + x.l + x.d; x.rate = g ? (x.w + x.d / 2) / g : 0; });
+    last = { rows, rating };
+    finish(`完了（1組み合わせ${n}戦、${((performance.now() - t0) / 1000).toFixed(0)}秒）。「この値を基準値に反映」で、COM戦レートの計算に使われます。`); render();
+  }
+  $('btnCpuLeagueRun').onclick = start;
+  $('btnCpuLeagueStop').onclick = () => { cancel = true; if (cpuBattleCancelHook) cpuBattleCancelHook(); };
+  $('btnCpuLeagueApply').onclick = () => {
+    if (!last) return; for (let i = 0; i < 10; i++) CPU_RATING_BASE[i + 1] = last.rating[i];
+    try { localStorage.setItem('cpuRatingBaseV1', JSON.stringify(CPU_RATING_BASE)); } catch (_) {}
+    toast('COM戦レートの基準値を反映しました'); render();
+  };
+  $('btnCpuLeagueReset').onclick = () => { for (let i = 1; i <= 10; i++) CPU_RATING_BASE[i] = CPU_RATING_DEFAULT[i]; try { localStorage.removeItem('cpuRatingBaseV1'); } catch (_) {} toast('基準値を初期値に戻しました'); render(); };
+})();
 document.getElementById('cpuPresetRating').onchange = () => { const pt = cpuDevTargetOf(document.getElementById('cpuDevLevel').value); if (!pt) return; const v = Math.min(2600, Math.max(300, parseInt(document.getElementById('cpuPresetRating').value, 10) || CPU_RATING_BASE[cpuLevelOf(pt.base)])); pt.rating = v; document.getElementById('cpuPresetRating').value = v; };
 // 蓄積の数値（1テンプレの個数・並列数・末尾削除数）は、前に入れた値を保存して次回も使う
 (() => {
