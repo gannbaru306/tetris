@@ -529,7 +529,7 @@
       <div id="seedBankList" style="display:flex;flex-direction:column;gap:2px;font-size:.8rem"></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <div style="font-weight:700">テンプレ評価（組める確率・パフェ到達率・組んだ直後の火力）</div>
-      <div class="muted" style="font-size:.78rem">ランダムなツモ順を何本も試して、有効なテンプレごとに「組める確率」「パフェ積みはパフェまで届く確率」「組み終わった直後から数手で送れる攻撃量（B2B・REN なしから、パフェのボーナス込み）」を計算します。時間がかかる分、実際のゲーム内の探索より長く探します。結果から優先度を決めて反映できます。数が多いほど正確です（目安: 200本）。</div>
+      <div class="muted" style="font-size:.78rem">ランダムなツモ順を何本も試して、有効なテンプレごとに「組める確率」「パフェまで届く確率（パフェ積みは組んですぐ、それ以外は火力を送った後も含む）」「パフェ込み火力（パフェまでに送れる攻撃量の平均）」「組み終わった直後から数手で送れる攻撃量（B2B・REN なしから、パフェのボーナス込み）」を計算します。時間がかかる分、実際のゲーム内の探索より長く探します。結果から優先度を決めて反映できます。数が多いほど正確です（目安: 200本）。</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button id="btnTplEval">評価を開始</button>
         <button id="btnTplEvalStop" class="danger" style="display:none">停止</button>
@@ -538,7 +538,10 @@
         <span style="font-size:.8rem">火力を見る手数 次の</span><input type="number" id="tplEvalDepth" value="4" min="1" max="16" style="width:4em"><span style="font-size:.8rem">手</span>
         <span style="font-size:.8rem">探索の幅</span><input type="number" id="tplEvalBeam" value="16" min="4" max="200" style="width:4.5em">
         <span style="font-size:.8rem">優先度の基準</span>
-        <select id="tplEvalBasis" style="width:auto"><option value="fire">平均火力（組めた時）</option><option value="ev">期待値（火力×組める確率）</option></select>
+        <select id="tplEvalBasis" style="width:auto"><option value="fire">平均火力（組めた時）</option><option value="ev">期待値（火力×組める確率）</option><option value="pen">手数を考慮（平均火力－重み×組むミノ数）</option></select>
+        <span style="font-size:.8rem">重み</span><input type="number" id="tplEvalPenalty" value="0.5" min="0" max="5" step="0.1" style="width:4em">
+        <span style="font-size:.8rem">組むミノ数の上限</span><input type="number" id="tplEvalMaxPieces" value="0" min="0" max="60" style="width:4em"><span style="font-size:.76rem">（0=制限なし）</span>
+        <label style="font-size:.8rem;display:flex;align-items:center;gap:4px"><input type="checkbox" id="tplEvalKeepNeg" checked style="width:auto">マイナスの優先度（ネタ枠）は変えない</label>
         <button id="btnTplEvalApply" class="alt" style="display:none">この結果を優先度に反映</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span style="font-size:.8rem">手数の個別指定</span><input type="text" id="tplEvalDepthOver" placeholder="例: はちみつ=10, 山岳積み2号=8（テンプレ名の一部＝手数、カンマ区切り）" style="flex:1;min-width:16em"></div>
@@ -4164,8 +4167,9 @@ function trySeedForVariant(seed, variant, empty, emptyRows, budgetMs = 1500, tai
 // ランダムなツモ順を何本も試して、(1)テンプレが組める割合 (2)パフェ積みならパフェまで届く割合 (3)組み終わった直後から数手で送れる最大の攻撃量 を調べる。
 // 火力は、組み終わりの盤面・ホールド・残りのツモから、次の数手（ホールドも含む）を幅つき探索して、B2Bなし・REN0から始めた時の最大攻撃量（パフェのボーナス込み）
 function tplBoardRows(b) { return b.map(row => { let m = 0; for (let c = 0; c < COLS; c++) if (row[c]) m |= 1 << c; return m; }); }
-function tplFireSearch(rows0, hold0, rest, depthMax, beam) {
-  let best = 0;
+function tplFireSearch(rows0, hold0, rest, depthMax, beam, pcOpt) {
+  let best = 0, pcBest = -1, pcTries = 0;   // pcBest: パフェまで届く手順での攻撃量の最大（届かなければ -1）
+  const po = pcOpt || {}, pcMax = po.tries == null ? 12 : po.tries, popc = m => { let n = 0; for (const r of m) n += CPU_POP[r]; return n; };
   let level = [{ rows: rows0, hold: hold0, idx: 0, b2b: false, ren: -1, atk: 0 }];
   for (let d = 0; d < depthMax && level.length; d++) {
     const next = [], seen = new Set();
@@ -4183,6 +4187,7 @@ function tplFireSearch(rows0, hold0, rest, depthMax, beam) {
           const calc = cpuAttackCalc(res.cleared, spin, pc, st.b2b, st.ren);
           const atk = st.atk + calc.attack;
           if (atk > best) best = atk;
+          if (pc && atk > pcBest) pcBest = atk;
           const ns = { rows: res.rows, hold: o.nh, idx: o.nidx, b2b: res.cleared > 0 ? calc.b2b : st.b2b, ren: calc.ren, atk };
           const k = res.rows.join(',') + '|' + (ns.hold || '-') + '|' + ns.idx + '|' + (ns.b2b ? 1 : 0) + ns.ren + '|' + atk;
           if (seen.has(k)) continue; seen.add(k);
@@ -4193,11 +4198,25 @@ function tplFireSearch(rows0, hold0, rest, depthMax, beam) {
       }
     }
     next.sort((a, b) => b.key - a.key); level = next.slice(0, beam);
+    // 火力を送った後にパフェまで届くか: 幅つき探索の途中の盤面（低く積まれたもの）から、パフェ探索を続ける
+    if (pcMax > 0) {
+      let tried = 0;
+      for (const st of level) {
+        if (tried >= 2 || pcTries >= pcMax) break;
+        if (st.atk <= 0) continue;
+        const cells = popc(st.rows); if (cells > 40) continue;
+        let okk = false; for (let k = 1; k <= (po.maxK || 6); k++) if ((cells + 4 * k) % 10 === 0) { okk = true; break; }
+        if (!okk) continue;
+        tried++; pcTries++;
+        const path = cpuFindPC(st.rows, rest.slice(st.idx), st.hold, true, Math.min(po.maxK || 6, rest.length - st.idx + (st.hold ? 1 : 0)), po.nodes || 2500, po.ms || 100);
+        if (path) { const tot = st.atk + tplPathAttack(st.rows, path, st.b2b, st.ren); if (tot > best) best = tot; if (tot > pcBest) pcBest = tot; }
+      }
+    }
   }
-  return best;
+  return { best, pcBest };
 }
-function tplPathAttack(rows0, path) {   // パフェまでの手順を実際に置いた時の攻撃量の合計
-  let rows = rows0, b2b = false, ren = -1, atk = 0;
+function tplPathAttack(rows0, path, b2b0, ren0) {   // パフェまでの手順を実際に置いた時の攻撃量の合計（途中からならB2B・RENを引き継ぐ）
+  let rows = rows0, b2b = !!b2b0, ren = ren0 == null ? -1 : ren0, atk = 0;
   for (const p of path) {
     const spin = p.type === 'T' ? cpuSpinKind(rows, p.x, p.y, p.r, p.f) : null;
     const res = cpuLockRows(rows, p.type, p.x, p.y, p.r); if (!res) break;
@@ -4211,28 +4230,29 @@ const tplEvalSeed = k => (Math.imul(k + 1, 2654435761) >>> 0) % 1000000000;   //
 function evalTemplateSample(seed, variant, o) {
   o = o || {};
   const hasX = variantHasX(variant), isPc = !!cpuIsPcVariant(variant) && !hasX;
-  const len = templateSeqLen(variant, isPc), seq = generateBagPieces(seededRandom(seed), len + 8);
+  const len = templateSeqLen(variant, isPc), seq = generateBagPieces(seededRandom(seed), len + Math.max(8, (o.depth || 4) + 10));
   const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   const sb = templateStartBoard(variant, empty);
   templateSolveDeadline = performance.now() + (o.solveMs || 3000);
   let plan = null;
   try { plan = solveTemplate(sb, seq.slice(0, len), null, true, variant, AUTO_SPAWN, 6000); } finally { templateSolveDeadline = Infinity; }
-  if (!plan) return { built: false, pc: false, fire: 0 };
+  if (!plan) return { built: false, pc: false, fire: 0, pcFire: -1 };
   let rows = tplBoardRows(sb), hold = null, idx = 0;
   for (const st of plan.steps) {
     if (st.hold) { if (!hold) { hold = seq[idx]; idx += 2; } else { hold = seq[idx]; idx += 1; } } else idx += 1;
     const res = cpuLockRows(rows, st.type, st.x, st.y, st.rot);
-    if (!res) return { built: false, pc: false, fire: 0 };
+    if (!res) return { built: false, pc: false, fire: 0, pcFire: -1 };
     rows = res.rows;
   }
   const rest = seq.slice(idx);
-  let fire = tplFireSearch(rows, hold, rest, o.depth || 4, o.beam || 16), pcOk = false;
+  const fs = tplFireSearch(rows, hold, rest, o.depth || 4, o.beam || 16, { tries: o.pcTries, nodes: o.pcSubNodes, ms: o.pcSubMs, maxK: o.pcSubK });
+  let fire = fs.best, pcOk = fs.pcBest >= 0, pcFire = fs.pcBest;
   if (isPc) {
     const maxPieces = Math.min(o.pcPieces || 9, rest.length + (hold ? 1 : 0));
     const path = rest.length ? cpuFindPC(rows, rest, hold, true, maxPieces, o.pcNodes || 30000, o.pcMs || 800) : null;
-    if (path) { pcOk = true; fire = Math.max(fire, tplPathAttack(rows, path)); }
+    if (path) { const t = tplPathAttack(rows, path); pcOk = true; fire = Math.max(fire, t); pcFire = Math.max(pcFire, t); }
   }
-  return { built: true, pc: pcOk, fire };
+  return { built: true, pc: pcOk, fire, pcFire };
 }
 function trySeedForTemplates(seed, variants, empty, emptyRows) {
   for (const variant of variants) { const f = trySeedForVariant(seed, variant, empty, emptyRows, 600); if (f) return f; }
@@ -5047,7 +5067,7 @@ function cpuBattleWorkerSource() {
       if (e.data.job === 'seedDrop') { __seedDrop.add(e.data.key); return; }
       if (e.data.job === 'seeds') { __seedStop = false; __seedLoop(e.data); return; }
       if (e.data.job === 'tplEval') {
-        const out = []; for (const k of e.data.ks) { let r; try { r = evalTemplateSample(tplEvalSeed(k), e.data.variant, e.data.o); } catch (err) { r = { built: false, pc: false, fire: 0 }; } out.push(r); }
+        const out = []; for (const k of e.data.ks) { let r; try { r = evalTemplateSample(tplEvalSeed(k), e.data.variant, e.data.o); } catch (err) { r = { built: false, pc: false, fire: 0, pcFire: -1 }; } out.push(r); }
         self.postMessage({ type: 'tplChunk', tag: e.data.tag, vi: e.data.vi, results: out }); return;
       }
       const { entries, n, common, fast, id } = e.data;
@@ -5347,9 +5367,9 @@ async function startSeedCollect() {
   { const sel = $('tplEvalPar'); if (sel) { const cores = Math.max(1, (navigator.hardwareConcurrency || 4) - 1); for (let i = 1; i <= Math.min(8, cores); i++) sel.append(new Option(String(i), String(i))); sel.value = String(Math.max(1, Math.min(4, Math.floor(cores / 2)))); } }
   const SKEY = 'tplEvalSettings';
   const loadSet = () => { try { return JSON.parse(localStorage.getItem(SKEY) || '{}'); } catch (_) { return {}; } };
-  { const st = loadSet(); for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver', 'tplEvalBasis']) if (st[id] != null && $(id)) $(id).value = st[id]; }
-  const saveSet = () => { const st = {}; for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver', 'tplEvalBasis']) if ($(id)) st[id] = $(id).value; try { localStorage.setItem(SKEY, JSON.stringify(st)); } catch (_) {} };
-  for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver']) if ($(id)) $(id).addEventListener('change', saveSet);
+  { const st = loadSet(); for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver', 'tplEvalBasis', 'tplEvalPenalty', 'tplEvalMaxPieces']) if (st[id] != null && $(id)) $(id).value = st[id]; if (st.tplEvalKeepNeg != null && $('tplEvalKeepNeg')) $('tplEvalKeepNeg').checked = !!st.tplEvalKeepNeg; }
+  const saveSet = () => { const st = {}; for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver', 'tplEvalBasis', 'tplEvalPenalty', 'tplEvalMaxPieces']) if ($(id)) st[id] = $(id).value; st.tplEvalKeepNeg = $('tplEvalKeepNeg') ? $('tplEvalKeepNeg').checked : true; try { localStorage.setItem(SKEY, JSON.stringify(st)); } catch (_) {} };
+  for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver', 'tplEvalPenalty', 'tplEvalMaxPieces', 'tplEvalKeepNeg']) if ($(id)) $(id).addEventListener('change', () => { saveSet(); render(); });
   const clampInt = (v, lo, hi, def) => Math.max(lo, Math.min(hi, parseInt(v, 10) || def));
   // 「はちみつ=10, 山岳積み2号=8」のような個別指定（名前の一部が合えば適用。完全一致を優先）
   function depthFor(name, over, base) {
@@ -5363,19 +5383,32 @@ async function startSeedCollect() {
     return out;
   }
   const fmtPct = v => (v * 100).toFixed(1) + '%';
-  const suggest = (r, basis) => Math.max(-999, Math.min(999, Math.round((basis === 'ev' ? r.avgFire * r.usableRate : r.avgFire) * 10)));
+  const piecesOf = r => { if (Number.isFinite(r.pieces)) return r.pieces; const t = templateData.find(x => x.name === r.name); return t ? templatePieceCount(t) : 0; };
+  // 提案値。null＝変更しない（マイナスの優先度のネタ枠、組むミノ数が上限を超えるもの、組めたデータがないもの）
+  function suggestInfo(r, basis) {
+    const cur = templateData.find(x => x.name === r.name);
+    if ($('tplEvalKeepNeg').checked && cur && cur.priority < 0) return { v: null, why: '固定（マイナス）' };
+    const mp = clampInt($('tplEvalMaxPieces').value, 0, 60, 0); if (mp > 0 && piecesOf(r) > mp) return { v: null, why: '長すぎ（' + piecesOf(r) + '個）' };
+    if (!r.usable) return { v: null, why: '組めたデータなし' };
+    const w = Math.max(0, Math.min(5, parseFloat($('tplEvalPenalty').value) || 0));
+    const sc = basis === 'ev' ? r.avgFire * r.usableRate : basis === 'pen' ? r.avgFire - w * piecesOf(r) : r.avgFire;
+    return { v: Math.max(-999, Math.min(999, Math.round(sc * 10))) };
+  }
+  const suggest = (r, basis) => suggestInfo(r, basis).v;
   function render() {
     const box = $('tplEvalTable'), ap = $('btnTplEvalApply'); if (!box) return;
     box.textContent = '';
     if (!last || !last.rows || !last.rows.length) { if (ap) ap.style.display = 'none'; return; }
     const basis = $('tplEvalBasis').value;
     const t = document.createElement('table'); t.style.cssText = 'border-collapse:collapse;font-size:.8rem;width:100%';
-    const head = ['テンプレ', '組める確率', 'パフェ到達', '平均火力', '最大火力', '期待値', '見た手数', '現在の優先度', '提案'];
+    const head = ['テンプレ', '組む数', '組める確率', 'パフェ到達', 'パフェ込み火力', '平均火力', '最大火力', '期待値', '見た手数', '現在の優先度', '提案'];
     const tr0 = document.createElement('tr'); for (const h of head) { const th = document.createElement('th'); th.textContent = h; th.style.cssText = 'text-align:left;padding:2px 6px;border-bottom:1px solid var(--border);white-space:nowrap'; tr0.append(th); } t.append(tr0);
-    const sorted = last.rows.slice().sort((a, b) => suggest(b, basis) - suggest(a, basis));
+    const sv = r => { const v = suggest(r, basis); return v == null ? -Infinity : v; };
+    const sorted = last.rows.slice().sort((a, b) => sv(b) - sv(a));
     for (const r of sorted) {
       const cur = templateData.find(x => x.name === r.name);
-      const cells = [r.name, fmtPct(r.tplRate), r.isPc ? fmtPct(r.pcRate) : '－', r.usable ? r.avgFire.toFixed(1) : '－', r.usable ? String(r.maxFire) : '－', (r.avgFire * r.usableRate).toFixed(2), r.depth ? String(r.depth) : '－', cur ? String(cur.priority) : '－', String(suggest(r, basis))];
+      const si = suggestInfo(r, basis);
+      const cells = [r.name, String(piecesOf(r)), fmtPct(r.tplRate), fmtPct(r.pcRate), r.pcRate > 0 && r.avgPcFire ? r.avgPcFire.toFixed(1) : '－', r.usable ? r.avgFire.toFixed(1) : '－', r.usable ? String(r.maxFire) : '－', (r.avgFire * r.usableRate).toFixed(2), r.depth ? String(r.depth) : '－', cur ? String(cur.priority) : '－', si.v == null ? si.why : String(si.v)];
       const tr = document.createElement('tr'); for (const c of cells) { const td = document.createElement('td'); td.textContent = c; td.style.cssText = 'padding:2px 6px;border-bottom:1px solid var(--border);white-space:nowrap'; tr.append(td); } t.append(tr);
     }
     box.append(t); if (ap) ap.style.display = '';
@@ -5389,23 +5422,23 @@ async function startSeedCollect() {
     const baseDepth = clampInt($('tplEvalDepth').value, 1, 16, 4), beam = clampInt($('tplEvalBeam').value, 4, 200, 16), over = parseOver($('tplEvalDepthOver').value);
     saveSet();
     const depthOf = variants.map(v => depthFor(v.name, over, baseDepth));
-    const acc = variants.map((v, i) => ({ depth: depthOf[i], name: v.name, isPc: !!cpuIsPcVariant(v) && !variantHasX(v), n: 0, tpl: 0, pc: 0, usable: 0, sum: 0, max: 0 }));
+    const acc = variants.map((v, i) => ({ pcn: 0, pcsum: 0, depth: depthOf[i], pieces: templatePieceCount(v), name: v.name, isPc: !!cpuIsPcVariant(v) && !variantHasX(v), n: 0, tpl: 0, pc: 0, usable: 0, sum: 0, max: 0 }));
     const queue = []; for (let k = 0; k < N; k += CH) for (let vi = 0; vi < variants.length; vi++) queue.push({ vi, ks: Array.from({ length: Math.min(CH, N - k) }, (_, i) => k + i) });
     const total = queue.length; let doneChunks = 0; const t0 = performance.now();
     run = { workers: [], url: null, stop: false }; $('btnTplEval').style.display = 'none'; $('btnTplEvalStop').style.display = '';
     const onChunk = (vi, results) => {
       const a = acc[vi];
-      for (const r of results) { a.n++; if (r.built) a.tpl++; if (r.pc) a.pc++; const ok = a.isPc ? r.pc : r.built; if (ok) { a.usable++; a.sum += r.fire; if (r.fire > a.max) a.max = r.fire; } }
+      for (const r of results) { a.n++; if (r.built) a.tpl++; if (r.pc) { a.pc++; if (r.pcFire >= 0) { a.pcn++; a.pcsum += r.pcFire; } } const ok = a.isPc ? r.pc : r.built; if (ok) { a.usable++; a.sum += r.fire; if (r.fire > a.max) a.max = r.fire; } }
       doneChunks++;
       const el = (performance.now() - t0) / 1000, eta = el / doneChunks * (total - doneChunks);
       $('tplEvalStatus').textContent = `評価中… ${doneChunks}/${total}（${Math.round(doneChunks / total * 100)}%）　経過 ${el.toFixed(0)}秒　残り約 ${eta.toFixed(0)}秒`;
     };
     const done = () => {
-      last = { at: Date.now(), n: N, rows: acc.map(a => ({ name: a.name, depth: a.depth, isPc: a.isPc, n: a.n, tplRate: a.n ? a.tpl / a.n : 0, pcRate: a.n ? a.pc / a.n : 0, usable: a.usable, usableRate: a.n ? a.usable / a.n : 0, avgFire: a.usable ? a.sum / a.usable : 0, maxFire: a.max })) };
+      last = { at: Date.now(), n: N, rows: acc.map(a => ({ name: a.name, depth: a.depth, pieces: a.pieces, isPc: a.isPc, n: a.n, tplRate: a.n ? a.tpl / a.n : 0, pcRate: a.n ? a.pc / a.n : 0, avgPcFire: a.pcn ? a.pcsum / a.pcn : 0, usable: a.usable, usableRate: a.n ? a.usable / a.n : 0, avgFire: a.usable ? a.sum / a.usable : 0, maxFire: a.max })) };
       try { localStorage.setItem(KEY, JSON.stringify(last)); } catch (_) {}
       finish(`完了（${N}本×${variants.length}テンプレ、${((performance.now() - t0) / 1000).toFixed(0)}秒）。「この結果を優先度に反映」で優先度に入れられます。`); render();
     };
-    const oBase = { solveMs: 3000, beam, pcNodes: 30000, pcMs: 800, pcPieces: 9 };
+    const oBase = { solveMs: 3000, beam, pcTries: 12, pcSubNodes: 2500, pcSubMs: 100, pcSubK: 6, pcNodes: 30000, pcMs: 800, pcPieces: 9 };
     let ok = false;
     try {
       run.url = URL.createObjectURL(new Blob([cpuBattleWorkerSource()], { type: 'text/javascript' }));
@@ -5426,12 +5459,12 @@ async function startSeedCollect() {
   }
   $('btnTplEval').onclick = start;
   $('btnTplEvalStop').onclick = () => { if (run) { run.stop = true; finish('停止しました'); } };
-  $('tplEvalBasis').onchange = render;
+  $('tplEvalBasis').onchange = () => { saveSet(); render(); };
   $('btnTplEvalApply').onclick = () => {
     if (!last) return; const basis = $('tplEvalBasis').value; let n = 0;
-    for (const r of last.rows) { const t = templateData.find(x => x.name === r.name); if (t) { t.priority = suggest(r, basis); n++; } }
+    for (const r of last.rows) { const t = templateData.find(x => x.name === r.name), v = suggest(r, basis); if (t && v != null) { t.priority = v; n++; } }
     saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions(); render();
-    toast(`${n}件のテンプレの優先度を反映しました`);
+    toast(`${n}件のテンプレの優先度を反映しました（固定・対象外は変更していません）`);
   };
   render();
 })();
