@@ -528,6 +528,24 @@
       <div id="seedCollectStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
       <div id="seedBankList" style="display:flex;flex-direction:column;gap:2px;font-size:.8rem"></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">テンプレ評価（組める確率・パフェ到達率・組んだ直後の火力）</div>
+      <div class="muted" style="font-size:.78rem">ランダムなツモ順を何本も試して、有効なテンプレごとに「組める確率」「パフェ積みはパフェまで届く確率」「組み終わった直後から数手で送れる攻撃量（B2B・REN なしから、パフェのボーナス込み）」を計算します。時間がかかる分、実際のゲーム内の探索より長く探します。結果から優先度を決めて反映できます。数が多いほど正確です（目安: 200本）。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button id="btnTplEval">評価を開始</button>
+        <button id="btnTplEvalStop" class="danger" style="display:none">停止</button>
+        <span style="font-size:.8rem">並列数</span><select id="tplEvalPar" style="width:auto"></select>
+        <span style="font-size:.8rem">1テンプレ</span><input type="number" id="tplEvalN" value="200" min="20" max="5000" step="20" style="width:5em"><span style="font-size:.8rem">本</span>
+        <span style="font-size:.8rem">火力を見る手数 次の</span><input type="number" id="tplEvalDepth" value="4" min="1" max="16" style="width:4em"><span style="font-size:.8rem">手</span>
+        <span style="font-size:.8rem">探索の幅</span><input type="number" id="tplEvalBeam" value="16" min="4" max="200" style="width:4.5em">
+        <span style="font-size:.8rem">優先度の基準</span>
+        <select id="tplEvalBasis" style="width:auto"><option value="fire">平均火力（組めた時）</option><option value="ev">期待値（火力×組める確率）</option></select>
+        <button id="btnTplEvalApply" class="alt" style="display:none">この結果を優先度に反映</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span style="font-size:.8rem">手数の個別指定</span><input type="text" id="tplEvalDepthOver" placeholder="例: はちみつ=10, 山岳積み2号=8（テンプレ名の一部＝手数、カンマ区切り）" style="flex:1;min-width:16em"></div>
+      <div class="muted" style="font-size:.76rem">「火力を見る手数」は、組み終わった後の次の何手までで最大の攻撃量を探すかです。TST→TSD→パフェのように何度も撃つテンプレは、手数を増やす（10〜14）と、その分まで含めた火力になります。手数・探索の幅を増やすほど時間がかかります。探索の幅を広げるほど、長い手順でも見つけやすくなります。</div>
+      <div id="tplEvalStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
+      <div id="tplEvalTable" style="overflow-x:auto"></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <div style="font-weight:700">全員の戦績・レート（非公開の人も含む）</div>
       <div class="muted" style="font-size:.78rem">開発者のレートは1850固定です。非公開にしているプレイヤーも、ここでは確認できます。</div>
       <button id="btnAdminStats" class="alt">読み込む</button>
@@ -1640,9 +1658,10 @@ function cpuFindPC(rows, seq, hold, canHold, maxPieces, nodeBudget, timeMs = 30)
   if (n0 % 2 !== 0) return null;
   let nodes = 0; const tEnd = performance.now() + timeMs;
   const feasible = (cells, remaining) => { for (let k = 0; k <= remaining; k++) if (k > 0 && (cells + 4 * k) % 10 === 0) return true; return cells === 0; };
+  let kMax = maxPieces;   // 今回の探索で使うミノ数の上限（少ない数から順に増やす）
   function rec(rs, idx, h, ch, depth, cells) {
     if (nodes++ > nodeBudget || performance.now() > tEnd) return null;
-    const remaining = maxPieces - depth;
+    const remaining = kMax - depth;
     if (remaining <= 0 || idx >= seq.length && !h) return null;
     if (!feasible(cells, remaining)) return null;
     const options = [];
@@ -1670,7 +1689,15 @@ function cpuFindPC(rows, seq, hold, canHold, maxPieces, nodeBudget, timeMs = 30)
     }
     return null;
   }
-  return rec(rows, 0, hold, canHold, 0, n0);
+  // 少ないミノ数のパフェから順に探す（最初から長い手順を深追いして、時間切れで近道を見落とすのを防ぐ）
+  for (let k = 1; k <= maxPieces; k++) {
+    if ((n0 + 4 * k) % 10 !== 0) continue;
+    kMax = k;
+    const r = rec(rows, 0, hold, canHold, 0, n0);
+    if (r) return r;
+    if (nodes > nodeBudget || performance.now() > tEnd) return null;
+  }
+  return null;
 }
 
 // ---- COM専用エンジン（人間用とは独立した盤面・ツモ・おじゃま）----
@@ -1792,8 +1819,8 @@ function cpuPcTail(eng, seq, plan, nodeBudget) {
   }
   const rest = seq.slice(idx);
   if (!rest.length) return null;
-  const maxPieces = Math.min(7, rest.length + (hold ? 1 : 0));
-  return cpuFindPC(rows, rest, hold, true, maxPieces, Math.min(nodeBudget, 3000), 40);
+  const maxPieces = Math.min(8, rest.length + (hold ? 1 : 0));
+  return cpuFindPC(rows, rest, hold, true, maxPieces, Math.min(nodeBudget, 6000), 120);   // ゲーム内の自動積みとツモ順探索で同じ条件（ノード数基準）
 }
 
 // ---- 思考（TetrisAI）----
@@ -4132,6 +4159,81 @@ function trySeedForVariant(seed, variant, empty, emptyRows, budgetMs = 1500, tai
   if (isPc && !cpuPcTail({ rows: emptyRows, hold: null }, seq, plan, tailNodes)) return null;   // パフェ到達チェック（そっと探す時は探索量を減らして、1回を短く）
   return { seed, template: variant.name, pc: isPc };
 }
+
+// ---- テンプレ評価（組める確率・パフェ到達率・組んだ直後に送れる火力）----
+// ランダムなツモ順を何本も試して、(1)テンプレが組める割合 (2)パフェ積みならパフェまで届く割合 (3)組み終わった直後から数手で送れる最大の攻撃量 を調べる。
+// 火力は、組み終わりの盤面・ホールド・残りのツモから、次の数手（ホールドも含む）を幅つき探索して、B2Bなし・REN0から始めた時の最大攻撃量（パフェのボーナス込み）
+function tplBoardRows(b) { return b.map(row => { let m = 0; for (let c = 0; c < COLS; c++) if (row[c]) m |= 1 << c; return m; }); }
+function tplFireSearch(rows0, hold0, rest, depthMax, beam) {
+  let best = 0;
+  let level = [{ rows: rows0, hold: hold0, idx: 0, b2b: false, ren: -1, atk: 0 }];
+  for (let d = 0; d < depthMax && level.length; d++) {
+    const next = [], seen = new Set();
+    for (const st of level) {
+      const opts = [];
+      if (st.idx < rest.length) opts.push({ piece: rest[st.idx], nh: st.hold, nidx: st.idx + 1 });
+      if (st.hold) opts.push({ piece: st.hold, nh: rest[st.idx] ?? null, nidx: st.idx + 1 });
+      else if (st.idx + 1 < rest.length) opts.push({ piece: rest[st.idx + 1], nh: rest[st.idx], nidx: st.idx + 2 });
+      for (const o of opts) {
+        if (!o.piece) continue;
+        for (const p of cpuPlacements(st.rows, o.piece)) {
+          const res = cpuLockRows(st.rows, o.piece, p.x, p.y, p.r); if (!res) continue;
+          const spin = o.piece === 'T' ? cpuSpinKind(st.rows, p.x, p.y, p.r, p.f) : null;
+          const pc = res.cleared > 0 && res.rows.every(m => m === 0);
+          const calc = cpuAttackCalc(res.cleared, spin, pc, st.b2b, st.ren);
+          const atk = st.atk + calc.attack;
+          if (atk > best) best = atk;
+          const ns = { rows: res.rows, hold: o.nh, idx: o.nidx, b2b: res.cleared > 0 ? calc.b2b : st.b2b, ren: calc.ren, atk };
+          const k = res.rows.join(',') + '|' + (ns.hold || '-') + '|' + ns.idx + '|' + (ns.b2b ? 1 : 0) + ns.ren + '|' + atk;
+          if (seen.has(k)) continue; seen.add(k);
+          const ft = cpuFeatures(res.rows, false);
+          ns.key = atk * 30 - ft.holes * 8 - ft.maxH * 2 - ft.bump;
+          next.push(ns);
+        }
+      }
+    }
+    next.sort((a, b) => b.key - a.key); level = next.slice(0, beam);
+  }
+  return best;
+}
+function tplPathAttack(rows0, path) {   // パフェまでの手順を実際に置いた時の攻撃量の合計
+  let rows = rows0, b2b = false, ren = -1, atk = 0;
+  for (const p of path) {
+    const spin = p.type === 'T' ? cpuSpinKind(rows, p.x, p.y, p.r, p.f) : null;
+    const res = cpuLockRows(rows, p.type, p.x, p.y, p.r); if (!res) break;
+    const pc = res.cleared > 0 && res.rows.every(m => m === 0);
+    const calc = cpuAttackCalc(res.cleared, spin, pc, b2b, ren);
+    atk += calc.attack; ren = calc.ren; if (res.cleared > 0) b2b = calc.b2b; rows = res.rows;
+  }
+  return atk;
+}
+const tplEvalSeed = k => (Math.imul(k + 1, 2654435761) >>> 0) % 1000000000;   // どのテンプレも同じツモ順で比べる
+function evalTemplateSample(seed, variant, o) {
+  o = o || {};
+  const hasX = variantHasX(variant), isPc = !!cpuIsPcVariant(variant) && !hasX;
+  const len = templateSeqLen(variant, isPc), seq = generateBagPieces(seededRandom(seed), len + 8);
+  const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  const sb = templateStartBoard(variant, empty);
+  templateSolveDeadline = performance.now() + (o.solveMs || 3000);
+  let plan = null;
+  try { plan = solveTemplate(sb, seq.slice(0, len), null, true, variant, AUTO_SPAWN, 6000); } finally { templateSolveDeadline = Infinity; }
+  if (!plan) return { built: false, pc: false, fire: 0 };
+  let rows = tplBoardRows(sb), hold = null, idx = 0;
+  for (const st of plan.steps) {
+    if (st.hold) { if (!hold) { hold = seq[idx]; idx += 2; } else { hold = seq[idx]; idx += 1; } } else idx += 1;
+    const res = cpuLockRows(rows, st.type, st.x, st.y, st.rot);
+    if (!res) return { built: false, pc: false, fire: 0 };
+    rows = res.rows;
+  }
+  const rest = seq.slice(idx);
+  let fire = tplFireSearch(rows, hold, rest, o.depth || 4, o.beam || 16), pcOk = false;
+  if (isPc) {
+    const maxPieces = Math.min(o.pcPieces || 9, rest.length + (hold ? 1 : 0));
+    const path = rest.length ? cpuFindPC(rows, rest, hold, true, maxPieces, o.pcNodes || 30000, o.pcMs || 800) : null;
+    if (path) { pcOk = true; fire = Math.max(fire, tplPathAttack(rows, path)); }
+  }
+  return { built: true, pc: pcOk, fire };
+}
 function trySeedForTemplates(seed, variants, empty, emptyRows) {
   for (const variant of variants) { const f = trySeedForVariant(seed, variant, empty, emptyRows, 600); if (f) return f; }
   return null;
@@ -4944,6 +5046,10 @@ function cpuBattleWorkerSource() {
       if (e.data.job === 'seedStop') { __seedStop = true; return; }
       if (e.data.job === 'seedDrop') { __seedDrop.add(e.data.key); return; }
       if (e.data.job === 'seeds') { __seedStop = false; __seedLoop(e.data); return; }
+      if (e.data.job === 'tplEval') {
+        const out = []; for (const k of e.data.ks) { let r; try { r = evalTemplateSample(tplEvalSeed(k), e.data.variant, e.data.o); } catch (err) { r = { built: false, pc: false, fire: 0 }; } out.push(r); }
+        self.postMessage({ type: 'tplChunk', tag: e.data.tag, vi: e.data.vi, results: out }); return;
+      }
       const { entries, n, common, fast, id } = e.data;
       const es = entries.map(c => ({ ...c, params: fast ? cpuFastParams(c.params) : c.params }));
       for (let i = 0; i < n; i++) {
@@ -5232,6 +5338,103 @@ async function startSeedCollect() {
   sel.value = String(Math.max(1, Math.min(4, Math.floor(cores / 2))));
   if (window.__restoreSeedPar) window.__restoreSeedPar();
 }
+
+// ---- テンプレ評価の画面と並列実行 ----
+(() => {
+  const $ = id => document.getElementById(id), KEY = 'tplEvalResultsV1';
+  let run = null, last = null;
+  try { last = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (_) {}
+  { const sel = $('tplEvalPar'); if (sel) { const cores = Math.max(1, (navigator.hardwareConcurrency || 4) - 1); for (let i = 1; i <= Math.min(8, cores); i++) sel.append(new Option(String(i), String(i))); sel.value = String(Math.max(1, Math.min(4, Math.floor(cores / 2)))); } }
+  const SKEY = 'tplEvalSettings';
+  const loadSet = () => { try { return JSON.parse(localStorage.getItem(SKEY) || '{}'); } catch (_) { return {}; } };
+  { const st = loadSet(); for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver', 'tplEvalBasis']) if (st[id] != null && $(id)) $(id).value = st[id]; }
+  const saveSet = () => { const st = {}; for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver', 'tplEvalBasis']) if ($(id)) st[id] = $(id).value; try { localStorage.setItem(SKEY, JSON.stringify(st)); } catch (_) {} };
+  for (const id of ['tplEvalN', 'tplEvalDepth', 'tplEvalBeam', 'tplEvalDepthOver']) if ($(id)) $(id).addEventListener('change', saveSet);
+  const clampInt = (v, lo, hi, def) => Math.max(lo, Math.min(hi, parseInt(v, 10) || def));
+  // 「はちみつ=10, 山岳積み2号=8」のような個別指定（名前の一部が合えば適用。完全一致を優先）
+  function depthFor(name, over, base) {
+    let hit = null;
+    for (const [k, n] of over) { if (name === k) return n; if (!hit && name.includes(k)) hit = n; }
+    return hit || base;
+  }
+  function parseOver(str) {
+    const out = [];
+    for (const part of String(str || '').split(/[,，、;；\n]+/)) { const m = part.trim().match(/^(.+?)\s*[=＝:：]\s*(\d+)$/); if (m) out.push([m[1].trim(), clampInt(m[2], 1, 16, 4)]); }
+    return out;
+  }
+  const fmtPct = v => (v * 100).toFixed(1) + '%';
+  const suggest = (r, basis) => Math.max(-999, Math.min(999, Math.round((basis === 'ev' ? r.avgFire * r.usableRate : r.avgFire) * 10)));
+  function render() {
+    const box = $('tplEvalTable'), ap = $('btnTplEvalApply'); if (!box) return;
+    box.textContent = '';
+    if (!last || !last.rows || !last.rows.length) { if (ap) ap.style.display = 'none'; return; }
+    const basis = $('tplEvalBasis').value;
+    const t = document.createElement('table'); t.style.cssText = 'border-collapse:collapse;font-size:.8rem;width:100%';
+    const head = ['テンプレ', '組める確率', 'パフェ到達', '平均火力', '最大火力', '期待値', '見た手数', '現在の優先度', '提案'];
+    const tr0 = document.createElement('tr'); for (const h of head) { const th = document.createElement('th'); th.textContent = h; th.style.cssText = 'text-align:left;padding:2px 6px;border-bottom:1px solid var(--border);white-space:nowrap'; tr0.append(th); } t.append(tr0);
+    const sorted = last.rows.slice().sort((a, b) => suggest(b, basis) - suggest(a, basis));
+    for (const r of sorted) {
+      const cur = templateData.find(x => x.name === r.name);
+      const cells = [r.name, fmtPct(r.tplRate), r.isPc ? fmtPct(r.pcRate) : '－', r.usable ? r.avgFire.toFixed(1) : '－', r.usable ? String(r.maxFire) : '－', (r.avgFire * r.usableRate).toFixed(2), r.depth ? String(r.depth) : '－', cur ? String(cur.priority) : '－', String(suggest(r, basis))];
+      const tr = document.createElement('tr'); for (const c of cells) { const td = document.createElement('td'); td.textContent = c; td.style.cssText = 'padding:2px 6px;border-bottom:1px solid var(--border);white-space:nowrap'; tr.append(td); } t.append(tr);
+    }
+    box.append(t); if (ap) ap.style.display = '';
+  }
+  function finish(msg) { if (run) { run.workers.forEach(w => { try { w.terminate(); } catch (_) {} }); if (run.url) URL.revokeObjectURL(run.url); } run = null; $('btnTplEval').style.display = ''; $('btnTplEvalStop').style.display = 'none'; if (msg) $('tplEvalStatus').textContent = msg; }
+  async function start() {
+    if (run) return;
+    const variants = getTemplateVariants().filter(v => !v.name.endsWith('（反転）') && variantIsValid(v));
+    if (!variants.length) { $('tplEvalStatus').textContent = '有効なテンプレがありません'; return; }
+    const N = Math.max(20, Math.min(5000, parseInt($('tplEvalN').value, 10) || 200)), par = parseInt($('tplEvalPar').value, 10) || 2, CH = 4;
+    const baseDepth = clampInt($('tplEvalDepth').value, 1, 16, 4), beam = clampInt($('tplEvalBeam').value, 4, 200, 16), over = parseOver($('tplEvalDepthOver').value);
+    saveSet();
+    const depthOf = variants.map(v => depthFor(v.name, over, baseDepth));
+    const acc = variants.map((v, i) => ({ depth: depthOf[i], name: v.name, isPc: !!cpuIsPcVariant(v) && !variantHasX(v), n: 0, tpl: 0, pc: 0, usable: 0, sum: 0, max: 0 }));
+    const queue = []; for (let k = 0; k < N; k += CH) for (let vi = 0; vi < variants.length; vi++) queue.push({ vi, ks: Array.from({ length: Math.min(CH, N - k) }, (_, i) => k + i) });
+    const total = queue.length; let doneChunks = 0; const t0 = performance.now();
+    run = { workers: [], url: null, stop: false }; $('btnTplEval').style.display = 'none'; $('btnTplEvalStop').style.display = '';
+    const onChunk = (vi, results) => {
+      const a = acc[vi];
+      for (const r of results) { a.n++; if (r.built) a.tpl++; if (r.pc) a.pc++; const ok = a.isPc ? r.pc : r.built; if (ok) { a.usable++; a.sum += r.fire; if (r.fire > a.max) a.max = r.fire; } }
+      doneChunks++;
+      const el = (performance.now() - t0) / 1000, eta = el / doneChunks * (total - doneChunks);
+      $('tplEvalStatus').textContent = `評価中… ${doneChunks}/${total}（${Math.round(doneChunks / total * 100)}%）　経過 ${el.toFixed(0)}秒　残り約 ${eta.toFixed(0)}秒`;
+    };
+    const done = () => {
+      last = { at: Date.now(), n: N, rows: acc.map(a => ({ name: a.name, depth: a.depth, isPc: a.isPc, n: a.n, tplRate: a.n ? a.tpl / a.n : 0, pcRate: a.n ? a.pc / a.n : 0, usable: a.usable, usableRate: a.n ? a.usable / a.n : 0, avgFire: a.usable ? a.sum / a.usable : 0, maxFire: a.max })) };
+      try { localStorage.setItem(KEY, JSON.stringify(last)); } catch (_) {}
+      finish(`完了（${N}本×${variants.length}テンプレ、${((performance.now() - t0) / 1000).toFixed(0)}秒）。「この結果を優先度に反映」で優先度に入れられます。`); render();
+    };
+    const oBase = { solveMs: 3000, beam, pcNodes: 30000, pcMs: 800, pcPieces: 9 };
+    let ok = false;
+    try {
+      run.url = URL.createObjectURL(new Blob([cpuBattleWorkerSource()], { type: 'text/javascript' }));
+      let live = 0;
+      const pump = w => {
+        if (run.stop) return;
+        const j = queue.shift();
+        if (!j) { if (--live === 0) done(); return; }
+        w.postMessage({ job: 'tplEval', variant: variants[j.vi], vi: j.vi, ks: j.ks, o: { ...oBase, depth: depthOf[j.vi] } });
+      };
+      for (let i = 0; i < par; i++) {
+        const w = new Worker(run.url); run.workers.push(w); live++;
+        w.onmessage = e => { if (e.data.type === 'tplChunk') { onChunk(e.data.vi, e.data.results); pump(w); } };
+        w.onerror = () => { if (!ok && run) finish('並列実行に失敗しました（この環境ではWorkerが使えません）'); };
+      }
+      ok = true; run.workers.forEach(pump);
+    } catch (e) { finish('評価を開始できませんでした: ' + e.message); }
+  }
+  $('btnTplEval').onclick = start;
+  $('btnTplEvalStop').onclick = () => { if (run) { run.stop = true; finish('停止しました'); } };
+  $('tplEvalBasis').onchange = render;
+  $('btnTplEvalApply').onclick = () => {
+    if (!last) return; const basis = $('tplEvalBasis').value; let n = 0;
+    for (const r of last.rows) { const t = templateData.find(x => x.name === r.name); if (t) { t.priority = suggest(r, basis); n++; } }
+    saveTemplateData(); renderTemplateList(); refreshTemplateOverlayOptions(); render();
+    toast(`${n}件のテンプレの優先度を反映しました`);
+  };
+  render();
+})();
 document.getElementById('btnSeedCollect').onclick = startSeedCollect;
 document.getElementById('btnSeedStop').onclick = () => stopSeedCollect('停止しました');
 document.getElementById('btnSeedRefresh').onclick = refreshSeedBankList;
