@@ -211,7 +211,7 @@
     <div class="lobby-card">
       <h2>モード選択</h2>
       <h2>ソロプレイ</h2>
-      <label id="soloBuildableSeedRow" style="display:none;font-size:.75rem;color:var(--sub);align-items:center;gap:6px;justify-content:center"><input id="ensureTemplatePieces" type="checkbox" style="width:auto">テンプレが組めるツモ順で開始（パフェ積みはパフェまで届く順）　※ソロ・COM戦・対人戦（ホスト）に適用（管理者）</label>
+      <label id="soloBuildableSeedRow" style="display:none;font-size:.75rem;color:var(--sub);align-items:center;gap:6px;justify-content:center"><input id="ensureTemplatePieces" type="checkbox" style="width:auto">テンプレが組めるツモ順で開始　※ソロ・COM戦・対人戦（ホスト）に適用</label>
       <select id="soloMode" style="width:100%;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:10px 8px"><option value="marathon">ノーマル（無制限・スコアを競う）</option><option value="sprint">40ライン（最速タイムを競う）</option><option value="ultra">2分間（スコアを競う）</option><option value="daily">デイリー（今日の共通ツモ順・2分間）</option></select>
       <button id="btnSolo">ソロプレイ開始</button>
       <div style="display:flex;gap:6px"><button id="btnOpenMyPage" class="alt" style="flex:1">マイページ</button><button id="btnOpenRanking" class="alt" style="flex:1">ランキング</button></div>
@@ -481,7 +481,7 @@
       <div style="display:flex;gap:8px"><button id="btnGistAudit" class="alt" style="flex:1">点検だけ行う</button><button id="btnGistFix" class="danger" style="flex:1">公開のものをSecretに直す</button></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <div style="font-weight:700">COMの性能設定</div>
-      <div class="muted" style="font-size:.78rem">レベルごとに、速さ・先読み・最善手率・T-spin・パフェ・派生などを変更できます。「プリセットを追加」で、名前つきの新しいCOM（★）を作れます（例: 人間に勝てない弱いCOM、ハードドロップしか使わないCOM）。「保存」すると全員の選択肢に反映されます。保存前に「試運転」で目安を確認できます。</div>
+      <div class="muted" style="font-size:.78rem">レベルごとに、速さ・先読み・最善手率・T-spin・パフェ・派生などを変更できます。「プリセットを追加」で、名前つきの新しいCOM（★）を作れます。「保存」すると全員の選択肢に反映されます。保存前に「試運転」で目安を確認できます。</div>
       <select id="cpuDevLevel"></select>
       <div id="cpuPresetRatingRow" style="display:none;align-items:center;gap:8px;font-size:.8rem"><span>COM戦レートの基準（強さの目安）</span><input type="number" id="cpuPresetRating" min="300" max="2600" step="10" style="width:5.5em"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -516,7 +516,7 @@
       <div id="cpuBattleStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <div style="font-weight:700">ツモ順ライブラリ（組めるツモ順の蓄積）</div>
-      <div class="muted" style="font-size:.78rem">有効なテンプレごとに、「組めるツモ順（パフェ積みはパフェまで届く順）」をバックグラウンドで探し続けて、サーバーに貯めます。ソロ・COM戦・対人戦の「組めるツモ順で開始」は、まずここから選ぶので、その場で探すより確実で、すぐ始まります（見つからない時だけ、短い時間で探します）。シードは数値だけなので、1テンプレあたり最大4,000個でも約24KBです。</div>
+      <div class="muted" style="font-size:.78rem">有効なテンプレごとに、パフェ積みはパフェまで届く「組めるツモ順」をバックグラウンドで探し続けて、サーバーに貯めます。ソロ・COM戦・対人戦の「組めるツモ順で開始」は、まずここから選ぶので、その場で探すより確実ですぐ始まります。見つからない時だけ、短い時間で探します。シードは数値だけなので、1テンプレあたり最大4,000個でも約24KBです。</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button id="btnSeedCollect">蓄積を開始</button>
         <button id="btnSeedStop" class="danger" style="display:none">停止</button>
@@ -589,7 +589,7 @@
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
       <label for="templateName">テンプレ名</label>
       <input id="templateName" type="text" placeholder="例：新しい積み方" style="width:100%;box-sizing:border-box">
-      <label for="templatePattern">盤面パターン（1行10文字、使用文字 I J L O S T Z .）</label>
+      <label for="templatePattern">盤面パターン（1行10文字、使用文字 I J L O S T Z X .　Xは任意のミノ＝すでにある地形）</label>
       <textarea id="templatePattern" rows="7" placeholder="..........
 ....T.....
 ..TTT....." style="width:100%;box-sizing:border-box;font-family:monospace"></textarea>
@@ -855,7 +855,7 @@ function normalizeTemplates(arr) {
   if (!Array.isArray(arr)) return null;
   const out = [];
   for (const t of arr) {
-    if (!t || typeof t.name !== 'string' || !Array.isArray(t.pattern) || !t.pattern.length || t.pattern.some(r => typeof r !== 'string' || !/^[IJLOSTZ.]{10}$/.test(r))) return null;
+    if (!t || typeof t.name !== 'string' || !Array.isArray(t.pattern) || !t.pattern.length || t.pattern.some(r => typeof r !== 'string' || !/^[IJLOSTZX.]{10}$/.test(r))) return null;
     const p = Number(t.priority);
     out.push({ name: t.name.trim().slice(0, 60) || 'テンプレ', priority: Number.isFinite(p) ? Math.max(-999, Math.min(999, Math.round(p))) : 10, pattern: t.pattern.slice(0, 40), enabled: t.enabled !== false, mirror: t.mirror !== false, pc: t.pc === true });
   }
@@ -1319,7 +1319,7 @@ async function startSoloGame() {
   } else if (wantBuildableSeed()) {
     if (seedSearching) return;
     seedSearching = true; toast('組めるツモ順を探しています…');
-    let found = null; try { found = await resolveBuildableSeed(3000); } finally { seedSearching = false; }
+    let found = null; seedContextSolo = true; try { found = await resolveBuildableSeed(3000); } finally { seedSearching = false; seedContextSolo = false; }
     if (found) { seed = found.seed; toast(seedFoundText(found) + 'で開始します'); }
     else { seed = Math.floor(Math.random() * 1000000000); toast('組めるツモ順が見つからないため、ランダムで開始します'); }
   } else {
@@ -3234,7 +3234,7 @@ function drawTemplateOverlay() {
   for (let r = 0; r < rows.length; r++) {
     for (let c = 0; c < Math.min(COLS, rows[r].length); c++) {
       const type = rows[r][c];
-      if (!'IJLOSTZ'.includes(type)) continue;
+      if (!'IJLOSTZX'.includes(type)) continue;
       const x = c * BLOCK_SIZE, y = (startY + r) * BLOCK_SIZE;
       ctx.fillStyle = COLORS[type];
       ctx.globalAlpha = 0.30;
@@ -3573,6 +3573,11 @@ function initGame() {
   updateSoloTimer();
   updateScoreUi();
   board = Array.from({length: ROWS}, () => Array(COLS).fill(null)); hiddenRows = [];
+  // ソロで、Xのあるテンプレ（中盤テンプレ）を表示用に選んでいる時は、その地形（X）を置いた状態で始める
+  if (!isVsMode && typeof templateOverlayVisible === 'function' && templateOverlayVisible()) {
+    const vn = getSelectedTemplateVariantName(), sv = vn && getTemplateVariants().find(v => v.name === vn);
+    if (sv && variantHasX(sv)) board = templateStartBoard(sv, board);
+  }
   bag = []; nextQ = []; holdPiece = null; canHold = true;
   ren = -1; b2b = false; pendingGarbage = 0; pendingHoles = [];
   autoBuildRunning = false; autoBuildToken++;
@@ -3708,8 +3713,8 @@ document.getElementById('btnAddTemplate').onclick = () => {
   const raw = document.getElementById('templatePattern').value.trim();
   const rows = raw.split(/\r?\n/).map(r => r.trim());
   if (!name || !raw) { alert('テンプレ名と盤面パターンを入力してください。'); return; }
-  if (rows.some(r => r.length !== 10 || /[^IJLOSTZ.]/.test(r))) {
-    alert('各行を10文字にし、I J L O S T Z . だけを使ってください。'); return;
+  if (rows.some(r => r.length !== 10 || /[^IJLOSTZX.]/.test(r))) {
+    alert('各行を10文字にし、I J L O S T Z X . だけを使ってください。'); return;
   }
   const mirror = document.getElementById('templateMirror').checked;
   const priority = Math.max(-999, Math.min(999, Math.round(Number(document.getElementById('templatePriority').value) || 0)));
@@ -3788,8 +3793,10 @@ function activeTemplateComplete(variant) {
   if (!variant || !variant.pattern) return false;
   const start = ROWS - variant.pattern.length;
   for (let r = 0; r < variant.pattern.length; r++) for (let c = 0; c < COLS; c++) {
-    if (variant.pattern[r][c] !== '.' && board[start + r]?.[c] !== variant.pattern[r][c]) return false;
-    if (variant.pattern[r][c] === '.' && board[start + r]?.[c]) return false;
+    const ch = variant.pattern[r][c], v = board[start + r]?.[c];
+    if (ch === 'X') { if (!v) return false; continue; }
+    if (ch !== '.' && v !== ch) return false;
+    if (ch === '.' && v) return false;
   }
   return true;
 }
@@ -3830,19 +3837,30 @@ const AUTO_SPAWN = { x: 3, y: SPAWN_Y, rot: 0 };
 const AUTO_ACTIONS = ['CW', 'CCW', 'L', 'R', 'SD', 'D'];
 
 function variantRows(variant) { return variant.pattern; }
+// パターンの文字: I J L O S T Z = このミノで組む、X = 任意のミノ（発火後の地形など、すでに盤面にあるブロック）、. = 空き
+const isBuildCh = ch => 'IJLOSTZ'.includes(ch);
+const variantHasX = variant => !!(variant && Array.isArray(variant.pattern) && variant.pattern.some(r => r.includes('X')));
+// Xを置いた状態の開始盤面（Xが無いテンプレは空盤面のまま）。ソロでの練習と、ツモ順の探索で使う
+function templateStartBoard(variant, empty) {
+  if (!variantHasX(variant)) return empty;
+  const rows = variantRows(variant), top = ROWS - rows.length, b = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) if (rows[r][c] === 'X') b[top + r][c] = 'X';
+  return b;
+}
 
 function variantIsValid(variant) {
   const rows = variantRows(variant);
   return Array.isArray(rows) && rows.length > 0 && rows.length <= ROWS &&
-    rows.every(row => typeof row === 'string' && row.length === COLS && !/[^IJLOSTZ.]/.test(row));
+    rows.every(row => typeof row === 'string' && row.length === COLS && !/[^IJLOSTZX.]/.test(row));
 }
 
 function boardConsistentWithVariant(b, variant) {
   const rows = variantRows(variant), top = ROWS - rows.length;
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-    const a = b[r][c];
+    const a = b[r][c], ch = r < top ? '.' : rows[r - top][c];
+    if (ch === 'X') { if (!a) return false; continue; }   // X: 任意のミノがあればよい（なければこのテンプレはまだ使えない）
     if (!a) continue;
-    if (r < top || rows[r - top][c] !== a) return false;
+    if (r < top || ch !== a) return false;
   }
   return true;
 }
@@ -3925,7 +3943,9 @@ function templatePlacementsFor(b, type, variant, start) {
     const nb = cloneBoard(b);
     const m = getShapeMatrix(type, t.rot);
     for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) if (m[r][c]) nb[t.y + r][t.x + c] = type;
-    if (nb.some(row => row.every(v => v !== null))) continue;
+    let fullRow = false;   // 置いたミノのある行がそろってしまう（ラインが消える）配置は使わない。もとからある地形Xの行は対象外
+    for (let r = 0; r < m.length && !fullRow; r++) if (m[r].some(Boolean) && nb[t.y + r] && nb[t.y + r].every(v => v !== null)) fullRow = true;
+    if (fullRow) continue;
     result.push({ ...t, board: nb, path: autoPath(reach, t) });
   }
   // Fill from the bottom first so later pieces have support.
@@ -3938,7 +3958,7 @@ function solveTemplate(startBoard, seq, startHold, startCanHold, variant, firstS
   if (!variantIsValid(variant) || !boardConsistentWithVariant(startBoard, variant)) return null;
   const rows = variantRows(variant), top = ROWS - rows.length;
   let total = 0, filled = 0;
-  for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) if (rows[r][c] !== '.') {
+  for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) if (isBuildCh(rows[r][c])) {
     total++;
     if (startBoard[top + r][c]) filled++;
   }
@@ -3949,7 +3969,7 @@ function solveTemplate(startBoard, seq, startHold, startCanHold, variant, firstS
     const need = { I:0, J:0, L:0, O:0, S:0, T:0, Z:0 };
     for (let r = 0; r < rows.length; r++) for (let c = 0; c < COLS; c++) {
       const t = rows[r][c];
-      if (t !== '.' && !b[top + r][c]) need[t]++;
+      if (isBuildCh(t) && !b[top + r][c]) need[t]++;
     }
     return need;
   };
@@ -4000,6 +4020,12 @@ function getSelectedTemplateVariantName() {
   return side === 'mirror' ? name + '（反転）' : name;
 }
 
+// ツモ順の探索で使うテンプレ。Xのあるテンプレ（地形つき）は、ソロで表示中に選んだ時だけ使う（開始時に地形を置くため）。対戦では盤面に地形がないので使わない
+let seedContextSolo = false;
+function seedCandidateVariants() {
+  const sel = getSelectedTemplateVariantName();
+  return autoCandidateVariants().filter(v => !variantHasX(v) || (seedContextSolo && v.name === sel));
+}
 function autoCandidateVariants() {
   const variants = getTemplateVariants().filter(variantIsValid);
   const selected = getSelectedTemplateVariantName();
@@ -4009,7 +4035,7 @@ function autoCandidateVariants() {
 
 function templatePieceCount(variant) {
   let cells = 0;
-  for (const row of variantRows(variant)) for (const ch of row) if (ch !== '.') cells++;
+  for (const row of variantRows(variant)) for (const ch of row) if (isBuildCh(ch)) cells++;
   return Math.ceil(cells / 4);
 }
 
@@ -4066,7 +4092,7 @@ function planAutoBuildCore(startPose) {
     for (const nodeLimit of [400, 6000]) {   // 1周目: 組めるテンプレはたいてい数十ノードで見つかる。組めないものは早く切り上げる
       for (const variant of variants) {
         if (performance.now() > tEnd) { autoPlanTimedOut = true; return null; }
-        const isPc = !!cpuIsPcVariant(variant);
+        const isPc = !!cpuIsPcVariant(variant) && !variantHasX(variant);
         if (impossible.has(variant.name)) continue;   // 1周目で「組めない」と確定したものは再挑戦しない
         if (isPc && (tailFailed.has(variant.name) || tailSpent > 250)) continue;   // パフェ到達チェックに使う時間にも上限
         templateSolveDeadline = Math.min(tEnd, performance.now() + 1200);   // 1つのテンプレに使う時間の上限（組めないテンプレに時間を取られて、後ろの組めるテンプレに届かないのを防ぐ）
@@ -4096,7 +4122,8 @@ function planAutoBuildCore(startPose) {
 // 時間切れで null になった場合は trySeedForVariant.lastCut が true（「組めない」と確定したわけではない）
 const templateSeqLen = (variant, isPc) => templatePieceCount(variant) + (isPc ? 12 : 15);
 function trySeedForVariant(seed, variant, empty, emptyRows, budgetMs = 1500, tailNodes = 4000) {
-  const isPc = !!cpuIsPcVariant(variant);
+  const isPc = !!cpuIsPcVariant(variant) && !variantHasX(variant);
+  empty = templateStartBoard(variant, empty);
   const seq = generateBagPieces(seededRandom(seed), templateSeqLen(variant, isPc));   // 先頭は出現中のミノ、その後ろがNEXTと次のbag
   templateSolveDeadline = performance.now() + budgetMs;
   let plan = null;
@@ -4110,7 +4137,7 @@ function trySeedForTemplates(seed, variants, empty, emptyRows) {
   return null;
 }
 function findBuildableSeed(maxMs = 1500) {
-  const variants = autoCandidateVariants();
+  const variants = seedCandidateVariants();
   if (!variants.length) return null;
   const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0), t0 = performance.now();
   while (performance.now() - t0 < maxMs) {
@@ -4122,7 +4149,7 @@ function findBuildableSeed(maxMs = 1500) {
 // 画面が固まらないよう、短い計算ごとに処理を譲りながら探す（1回の計算は最大で数十ms）。
 // state.gentle が true の間は「裏でそっと」探す（計算 約12ms → 休み 40ms ＝ CPU使用は2割ほど）。操作中の画面に影響しないようにするため。
 async function findBuildableSeedAsync(maxMs = 3000, state = {}) {
-  const variants = autoCandidateVariants();
+  const variants = seedCandidateVariants();
   if (!variants.length) return null;
   const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0), t0 = performance.now();
   let sliceStart = performance.now();
@@ -4160,7 +4187,7 @@ async function bankSeedsFor(key) {
 // ライブラリから、組めるツモ順を選ぶ（優先度の高いテンプレから。直近に使ったシードは避け、念のため組めるか確かめてから使う）
 async function pickSeedFromBank() {
   if (!account) return null;
-  const variants = autoCandidateVariants();
+  const variants = seedCandidateVariants();
   if (!variants.length) return null;
   const empty = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), emptyRows = Array(ROWS).fill(0);
   for (const variant of variants) {
@@ -4192,7 +4219,7 @@ async function resolveBuildableSeed(liveMs = 3000, state = {}) {
   if (b) return b;
   return findBuildableSeedAsync(liveMs, state);
 }
-const seedFoundText = f => `「${f.template}」${f.pc ? '（パフェまで届く順）' : ''}が組めるツモ順${f.fromBank ? '（ライブラリから）' : ''}`;
+const seedFoundText = f => `「${f.template}」${f.pc ? 'のパフェまで届く' : 'が組める'}ツモ順${f.fromBank ? ' ライブラリから' : ''}`;
 
 let pendingBuildableSeed = null, seedSearching = false, rematchSeeding = false;
 let personalSeed = null;   // { seed, sig } 各自バラバラのツモ順の対戦で、自分の盤面用に選んだ「組めるツモ順」
@@ -4330,7 +4357,7 @@ async function startAutoBuild() {
     const plan = planAutoBuild(replans === 1 ? autoPlanStartPose() : undefined);   // 1回目はガイドと同じ出発点、やり直しの時は現在位置から
     if (!plan) {
       const sel = getSelectedTemplateVariantName();
-      stopAutoBuild((autoPlanTimedOut ? '自動積み停止：探索が時間切れになりました（もう一度試すか、テンプレを選んでください）' : sel ? `自動積み停止：このツモ順では「${sel}」を組めません（パフェ積みはパフェできる時のみ組みます）` : '自動積み停止：このツモ順で組めるテンプレがありません（パフェ積みはパフェできる時のみ組みます）'));
+      stopAutoBuild((autoPlanTimedOut ? '自動積み停止：探索が時間切れになりました（もう一度試すか、テンプレを選んでください）' : sel ? `自動積み停止：このツモ順では「${sel}」を組めません。パフェ積みはパフェできる時のみ組みます` : '自動積み停止：このツモ順で組めるテンプレがありません。パフェ積みはパフェできる時のみ組みます'));
       return;
     }
     const variant = plan.variant;
@@ -4999,6 +5026,22 @@ document.getElementById('btnCpuBattleRun').onclick = async () => {
 };
 document.getElementById('btnCpuBattleStop').onclick = () => { cpuBattleCancel = true; if (cpuBattleCancelHook) cpuBattleCancelHook(); };
 document.getElementById('cpuPresetRating').onchange = () => { const pt = cpuDevTargetOf(document.getElementById('cpuDevLevel').value); if (!pt) return; const v = Math.min(2600, Math.max(300, parseInt(document.getElementById('cpuPresetRating').value, 10) || CPU_RATING_BASE[cpuLevelOf(pt.base)])); pt.rating = v; document.getElementById('cpuPresetRating').value = v; };
+// 蓄積の数値（1テンプレの個数・並列数・末尾削除数）は、前に入れた値を保存して次回も使う
+(() => {
+  const KEY = 'seedBankInputs', load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (_) { return {}; } };
+  const defs = { seedCollectTarget: [10, 4000, 300], seedRemoveN: [1, 4000, 3] };
+  const saved = load();
+  for (const [id, [min, max, def]] of Object.entries(defs)) {
+    const el = document.getElementById(id); if (!el) continue;
+    const fix = () => { const v = Math.max(min, Math.min(max, parseInt(el.value, 10) || def)); el.value = v; return v; };
+    if (saved[id] != null) { el.value = saved[id]; fix(); }
+    el.addEventListener('change', () => { const v = fix(); const o = load(); o[id] = v; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (_) {} });
+    el.addEventListener('wheel', e => { if (document.activeElement === el) { e.preventDefault(); el.blur(); } }, { passive: false });   // ホイールで勝手に数値が動かないように
+  }
+  const par = document.getElementById('seedCollectPar');
+  if (par) par.addEventListener('change', () => { const o = load(); o.seedCollectPar = par.value; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (_) {} });
+  window.__restoreSeedPar = () => { const v = load().seedCollectPar; if (v && par && [...par.options].some(o => o.value === v)) par.value = v; };
+})();
 document.getElementById('btnCpuPresetAdd').onclick = () => {
   if (!cpuDevDraft) return;
   if (cpuDevCustom.length >= 20) return alert('プリセットは20個までです');
@@ -5006,7 +5049,7 @@ document.getElementById('btnCpuPresetAdd').onclick = () => {
   if (!cpuPresetNameOk(name, '')) return;
   const cur = document.getElementById('cpuDevLevel').value, t = cpuDevTargetOf(cur);
   const id = 'c' + Date.now().toString(36);
-  cpuDevCustom.push({ id, name, base: t ? t.base : cpuLevelOf(cur), rating: t && Number.isFinite(t.rating) ? t.rating : null, params: { ...cpuDevParamsOf(cur) } });   // いま選んでいる性能をコピーして作る
+  cpuDevCustom.push({ id, name, base: t ? t.base : cpuLevelOf(cur), rating: t && Number.isFinite(t.rating) ? t.rating : CPU_RATING_BASE[cpuLevelOf(t ? t.base : cur)], params: { ...cpuDevParamsOf(cur) } });   // いま選んでいる性能と、その目安レートをコピーして作る
   fillCpuDevSelect('c:' + id); renderCpuDev();
   document.getElementById('cpuDevStatus').textContent = `「${name}」を追加しました（いま選んでいた性能のコピーです）。数値を調整して「保存」すると、全員の選択肢に出ます。`;
 };
@@ -5187,6 +5230,7 @@ async function startSeedCollect() {
   const sel = document.getElementById('seedCollectPar'), cores = Math.max(1, (navigator.hardwareConcurrency || 4) - 1);
   for (let i = 1; i <= Math.min(8, cores); i++) sel.append(new Option(`${i}`, String(i)));
   sel.value = String(Math.max(1, Math.min(4, Math.floor(cores / 2))));
+  if (window.__restoreSeedPar) window.__restoreSeedPar();
 }
 document.getElementById('btnSeedCollect').onclick = startSeedCollect;
 document.getElementById('btnSeedStop').onclick = () => stopSeedCollect('停止しました');
