@@ -158,6 +158,11 @@
     .admin-tab.active { background:var(--accent); color:#11111b; }
     .admin-section { display:none; width:100%; flex-direction:column; gap:8px; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px; }
     .admin-section.active { display:flex; }
+    .dev-subtabs { display:flex; flex-wrap:wrap; gap:6px; width:100%; }
+    .dev-subtab { flex:1 1 auto; width:auto; padding:6px 10px; font-size:.82rem; background:#45475a; color:#fff; }
+    .dev-subtab.active { background:var(--accent); color:#11111b; }
+    .dev-sub { display:none; width:100%; flex-direction:column; gap:8px; }
+    .dev-sub.active { display:flex; }
     .admin-row { border:1px solid var(--border); border-radius:8px; padding:8px; display:flex; flex-direction:column; gap:6px; overflow-wrap:anywhere; }
     .admin-row .actions { display:flex; flex-wrap:wrap; gap:5px; }
     .admin-row .actions button { width:auto; padding:5px 9px; font-size:.78rem; }
@@ -449,6 +454,8 @@
     </section>
 
     <section id="adminTabDev" class="admin-section">
+      <div class="dev-subtabs" role="tablist"><button class="dev-subtab active" data-dsub="ops" role="tab">運用</button><button class="dev-subtab" data-dsub="perm" role="tab">権限・戦績</button><button class="dev-subtab" data-dsub="cpu" role="tab">COM設定</button><button class="dev-subtab" data-dsub="cpubattle" role="tab">COM対戦</button><button class="dev-subtab" data-dsub="seed" role="tab">ツモ順</button><button class="dev-subtab" data-dsub="tpl" role="tab">テンプレ評価</button></div>
+      <div class="dev-sub active" data-dsub="ops">
       <div style="font-weight:700">メンテナンス</div>
       <div id="devMaintStatus" class="muted"></div>
       <input id="devMaintMessage" type="text" maxlength="200" placeholder="表示するメッセージ（任意）">
@@ -467,6 +474,12 @@
         <button id="btnSchedClear" class="alt" style="width:auto;padding:6px 12px">予定を取り消す</button>
       </div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">Gistの公開状態</div>
+      <div class="muted" style="font-size:.78rem">保存先のGistがSecretでないもの（公開）を探し、Secretで作り直します。GitHubは公開設定を後から変更できないため、作り直し後は古いGistを削除します。</div>
+      <div id="gistFixStatus" style="font-size:.85rem"></div>
+      <div style="display:flex;gap:8px"><button id="btnGistAudit" class="alt" style="flex:1">点検だけ行う</button><button id="btnGistFix" class="danger" style="flex:1">公開のものをSecretに直す</button></div>
+      </div>
+      <div class="dev-sub" data-dsub="perm">
       <div style="font-weight:700">全体の権限</div>
       <div class="muted" style="font-size:.78rem">個人設定が「設定しない」のユーザーに適用されます。一般ユーザーは自分のリプレイだけが対象です。開発者は常にすべて可能です。</div>
       <div id="devGlobalPerms" class="perm-grid"></div>
@@ -476,11 +489,13 @@
       <select id="devUserSelect"></select>
       <div id="devUserPerms" class="perm-grid"></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%">
-      <div style="font-weight:700">Gistの公開状態</div>
-      <div class="muted" style="font-size:.78rem">保存先のGistがSecretでないもの（公開）を探し、Secretで作り直します。GitHubは公開設定を後から変更できないため、作り直し後は古いGistを削除します。</div>
-      <div id="gistFixStatus" style="font-size:.85rem"></div>
-      <div style="display:flex;gap:8px"><button id="btnGistAudit" class="alt" style="flex:1">点検だけ行う</button><button id="btnGistFix" class="danger" style="flex:1">公開のものをSecretに直す</button></div>
-      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      <div style="font-weight:700">全員の戦績・レート（非公開の人も含む）</div>
+      <div class="muted" style="font-size:.78rem">開発者のレートは1850固定です。非公開にしているプレイヤーも、ここでは確認できます。</div>
+      <button id="btnAdminStats" class="alt">読み込む</button>
+      <div id="adminStatsEditor" style="display:none;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:.8rem"></div>
+      <div id="adminStatsBody" style="display:flex;flex-direction:column;gap:2px;font-size:.8rem"></div>
+      </div>
+      <div class="dev-sub" data-dsub="cpu">
       <div style="font-weight:700">COMの性能設定</div>
       <div class="muted" style="font-size:.78rem">レベルごとに、速さ・先読み・最善手率・T-spin・パフェ・派生などを変更できます。「プリセットを追加」で、名前つきの新しいCOM（★）を作れます。「保存」すると全員の選択肢に反映されます。保存前に「試運転」で目安を確認できます。</div>
       <select id="cpuDevLevel"></select>
@@ -500,7 +515,8 @@
         <button id="btnCpuResetAll" class="danger" style="flex:1;min-width:8em">すべて初期値に（保存も消す）</button>
       </div>
       <div id="cpuDevStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
-      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      </div>
+      <div class="dev-sub" data-dsub="cpubattle">
       <div style="font-weight:700">COM同士の対戦</div>
       <div class="muted" style="font-size:.78rem">COMを2〜4体選んで戦わせます。上の「COMの性能設定」で編集中の内容（未保存でも）と、追加したプリセット（★）が使われるので、保存する前に強さを確かめられます。1戦ならリプレイとして観戦、複数戦なら勝率などを集計します。</div>
       <div style="display:flex;flex-direction:column;gap:6px">
@@ -528,7 +544,8 @@
       </div>
       <div id="cpuLeagueStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
       <div id="cpuLeagueTable" style="overflow-x:auto"></div>
-      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      </div>
+      <div class="dev-sub" data-dsub="seed">
       <div style="font-weight:700">ツモ順ライブラリ（組めるツモ順の蓄積）</div>
       <div class="muted" style="font-size:.78rem">有効なテンプレごとに、パフェ積みはパフェまで届く「組めるツモ順」をバックグラウンドで探し続けて、サーバーに貯めます。ソロ・COM戦・対人戦の「組めるツモ順で開始」は、まずここから選ぶので、その場で探すより確実ですぐ始まります。見つからない時だけ、短い時間で探します。シードは数値だけなので、1テンプレあたり最大4,000個でも約24KBです。</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -541,7 +558,8 @@
       </div>
       <div id="seedCollectStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
       <div id="seedBankList" style="display:flex;flex-direction:column;gap:2px;font-size:.8rem"></div>
-      <hr style="border:0;border-top:1px solid var(--border);width:100%">
+      </div>
+      <div class="dev-sub" data-dsub="tpl">
       <div style="font-weight:700">テンプレ評価（組める確率・パフェ到達率・組んだ直後の火力）</div>
       <div class="muted" style="font-size:.78rem">ランダムなツモ順を何本も試して、有効なテンプレごとに「組める確率」「パフェまで届く確率（パフェ積みは組んですぐ、それ以外は火力を送った後も含む）」「パフェ込み火力（パフェまでに送れる攻撃量の平均）」「組み終わった直後から数手で送れる攻撃量（B2B・REN なしから、パフェのボーナス込み）」を計算します。時間がかかる分、実際のゲーム内の探索より長く探します。結果から優先度を決めて反映できます。数が多いほど正確です（目安: 200本）。</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -562,12 +580,7 @@
       <div class="muted" style="font-size:.76rem">「火力を見る手数」は、組み終わった後の次の何手までで最大の攻撃量を探すかです。TST→TSD→パフェのように何度も撃つテンプレは、手数を増やす（10〜14）と、その分まで含めた火力になります。手数・探索の幅を増やすほど時間がかかります。探索の幅を広げるほど、長い手順でも見つけやすくなります。</div>
       <div id="tplEvalStatus" style="font-size:.82rem;white-space:pre-wrap"></div>
       <div id="tplEvalTable" style="overflow-x:auto"></div>
-      <hr style="border:0;border-top:1px solid var(--border);width:100%">
-      <div style="font-weight:700">全員の戦績・レート（非公開の人も含む）</div>
-      <div class="muted" style="font-size:.78rem">開発者のレートは1850固定です。非公開にしているプレイヤーも、ここでは確認できます。</div>
-      <button id="btnAdminStats" class="alt">読み込む</button>
-      <div id="adminStatsEditor" style="display:none;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:.8rem"></div>
-      <div id="adminStatsBody" style="display:flex;flex-direction:column;gap:2px;font-size:.8rem"></div>
+      </div>
     </section>
 
     <section id="adminTabReplays" class="admin-section">
@@ -1573,8 +1586,11 @@ function cpuPlacements(rows, type, sy = SPAWN_Y) {
   const isT = type === 'T', canRot = type !== 'O', kt = cpuKickTbl(type), cellsOf = CPU_CELLS[type];
   const stack = [3, sy, 0, 0], seenCells = new Set();   // x, y, r, f を4つずつ並べる
   CPU_VIS[(((0 * 40 + (sy + 4)) * 24 + (3 + 4)) * 3 + 0)] = cpuVisGen;
-  const push = (x, y, r, f) => { const k = (((r * 40 + (y + 4)) * 24 + (x + 4)) * 3 + f); if (CPU_VIS[k] !== cpuVisGen) { CPU_VIS[k] = cpuVisGen; stack.push(x, y, r, f); } };
+  const push = (x, y, r, f) => { if (y < -4 || x < -4 || x > 19) return; const k = (((r * 40 + (y + 4)) * 24 + (x + 4)) * 3 + f);   // 盤面が天井まで積まれていると、回転のキックで上へ上へ進み続けて終わらなくなるため、範囲の外は探索しない
+     if (CPU_VIS[k] !== cpuVisGen) { CPU_VIS[k] = cpuVisGen; stack.push(x, y, r, f); } };
+  let guard = 0;
   while (stack.length) {
+    if (++guard > 60000) break;   // 念のための安全弁（通常は数千回で終わる）
     const f = stack.pop(), r = stack.pop(), y = stack.pop(), x = stack.pop();
     if (cpuHit(rows, type, x, y + 1, r)) {
       const cs = cellsOf[r];
@@ -4037,7 +4053,7 @@ function autoReachable(b, type, start) {
   const rotate = (s, dir) => {
     if (type === 'O') return null;
     const newR = (s.rot + dir + 4) % 4, kicks = autoKicks(type, s.rot, newR);
-    for (let i = 0; i < kicks.length; i++) { const nx = s.x + kicks[i][0], ny = s.y - kicks[i][1]; if (!hit(nx, ny, newR)) return { x: nx, y: ny, rot: newR }; }
+    for (let i = 0; i < kicks.length; i++) { const nx = s.x + kicks[i][0], ny = s.y - kicks[i][1]; if (!hit(nx, ny, newR)) return ny < -6 ? null : { x: nx, y: ny, rot: newR }; }   // 上に出すぎる位置は探索しない（積み上がった盤面で終わらなくなるのを防ぐ）
     return null;
   };
   for (let qi = 0; qi < queue.length; qi++) {
@@ -5378,6 +5394,16 @@ document.getElementById('btnCpuBattleStop').onclick = () => { cpuBattleCancel = 
     toast('COM戦レートの基準値を反映しました'); render();
   };
   $('btnCpuLeagueReset').onclick = () => { for (let i = 1; i <= 10; i++) CPU_RATING_BASE[i] = CPU_RATING_DEFAULT[i]; try { localStorage.removeItem('cpuRatingBaseV1'); } catch (_) {} toast('基準値を初期値に戻しました'); render(); };
+})();
+
+// 開発者タブの中の小タブ（運用 / 権限・戦績 / COM設定 / COM対戦 / ツモ順 / テンプレ評価）。最後に開いたものを覚えておく
+(() => {
+  const root = document.getElementById('adminTabDev'); if (!root) return;
+  const btns = [...root.querySelectorAll('.dev-subtab')], subs = [...root.querySelectorAll('.dev-sub')];
+  const open = k => { if (!subs.some(s => s.dataset.dsub === k)) k = 'ops'; btns.forEach(b => b.classList.toggle('active', b.dataset.dsub === k)); subs.forEach(s => s.classList.toggle('active', s.dataset.dsub === k)); try { localStorage.setItem('devSubTab', k); } catch (_) {} };
+  btns.forEach(b => { b.onclick = () => open(b.dataset.dsub); });
+  let saved = 'ops'; try { saved = localStorage.getItem('devSubTab') || 'ops'; } catch (_) {}
+  open(saved);
 })();
 document.getElementById('cpuPresetRating').onchange = () => { const pt = cpuDevTargetOf(document.getElementById('cpuDevLevel').value); if (!pt) return; const v = Math.min(2600, Math.max(300, parseInt(document.getElementById('cpuPresetRating').value, 10) || CPU_RATING_BASE[cpuLevelOf(pt.base)])); pt.rating = v; document.getElementById('cpuPresetRating').value = v; };
 // 蓄積の数値（1テンプレの個数・並列数・末尾削除数）は、前に入れた値を保存して次回も使う
