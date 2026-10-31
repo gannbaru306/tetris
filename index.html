@@ -238,6 +238,7 @@
         <button id="btnJoinRoom" style="width: 120px;">参加する</button>
         <button id="btnSpectateRoom" class="alt" style="width: 100px;">観戦</button>
       </div>
+      <button id="btnDrillOpen" class="alt" style="white-space:nowrap">回転入れ練習（Tスピン・縦S・縦Iなど）</button>
       <div id="cpuBox" style="display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px;">
         <span style="font-size:.85rem;font-weight:700">COMと対戦</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;">
@@ -307,8 +308,77 @@
     </div>
   </div>
 
+  <!-- 回転入れ練習 -->
+  <div id="drillScreen" class="screen">
+    <div class="lobby-card" style="max-width:560px">
+      <h2>回転入れ練習</h2>
+      <div style="font-size:.8rem;color:var(--sub)">決まった盤面と決まったミノで、難しい回転入れ・Tスピンを練習します。ミスしたらすぐやり直せます。ヒントと答え（操作の手順）も見られます。</div>
+      <div id="drillList" style="display:flex;flex-direction:column;gap:10px"></div>
+      <details style="font-size:.82rem">
+        <summary style="cursor:pointer;font-weight:700">自分のドリルを追加（JSON）</summary>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+          <div style="color:var(--sub);font-size:.76rem;line-height:1.5">盤面は下そろえで、上の行から書きます。<code>X</code>=ブロック、<code>.</code>=空き（1行10文字）。<code>seq</code>はミノの順（例 <code>"TIO"</code>）、<code>steps</code>は1手ごとの条件で、<code>lines</code>（消すライン数）・<code>spin</code>（<code>"full"</code>でTスピン）・<code>cells</code>（ミノを置く場所。下から数えた[行,列]を4つ）を書けます。追加すると、解けるかどうかをソルバーで確かめます。<br>例: <code>{"name":"自作","board":["XX........","X...XXXXXX","XX.XXXXXXX"],"seq":"T","steps":[{"lines":2,"spin":"full"}]}</code></div>
+          <textarea id="drillImport" rows="6" style="width:100%;background:#11111b;color:#fff;border:1px solid var(--border);border-radius:6px;padding:6px;font-family:monospace;font-size:.78rem"></textarea>
+          <button id="btnDrillAdd" class="alt">確認して追加</button>
+          <div id="drillImportStatus" style="font-size:.8rem;white-space:pre-wrap"></div>
+        </div>
+      </details>
+      <button id="btnDrillBack" class="alt">ロビーへ戻る</button>
+    </div>
+  </div>
+
+  <!-- ドリル作成（開発者） -->
+  <div id="drillEditScreen" class="screen">
+    <div class="lobby-card" style="max-width:560px">
+      <h2 id="deHead">ドリルを追加</h2>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <input id="deName" placeholder="名前" maxlength="40" style="flex:2;min-width:9em">
+        <input id="deCat" list="deCats" placeholder="カテゴリ" maxlength="20" style="flex:1;min-width:7em"><datalist id="deCats"></datalist>
+      </div>
+      <input id="deDesc" placeholder="説明（短く。任意）" maxlength="160">
+      <div style="font-weight:700">盤面（タップ・ドラッグで、灰色のマスを置く／消す）</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.8rem">
+        行数<select id="deRows" style="width:auto"></select>
+        <button id="deClear" class="alt" style="width:auto;padding:4px 10px;font-size:.76rem">全部消す</button>
+        <button id="deFill" class="alt" style="width:auto;padding:4px 10px;font-size:.76rem">全部埋める</button>
+        <button id="deMirror" class="alt" style="width:auto;padding:4px 10px;font-size:.76rem">左右反転</button>
+      </div>
+      <canvas id="deGrid" style="touch-action:none;border:1px solid var(--border);border-radius:6px;max-width:100%;align-self:center;cursor:pointer"></canvas>
+      <div style="font-weight:700">ミノの順（先頭が最初に出るミノ）</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" id="deSeqBtns"></div>
+      <div id="deSeq" style="font-family:monospace;font-size:1rem;letter-spacing:.15em;min-height:1.4em"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:.8rem">
+        <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="deHold" style="width:auto">ホールドを使える</label>
+        <span>遊ぶミノの数<select id="dePlay" style="width:auto;margin-left:4px"></select></span>
+      </div>
+      <div style="font-weight:700">1手ごとの条件と答え</div>
+      <div style="font-size:.76rem;color:var(--sub)">各手の行をタップすると、下のプレビューにその手の盤面と答え（緑）が出ます。「置く場所を指定」にすると、プレビューの答えと同じ場所に置いた時だけ成功になります（指定しなければ、条件を満たせばどこでも成功）。</div>
+      <div id="deSteps" style="display:flex;flex-direction:column;gap:6px"></div>
+      <canvas id="dePrev" style="border:1px solid var(--border);border-radius:6px;max-width:100%;align-self:center"></canvas>
+      <div id="deStatus" style="font-size:.8rem;white-space:pre-wrap"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button id="deTest" class="alt" style="flex:1">テストプレイ</button>
+        <button id="deSave" style="flex:1">保存して全員に公開</button>
+        <button id="deCancel" class="alt" style="flex:1">戻る</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ゲーム画面 -->
   <div id="gameScreen" class="screen">
+    <div id="drillBar" style="display:none;width:100%;max-width:440px;flex-direction:column;gap:5px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;font-size:.82rem">
+      <div id="drillTitle" style="font-weight:700"></div>
+      <div id="drillGoal" style="color:var(--sub)"></div>
+      <div id="drillMsg" style="font-weight:700;min-height:1.2em"></div>
+      <div id="drillAnswerText" style="color:#a6e3a1;font-size:.78rem;line-height:1.5"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button id="btnDrillRetry" style="flex:1;min-width:5em;padding:6px;font-size:.78rem">やり直し</button>
+        <button id="btnDrillHint" class="alt" style="flex:1;min-width:5em;padding:6px;font-size:.78rem">ヒント</button>
+        <button id="btnDrillAnswer" class="alt" style="flex:1;min-width:5em;padding:6px;font-size:.78rem">答え</button>
+        <button id="btnDrillNext" style="flex:1;min-width:5em;padding:6px;font-size:.78rem;display:none">次の問題</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--sub)">落下<select id="drillGravity" style="width:auto;padding:2px 6px;font-size:.76rem"><option value="slow">ゆっくり</option><option value="normal">ふつう</option><option value="none">なし（止まっている）</option></select><span>ミノは、設置するまで自由落下します（ロックまでの猶予あり）</span></div>
+    </div>
     <div style="width:100%; display:flex; justify-content:space-between; margin-bottom:6px;">
       <button id="btnBackToLobby" class="alt" style="width:80px; padding:4px; font-size:0.75rem;">ロビーへ戻る</button>
       <div id="matchModeLabel" style="font-size:0.8rem; color:var(--sub); font-weight:bold; align-self:center;"></div>
@@ -2974,7 +3044,312 @@ function resetForRematch() {
   sendPosNow();
 }
 
+
+// ==========================================
+// 回転入れ練習（決まった盤面・ミノの順で、Tスピンや縦向きの回転入れを練習する）
+// ==========================================
+const DRILLS_BUILTIN = [{"id": "tsd-l", "cat": "Tスピン", "name": "TSD（基本）（左側）", "desc": "張り出しの下の穴に、Tを回転して入れる基本のTスピンダブル。", "board": ["XX........", "X...XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}]}, {"id": "tsd-r", "cat": "Tスピン", "name": "TSD（基本）（右側）", "desc": "張り出しの下の穴に、Tを回転して入れる基本のTスピンダブル。", "board": ["........XX", "XXXXXX...X", "XXXXXXX.XX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}]}, {"id": "tst-l", "cat": "Tスピン", "name": "TST（左側）", "desc": "1列の井戸にTを縦に回して入れる、Tスピントリプル。", "board": [".XX.......", ".X........", "XX.XXXXXXX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 3, "spin": "full"}]}, {"id": "tst-r", "cat": "Tスピン", "name": "TST（右側）", "desc": "1列の井戸にTを縦に回して入れる、Tスピントリプル。", "board": [".......XX.", "........X.", "XXXXXXX.XX", "XXXXXX..XX", "XXXXXXX.XX"], "seq": "T", "hold": false, "steps": [{"lines": 3, "spin": "full"}]}, {"id": "fin-l", "cat": "Tスピン", "name": "FIN（左側）", "desc": "Tを真下向き（180°）で屋根の下に入れ、寄せてから回転すると、2段下へキックされて入るTSD（5番目のキック）。ソフトドロップで落として入れるとTスピンになりません。", "board": ["XXX.......", "X.........", "X...XXXXXX", "X..XXXXXXX", "X.XXXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}]}, {"id": "fin-r", "cat": "Tスピン", "name": "FIN（右側）", "desc": "Tを真下向き（180°）で屋根の下に入れ、寄せてから回転すると、2段下へキックされて入るTSD（5番目のキック）。ソフトドロップで落として入れるとTスピンになりません。", "board": [".......XXX", ".........X", "XXXXXX...X", "XXXXXXX..X", "XXXXXXXX.X"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}]}, {"id": "neo-l", "cat": "Tスピン", "name": "NEO（左側）", "desc": "FINと似た形で、キックが真下2段になるもの。2ライン消えますが、ミニTスピンダブル判定（火力は小さい）。", "board": ["XXX.......", "X.........", "XX..XXXXXX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "mini"}]}, {"id": "neo-r", "cat": "Tスピン", "name": "NEO（右側）", "desc": "FINと似た形で、キックが真下2段になるもの。2ライン消えますが、ミニTスピンダブル判定（火力は小さい）。", "board": [".......XXX", ".........X", "XXXXXX..XX", "XXXXXX..XX", "XXXXXXX.XX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "mini"}]}, {"id": "iso-l", "cat": "Tスピン", "name": "ISO（左側）", "desc": "TSTの形で、1行だけ足りない穴にTSDで入れる。前向きの2つの角が埋まっていて、TSDになります。", "board": ["XXX.......", "X.........", "XX.XXXX.XX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}]}, {"id": "iso-r", "cat": "Tスピン", "name": "ISO（右側）", "desc": "TSTの形で、1行だけ足りない穴にTSDで入れる。前向きの2つの角が埋まっていて、TSDになります。", "board": [".......XXX", ".........X", "XX.XXXX.XX", "XXXXXX..XX", "XXXXXXX.XX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}]}, {"id": "ruf-l", "cat": "Tスピン", "name": "RUF（左側）", "desc": "屋根がずれたTSTの穴にTを入れた後、もう一度回転して屋根側へ戻る、Tスピンシングル（TSS）。TSTではなく、1ラインだけ消します。", "board": ["...XXX....", ".....XXXXX", "XXX.XXXXXX", "XX..XXXXXX", "XXX.XXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 1, "spin": "full"}]}, {"id": "ruf-r", "cat": "Tスピン", "name": "RUF（右側）", "desc": "屋根がずれたTSTの穴にTを入れた後、もう一度回転して屋根側へ戻る、Tスピンシングル（TSS）。TSTではなく、1ラインだけ消します。", "board": ["....XXX...", "XXXXX.....", "XXXXXX.XXX", "XXXXXX..XX", "XXXXXX.XXX"], "seq": "T", "hold": false, "steps": [{"lines": 1, "spin": "full"}]}, {"id": "s3", "cat": "回転入れ（T以外）", "name": "Sスピン（トリプル）", "desc": "Sを縦にして、屋根の下の段差へ回転で入れる。3ライン消す。", "board": ["....X.....", "XX.XXXXXXX", "XX..XXXXXX", "XXX.XXXXXX"], "seq": "S", "hold": false, "steps": [{"lines": 3, "cells": [[2, 2], [1, 2], [1, 3], [0, 3]]}]}, {"id": "z3", "cat": "回転入れ（T以外）", "name": "Zスピン（トリプル）", "desc": "Zを縦にして、屋根の下の段差へ回転で入れる。3ライン消す。", "board": [".X........", "XXX.XXXXXX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "Z", "hold": false, "steps": [{"lines": 3, "cells": [[2, 3], [1, 2], [1, 3], [0, 2]]}]}, {"id": "l3", "cat": "回転入れ（T以外）", "name": "Lスピン（トリプル）", "desc": "Lを縦にして、屋根の下へ回転で入れる。3ライン消す。", "board": ["XX........", "X.........", "XX.XXXXXXX", "XX.XXXXXXX", "XX..XXXXXX"], "seq": "L", "hold": false, "steps": [{"lines": 3, "cells": [[2, 2], [1, 2], [0, 2], [0, 3]]}]}, {"id": "j3", "cat": "回転入れ（T以外）", "name": "Jスピン（トリプル）", "desc": "Jを縦にして、屋根の下へ回転で入れる。3ライン消す。", "board": ["XXX.......", "X.........", "XX..XXXXXX", "XX.XXXXXXX", "XX.XXXXXXX"], "seq": "J", "hold": false, "steps": [{"lines": 3, "cells": [[2, 2], [2, 3], [1, 2], [0, 2]]}]}, {"id": "i4", "cat": "回転入れ（T以外）", "name": "Iスピン（4ライン）", "desc": "Iを縦にして、屋根の下の井戸へ回転で入れる。4ライン消す。", "board": ["..XX......", "..X.......", "XXX.XXXXXX", "XXX.XXXXXX", "XXX.XXXXXX", "XXX.XXXXXX"], "seq": "I", "hold": false, "steps": [{"lines": 4, "cells": [[3, 3], [2, 3], [1, 3], [0, 3]]}]}];
+let drillState = null;   // { drill, step, failed, done, hint:[[行,列]...]|null }
+const DRILL_GRAV_KEY = 'p2pDrillGravity';
+const drillGravityMs = () => { const g = (document.getElementById('drillGravity') || {}).value || 'slow'; return g === 'none' ? Infinity : g === 'normal' ? 400 : 1000; };   // 落下: ゆっくり=1秒に1マス / ふつう=0.4秒に1マス / なし
+const DRILL_PROGRESS_KEY = 'p2pDrillProgressV1', DRILL_CUSTOM_KEY = 'p2pDrillCustomV1';
+const drillLoad = (k, def) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? def : v; } catch (_) { return def; } };
+const drillSave = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+const drillCustom = () => drillLoad(DRILL_CUSTOM_KEY, []);
+let drillRemote = drillLoad('p2pDrillRemoteCache', []);   // 開発者が作って、全員に共有されているドリル
+const drillAll = () => [...DRILLS_BUILTIN, ...drillRemote.map(d => ({ ...d, remote: true })), ...drillCustom()];
+function drillRowsOf(pat) { const rows = Array(ROWS).fill(0), top = ROWS - pat.length; pat.forEach((s, i) => { let m = 0; for (let c = 0; c < COLS; c++) if (s[c] === 'X') m |= 1 << c; rows[top + i] = m; }); return rows; }
+function drillBoardOf(pat) { const b = Array.from({ length: ROWS }, () => Array(COLS).fill(null)), top = ROWS - pat.length; pat.forEach((s, i) => { for (let c = 0; c < COLS; c++) if (s[c] === 'X') b[top + i][c] = 'X'; }); return b; }
+const drillRowsOfBoard = b => b.map(row => { let m = 0; for (let c = 0; c < COLS; c++) if (row[c]) m |= 1 << c; return m; });
+const drillPoseCells = (type, p) => CPU_CELLS[type][p.r].map(([dx, dy]) => [ROWS - 1 - (p.y + dy), p.x + dx]);
+const drillCellKey = cells => cells.map(c => c[0] * 10 + c[1]).sort((a, b) => a - b).join(',');
+// その盤面・ミノで、1手の条件を満たす置き方を全部出す（ソルバー。ヒント・答え・問題の確認に使う）
+function drillStepSolutions(rows, type, step) {
+  const out = [];
+  for (const p of cpuPlacements(rows, type)) {
+    const res = cpuLockRows(rows, type, p.x, p.y, p.r); if (!res) continue;
+    const spin = type === 'T' ? cpuSpinKind(rows, p.x, p.y, p.r, p.f) : null;
+    if (step.lines != null && res.cleared !== step.lines) continue;
+    if (step.spin === 'full' && spin !== 'full') continue;
+    if (step.spin === 'mini' && spin !== 'mini') continue;
+    if (step.spin === 'any' && !spin) continue;
+    const cells = drillPoseCells(type, p);
+    if (step.cells && drillCellKey(cells) !== drillCellKey(step.cells)) continue;
+    out.push({ ...p, cells, cleared: res.cleared, spin });
+  }
+  return out;
+}
+const drillTypeName = t => t;
+function drillGoalText(d, i) {
+  const st = d.steps[i] || {}, t = d.seq[i];
+  if (st.spin === 'mini') return `Tで${st.lines === 2 ? 'ダブル' : st.lines + 'ライン'}のミニTスピンを決める（2ライン消えます）`;
+  if (st.spin === 'full') return `${t}で${st.lines === 2 ? 'ダブル' : st.lines === 3 ? 'トリプル' : st.lines === 1 ? 'シングル' : (st.lines || '') + 'ライン'}のTスピンを決める`;
+  if (st.cells) return `${t}を、緑の枠の位置（ヒントで表示）に入れて${st.lines != null ? st.lines + 'ライン消す' : '置く'}`;
+  return `${t}で${st.lines != null ? st.lines + 'ライン消す' : '置く'}`;
+}
+// 問題としてちゃんと解けるか（ソルバーで確認）
+function drillVerify(d) {
+  if (!d || !Array.isArray(d.board) || !d.board.length || d.board.length > 20 || d.board.some(r => typeof r !== 'string' || !/^[X.]{10}$/.test(r))) return { ok: false, msg: '盤面は、1行10文字の X と . だけで、1〜20行にしてください' };
+  if (typeof d.seq !== 'string' || !/^[IJLOSTZ]{1,12}$/.test(d.seq)) return { ok: false, msg: 'seq は I J L O S T Z の文字列（1〜12文字）にしてください' };
+  if (!Array.isArray(d.steps) || !d.steps.length || d.steps.length > d.seq.length) return { ok: false, msg: 'steps は1〜(seqの長さ)個にしてください' };
+  let rows = drillRowsOf(d.board); if (rows.some(m => m === 1023)) return { ok: false, msg: 'そろっている行があります' };
+  const notes = [];
+  for (let i = 0; i < d.steps.length; i++) {
+    const st = d.steps[i]; if (!st) continue;
+    if (st.cells && (!Array.isArray(st.cells) || st.cells.length !== 4 || st.cells.some(c => !Array.isArray(c) || c.length !== 2))) return { ok: false, msg: `${i + 1}手目: cells は [行,列] を4つにしてください` };
+    const sols = drillStepSolutions(rows, d.seq[i], st);
+    if (!sols.length) return { ok: false, msg: `${i + 1}手目（${d.seq[i]}）: 条件を満たす置き方がありません。この問題は解けません` };
+    notes.push(`${i + 1}手目 ${d.seq[i]}: 解 ${sols.length}通り`);
+    const s0 = sols[0], res = cpuLockRows(rows, d.seq[i], s0.x, s0.y, s0.r); if (!res) return { ok: false, msg: `${i + 1}手目: 置けません` };
+    rows = res.rows;
+  }
+  return { ok: true, msg: '解けることを確認しました（' + notes.join('、') + '）' };
+}
+function drillProgress() { return drillLoad(DRILL_PROGRESS_KEY, {}); }
+async function drillLoadRemote() { try { const r = await api('/drills', undefined, 'GET'); if (Array.isArray(r.drills)) { drillRemote = r.drills; drillSave('p2pDrillRemoteCache', drillRemote); renderDrillList(); } } catch (_) {} }
+function renderDrillList() {
+  const box = document.getElementById('drillList'); box.textContent = '';
+  if (isDeveloper()) { const nb = document.createElement('button'); nb.textContent = '＋ 新しいドリルを追加（全員に公開）'; nb.onclick = () => deOpen(null); box.append(nb); }
+  const prog = drillProgress(), cats = [];
+  for (const d of drillAll()) { const c = d.cat || '自作'; if (!cats.includes(c)) cats.push(c); }
+  for (const cat of cats) {
+    const h = document.createElement('div'); h.textContent = cat; h.style.cssText = 'font-weight:700;border-bottom:1px solid var(--border);padding-bottom:2px'; box.append(h);
+    for (const d of drillAll().filter(x => (x.cat || '自作') === cat)) {
+      const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:6px 8px';
+      const info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:0';
+      const nm = document.createElement('div'); nm.style.fontWeight = '700'; const p = prog[d.id]; nm.textContent = (p && p.clears ? '✓ ' : '') + d.name + (p && p.clears ? `（成功${p.clears}回）` : ''); info.append(nm);
+      const ds = document.createElement('div'); ds.textContent = d.desc || ''; ds.style.cssText = 'font-size:.74rem;color:var(--sub)'; info.append(ds);
+      const go = document.createElement('button'); go.textContent = '挑戦'; go.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:6px 14px'; go.onclick = () => startDrill(d.id);
+      row.append(info, go);
+      if (d.remote && isDeveloper()) {
+        const ed = document.createElement('button'); ed.className = 'alt'; ed.textContent = '編集'; ed.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:6px 10px;font-size:.74rem'; ed.onclick = () => deOpen(d);
+        const dl = document.createElement('button'); dl.className = 'alt'; dl.textContent = '削除'; dl.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:6px 10px;font-size:.74rem';
+        dl.onclick = async () => { if (!confirm(`「${d.name}」を削除しますか？（全員から消えます）`)) return; try { await drillSaveRemote(drillRemote.filter(x => x.id !== d.id)); renderDrillList(); } catch (e) { toast('削除できませんでした: ' + e.message); } };
+        row.append(ed, dl);
+      }
+      if (d.custom) { const del = document.createElement('button'); del.className = 'alt'; del.textContent = '削除'; del.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:6px 10px;font-size:.74rem'; del.onclick = () => { drillSave(DRILL_CUSTOM_KEY, drillCustom().filter(x => x.id !== d.id)); renderDrillList(); }; row.append(del); }
+      box.append(row);
+    }
+  }
+}
+function startDrill(id) { const d = drillAll().find(x => x.id === id); if (d) startDrillObject(d, false); }
+function startDrillObject(d, fromEditor) {
+  leaveRoom(); isVsMode = false;
+  drillState = { drill: d, step: 0, failed: false, done: false, hint: null, fromEditor: !!fromEditor };
+  document.getElementById('matchModeLabel').textContent = `回転入れ練習：${d.name}`;
+  document.getElementById('rematchArea').classList.remove('active');
+  document.getElementById('btnBackToLobby').textContent = '一覧へ戻る';
+  switchScreen('gameScreen'); initGame(); drillUpdateBar('');
+}
+function drillRetry() { if (drillState) { const d = drillState.drill, fe = drillState.fromEditor; drillState = { drill: d, step: 0, failed: false, done: false, hint: null, fromEditor: fe }; initGame(); drillUpdateBar(''); } }
+function drillLeave() { const fe = drillState && drillState.fromEditor; drillState = null; isEnded = true; document.getElementById('drillBar').style.display = 'none'; document.getElementById('btnBackToLobby').textContent = 'ロビーへ戻る'; if (fe && de) { deRenderAll(); switchScreen('drillEditScreen'); return; } renderDrillList(); switchScreen('drillScreen'); }
+function drillUpdateBar(msg, kind) {
+  const bar = document.getElementById('drillBar'); if (!drillState) { bar.style.display = 'none'; return; }
+  const d = drillState.drill; bar.style.display = 'flex';
+  document.getElementById('drillTitle').textContent = d.name + (d.steps.length > 1 ? `（${Math.min(drillState.step + 1, d.steps.length)}/${d.steps.length}手目）` : '');
+  document.getElementById('drillGoal').textContent = '目標: ' + drillGoalText(d, Math.min(drillState.step, d.steps.length - 1));
+  const m = document.getElementById('drillMsg'); m.textContent = msg || ''; m.style.color = kind === 'ok' ? '#a6e3a1' : kind === 'ng' ? '#f38ba8' : 'var(--text)';
+  if (!msg || kind !== 'keep') { if (!drillState.hint) document.getElementById('drillAnswerText').textContent = ''; }
+  document.getElementById('btnDrillNext').style.display = drillState.done ? '' : 'none';
+}
+// 固定したミノが、いまの手の条件を満たしているか
+function drillOnLock(type, cells, cleared, spin) {
+  const ds = drillState, d = ds.drill, st = d.steps[ds.step];
+  let why = '';
+  if (type !== d.seq[ds.step]) why = `ミノが違います（${d.seq[ds.step]}を置く問題です）`;
+  else if (st) {
+    if (st.lines != null && cleared !== st.lines) why = `${st.lines}ライン消す問題です（今回は${cleared}ライン）`;
+    else if (st.spin === 'full' && spin !== 'full') why = spin === 'mini' ? 'ミニTスピンです。フルのTスピンが必要です' : 'Tスピンになっていません（回転で入れる必要があります）';
+    else if (st.spin === 'mini' && spin !== 'mini') why = spin === 'full' ? 'フルのTスピンになりました（この問題はミニTスピンダブルの形です）' : 'Tスピンになっていません（回転で入れる必要があります）';
+    else if (st.spin === 'any' && !spin) why = 'Tスピンになっていません';
+    else if (st.cells && drillCellKey(cells) !== drillCellKey(st.cells)) why = '指定の場所に入っていません';
+  }
+  ds.hint = null; document.getElementById('drillAnswerText').textContent = '';
+  if (why) { ds.failed = true; isEnded = true; drillUpdateBar('✕ ' + why + '　「やり直し」でもう一度', 'ng'); return; }
+  ds.step++;
+  if (ds.step >= d.steps.length || !nextQ.length) {
+    ds.done = true; isEnded = true;
+    const prog = drillProgress(); prog[d.id] = { clears: ((prog[d.id] && prog[d.id].clears) || 0) + 1, last: Date.now() }; drillSave(DRILL_PROGRESS_KEY, prog);
+    drillUpdateBar('◎ 成功！', 'ok'); toast('成功！');
+  } else { drillUpdateBar('○ OK。次のミノへ', 'ok'); spawnPiece(); lastDropTime = performance.now(); }
+}
+// ヒント（置く場所の枠）と答え（操作の手順）
+function drillShowAnswer(withSteps) {
+  const ds = drillState; if (!ds || isEnded || !cur) return;
+  const d = ds.drill, st = d.steps[ds.step] || {};
+  if (cur.type !== d.seq[ds.step]) { drillUpdateBar('いまのミノは、この問題の対象ではありません（やり直しで戻せます）', 'ng'); return; }
+  const rows = drillRowsOfBoard(board), sols = drillStepSolutions(rows, cur.type, st);
+  if (!sols.length) { document.getElementById('drillAnswerText').textContent = '答えを計算できませんでした'; return; }
+  const p = sols[0]; ds.hint = p.cells;
+  const el = document.getElementById('drillAnswerText');
+  if (!withSteps) { el.textContent = '緑の枠が置く場所です。「答え」で操作の手順も出ます。'; return; }
+  const path = autoExecPath(board, cur.type, { x: cur.x, y: cur.y, rot: cur.r }, { x: p.x, y: p.y, rot: p.r });
+  if (!path) { el.textContent = '緑の枠の場所に入れます（手順を計算できませんでした）'; return; }
+  const names = { L: '左', R: '右', CW: '右回転', CCW: '左回転', D: '下' }, parts = [];
+  for (const a of path) { const last = parts[parts.length - 1]; if (last && last.a === a) last.n++; else parts.push({ a, n: 1 }); }
+  const text = parts.map(x => x.a === 'D' ? (x.n >= 5 ? `ソフトドロップで下へ（${x.n}段）` : `下へ${x.n}段`) : x.n > 1 ? `${names[x.a]}×${x.n}` : names[x.a]).join(' → ');
+  el.textContent = '手順: ' + (text || '（そのまま）') + ' → ハードドロップ（または固定）';
+}
+function drawDrillHint() {
+  if (!drillState || !drillState.hint) return;
+  ctx.save(); ctx.strokeStyle = '#a6e3a1'; ctx.lineWidth = 2; ctx.fillStyle = 'rgba(166,227,161,0.18)';
+  for (const [h, c] of drillState.hint) { const r = ROWS - 1 - h; ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1); ctx.strokeRect(c * BLOCK_SIZE + 1, r * BLOCK_SIZE + 1, BLOCK_SIZE - 3, BLOCK_SIZE - 3); }
+  ctx.restore();
+}
+{ const g = document.getElementById('drillGravity'); const saved = drillLoad(DRILL_GRAV_KEY, 'slow'); if (g) { g.value = saved; g.onchange = () => drillSave(DRILL_GRAV_KEY, g.value); } }
+
+// ---- 開発者: ドリルの作成・編集（保存すると全員の一覧に出る） ----
+async function drillSaveRemote(list) { const r = await api('/drills', { drills: list }); drillRemote = r.drills || list; drillSave('p2pDrillRemoteCache', drillRemote); }
+const DE_CELL = 26, DE_COLS = 10;
+let de = null;   // { id, name, cat, desc, n, cells[n][10], seq, hold, play, steps:[{lines,spin,fix,pick,fixKey}], sel, info }
+function deBlank() { return { id: null, name: '', cat: 'Tスピン', desc: '', n: 8, cells: Array.from({ length: 8 }, () => Array(DE_COLS).fill(false)), seq: '', hold: false, play: 1, steps: [], sel: 0, info: [] }; }
+function deFromDrill(d) {
+  const n = Math.max(8, Math.min(20, d.board.length)), top = n - d.board.length;
+  const cells = Array.from({ length: n }, (_, r) => Array.from({ length: DE_COLS }, (_, c) => r >= top && d.board[r - top][c] === 'X'));
+  const steps = d.seq.split('').map((_, i) => { const st = d.steps[i] || {}; return { lines: st.lines == null ? '' : String(st.lines), spin: st.spin || '', fix: !!st.cells, pick: 0, fixKey: st.cells ? drillCellKey(st.cells) : '' }; });
+  return { id: d.id, name: d.name, cat: d.cat || 'その他', desc: d.desc || '', n, cells, seq: d.seq, hold: !!d.hold, play: d.steps.length, steps, sel: 0, info: [] };
+}
+function dePattern() { let rows = de.cells.map(r => r.map(v => v ? 'X' : '.').join('')); while (rows.length > 1 && rows[0].indexOf('X') < 0) rows.shift(); return rows; }
+function deSpec(i) { const st = de.steps[i]; const o = {}; if (st.lines !== '') o.lines = parseInt(st.lines, 10); if (st.spin && de.seq[i] === 'T') o.spin = st.spin; return o; }
+// 盤面とミノの順から、各手の「条件を満たす置き方」を計算し、選んだ答えを置いて次の手へ進む
+function deRecompute() {
+  de.info = []; let rows = drillRowsOf(dePattern());
+  for (let i = 0; i < de.seq.length; i++) {
+    const type = de.seq[i], st = de.steps[i], spec = deSpec(i), sols = drillStepSolutions(rows, type, spec);
+    if (st.fix && st.fixKey && !st.fixApplied) { const k = sols.findIndex(x => drillCellKey(x.cells) === st.fixKey); if (k >= 0) st.pick = k; st.fixApplied = true; }
+    if (st.pick >= sols.length) st.pick = 0;
+    const ch = sols[st.pick] || null;
+    de.info.push({ rows, sols, ch, type });
+    if (!ch) break;
+    const res = cpuLockRows(rows, type, ch.x, ch.y, ch.r); if (!res) break; rows = res.rows;
+  }
+  if (de.sel >= de.seq.length) de.sel = Math.max(0, de.seq.length - 1);
+}
+function deDrawBoard(canvas, rowsMask, n, ghost) {
+  const W = DE_COLS * DE_CELL, H = n * DE_CELL; canvas.width = W; canvas.height = H; canvas.style.width = W + 'px';
+  const g = canvas.getContext('2d'); g.fillStyle = '#11111b'; g.fillRect(0, 0, W, H);
+  g.strokeStyle = '#2a2a3c'; g.lineWidth = 1; for (let r = 0; r <= n; r++) { g.beginPath(); g.moveTo(0, r * DE_CELL + .5); g.lineTo(W, r * DE_CELL + .5); g.stroke(); } for (let c = 0; c <= DE_COLS; c++) { g.beginPath(); g.moveTo(c * DE_CELL + .5, 0); g.lineTo(c * DE_CELL + .5, H); g.stroke(); }
+  for (let r = 0; r < n; r++) for (let c = 0; c < DE_COLS; c++) if ((rowsMask[ROWS - n + r] >> c) & 1) { g.fillStyle = COLORS.X; g.fillRect(c * DE_CELL + 1, r * DE_CELL + 1, DE_CELL - 1, DE_CELL - 1); }
+  if (ghost) for (const [h, c] of ghost) { const r = n - 1 - h; if (r < 0) continue; g.fillStyle = 'rgba(166,227,161,0.55)'; g.fillRect(c * DE_CELL + 1, r * DE_CELL + 1, DE_CELL - 1, DE_CELL - 1); g.strokeStyle = '#a6e3a1'; g.lineWidth = 2; g.strokeRect(c * DE_CELL + 2, r * DE_CELL + 2, DE_CELL - 3, DE_CELL - 3); }
+}
+function deRenderGrid() {
+  const c = document.getElementById('deGrid'), n = de.n; c.width = DE_COLS * DE_CELL; c.height = n * DE_CELL; c.style.width = c.width + 'px';
+  const g = c.getContext('2d'); g.fillStyle = '#11111b'; g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = '#2a2a3c'; g.lineWidth = 1; for (let r = 0; r <= n; r++) { g.beginPath(); g.moveTo(0, r * DE_CELL + .5); g.lineTo(c.width, r * DE_CELL + .5); g.stroke(); } for (let k = 0; k <= DE_COLS; k++) { g.beginPath(); g.moveTo(k * DE_CELL + .5, 0); g.lineTo(k * DE_CELL + .5, c.height); g.stroke(); }
+  for (let r = 0; r < n; r++) for (let k = 0; k < DE_COLS; k++) if (de.cells[r][k]) { g.fillStyle = COLORS.X; g.fillRect(k * DE_CELL + 1, r * DE_CELL + 1, DE_CELL - 1, DE_CELL - 1); }
+}
+function deRenderPrev() {
+  const pv = document.getElementById('dePrev'), inf = de.info[de.sel], n = de.n;
+  if (!inf) { deDrawBoard(pv, drillRowsOf(dePattern()), n, null); return; }
+  deDrawBoard(pv, inf.rows, n, inf.ch ? inf.ch.cells : null);
+}
+function deRenderSteps() {
+  const box = document.getElementById('deSteps'); box.textContent = '';
+  for (let i = 0; i < de.seq.length; i++) {
+    const st = de.steps[i], inf = de.info[i], played = i < de.play;
+    const row = document.createElement('div'); row.style.cssText = `display:flex;gap:6px;flex-wrap:wrap;align-items:center;border:1px solid ${i === de.sel ? 'var(--accent)' : 'var(--border)'};border-radius:8px;padding:5px 7px;font-size:.8rem;opacity:${played ? 1 : .45};cursor:pointer`;
+    row.onclick = e => { if (e.target.closest('select,button,input,label')) return; de.sel = i; deRenderSteps(); deRenderPrev(); };
+    const nm = document.createElement('b'); nm.textContent = `${i + 1}手目 `; const pc = document.createElement('span'); pc.textContent = de.seq[i]; pc.style.cssText = `color:${COLORS[de.seq[i]]};font-weight:700`; nm.append(pc); row.append(nm);
+    const mk = (label, opts, key) => { const wrap = document.createElement('span'); wrap.textContent = label; const sel = document.createElement('select'); sel.style.cssText = 'width:auto;margin-left:3px;padding:2px 4px;font-size:.78rem'; for (const [v, t] of opts) sel.append(new Option(t, v)); sel.value = st[key]; sel.onchange = () => { st[key] = sel.value; st.pick = 0; st.fix = st.fix && false; st.fixKey = ''; deChanged(); }; wrap.append(sel); return wrap; };
+    row.append(mk('消すライン', [['', '指定なし'], ['0', '0'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], 'lines'));
+    if (de.seq[i] === 'T') row.append(mk('Tスピン', [['', '指定なし'], ['full', 'フル'], ['mini', 'ミニ'], ['any', 'どちらでも']], 'spin'));
+    const fx = document.createElement('label'); fx.style.cssText = 'display:flex;align-items:center;gap:3px'; const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = st.fix; cb.style.width = 'auto'; cb.onchange = () => { st.fix = cb.checked; st.fixKey = ''; deChanged(); }; fx.append(cb, document.createTextNode('置く場所を指定')); row.append(fx);
+    const nav = document.createElement('span'); nav.style.cssText = 'display:flex;align-items:center;gap:4px';
+    const cnt = inf ? inf.sols.length : 0;
+    const bp = document.createElement('button'), bn = document.createElement('button'); for (const b of [bp, bn]) { b.className = 'alt'; b.style.cssText = 'width:auto;min-width:0;padding:2px 8px;font-size:.76rem'; }
+    bp.textContent = '◀'; bn.textContent = '▶'; bp.onclick = () => { if (cnt) { st.pick = (st.pick - 1 + cnt) % cnt; st.fix = st.fix; st.fixKey = ''; de.sel = i; deChanged(); } }; bn.onclick = () => { if (cnt) { st.pick = (st.pick + 1) % cnt; st.fixKey = ''; de.sel = i; deChanged(); } };
+    const lab = document.createElement('span'); lab.textContent = inf ? (cnt ? `答え ${st.pick + 1}/${cnt}` : '答えなし（条件を満たす置き方がありません）') : '（前の手が解けません）'; lab.style.color = cnt ? 'var(--text)' : '#f38ba8';
+    nav.append(bp, lab, bn); row.append(nav);
+    box.append(row);
+  }
+}
+function deRenderSeq() {
+  const el = document.getElementById('deSeq'); el.textContent = '';
+  for (const ch of de.seq) { const sp = document.createElement('span'); sp.textContent = ch; sp.style.color = COLORS[ch]; el.append(sp); }
+  if (!de.seq) el.textContent = '（下のボタンで追加）';
+  const ps = document.getElementById('dePlay'); ps.replaceChildren(); for (let i = 1; i <= Math.max(1, de.seq.length); i++) ps.append(new Option(String(i), String(i))); ps.value = String(Math.min(Math.max(1, de.play), Math.max(1, de.seq.length)));
+}
+function deStatusText() {
+  const lines = []; let ok = !!de.seq && de.name.trim() !== '';
+  if (!de.name.trim()) lines.push('名前を入れてください');
+  if (!de.seq) lines.push('ミノを1つ以上追加してください');
+  for (let i = 0; i < Math.min(de.play, de.seq.length); i++) { const inf = de.info[i]; if (!inf || !inf.ch) { ok = false; lines.push(`${i + 1}手目（${de.seq[i]}）: 条件を満たす置き方がありません`); } else if (de.steps[i].fix && inf.sols.length === 0) ok = false; else lines.push(`${i + 1}手目（${de.seq[i]}）: 答え ${inf.sols.length}通り`); }
+  document.getElementById('deStatus').textContent = lines.join('\n') + (ok ? '' : '\n※ このままでは保存できません');
+  return ok;
+}
+function deRenderAll() {
+  document.getElementById('deName').value = de.name; document.getElementById('deCat').value = de.cat; document.getElementById('deDesc').value = de.desc; document.getElementById('deHold').checked = de.hold;
+  document.getElementById('deHead').textContent = de.id ? 'ドリルを編集' : 'ドリルを追加';
+  const rs = document.getElementById('deRows'); if (!rs.options.length) for (let i = 4; i <= 20; i++) rs.append(new Option(String(i), String(i))); rs.value = String(de.n);
+  const dl = document.getElementById('deCats'); dl.replaceChildren(); for (const c of new Set(drillAll().map(d => d.cat || 'その他'))) dl.append(new Option(c, c));
+  deRecompute(); deRenderGrid(); deRenderSeq(); deRenderSteps(); deRenderPrev(); deStatusText();
+}
+function deChanged() { deRecompute(); deRenderGrid(); deRenderSteps(); deRenderPrev(); deStatusText(); }
+function deOpen(d) { de = d ? deFromDrill(d) : deBlank(); const b = document.getElementById('deSeqBtns'); if (!b.children.length) { for (const t of 'IJLOSTZ') { const x = document.createElement('button'); x.textContent = t; x.style.cssText = `width:auto;min-width:2.2em;padding:5px 9px;background:#11111b;color:${COLORS[t]};border:1px solid ${COLORS[t]};font-weight:700`; x.onclick = () => { if (de.seq.length < 12) { de.seq += t; de.steps.push({ lines: '', spin: '', fix: false, pick: 0, fixKey: '' }); de.play = de.seq.length; deRenderSeq(); deChanged(); } }; b.append(x); } const bs = document.createElement('button'); bs.className = 'alt'; bs.textContent = '⌫'; bs.style.cssText = 'width:auto;padding:5px 10px'; bs.onclick = () => { if (de.seq) { de.seq = de.seq.slice(0, -1); de.steps.pop(); de.play = Math.min(de.play, Math.max(1, de.seq.length)); deRenderSeq(); deChanged(); } }; const bc = document.createElement('button'); bc.className = 'alt'; bc.textContent = '全部消す'; bc.style.cssText = 'width:auto;padding:5px 10px'; bc.onclick = () => { de.seq = ''; de.steps = []; de.play = 1; deRenderSeq(); deChanged(); }; b.append(bs, bc); } deRenderAll(); switchScreen('drillEditScreen'); }
+// 盤面の編集: タップで反転、ドラッグで同じ状態にそろえて塗る
+(() => {
+  const g = document.getElementById('deGrid'); let paint = null;
+  const at = e => { const r = g.getBoundingClientRect(), sx = r.width ? g.width / r.width : 1, sy = r.height ? g.height / r.height : 1; const x = (e.clientX - r.left) * sx, y = (e.clientY - r.top) * sy; return [Math.floor(y / DE_CELL), Math.floor(x / DE_CELL)]; };
+  const setCell = (r, c) => { if (!de || r < 0 || r >= de.n || c < 0 || c >= DE_COLS || paint === null || de.cells[r][c] === paint) return; de.cells[r][c] = paint; deChanged(); };
+  g.addEventListener('pointerdown', e => { if (!de) return; e.preventDefault(); try { g.setPointerCapture(e.pointerId); } catch (_) {} const [r, c] = at(e); if (r < 0 || r >= de.n || c < 0 || c >= DE_COLS) return; paint = !de.cells[r][c]; setCell(r, c); });
+  g.addEventListener('pointermove', e => { if (paint === null) return; const [r, c] = at(e); setCell(r, c); });
+  const end = () => { paint = null; };
+  g.addEventListener('pointerup', end); g.addEventListener('pointercancel', end); g.addEventListener('pointerleave', end);
+  document.getElementById('deRows').onchange = e => { const n = parseInt(e.target.value, 10); if (n > de.n) { for (let i = de.n; i < n; i++) de.cells.unshift(Array(DE_COLS).fill(false)); } else { de.cells = de.cells.slice(de.n - n); } de.n = n; deChanged(); };
+  document.getElementById('deClear').onclick = () => { de.cells = de.cells.map(r => r.map(() => false)); deChanged(); };
+  document.getElementById('deFill').onclick = () => { de.cells = de.cells.map(r => r.map(() => true)); deChanged(); };
+  document.getElementById('deMirror').onclick = () => { de.cells = de.cells.map(r => r.slice().reverse()); de.steps.forEach(s => { s.fix = false; s.fixKey = ''; s.pick = 0; }); deChanged(); };
+  document.getElementById('deName').oninput = e => { de.name = e.target.value; deStatusText(); };
+  document.getElementById('deCat').oninput = e => { de.cat = e.target.value; };
+  document.getElementById('deDesc').oninput = e => { de.desc = e.target.value; };
+  document.getElementById('deHold').onchange = e => { de.hold = e.target.checked; };
+  document.getElementById('dePlay').onchange = e => { de.play = parseInt(e.target.value, 10) || 1; deRenderSteps(); deStatusText(); };
+  document.getElementById('deCancel').onclick = () => { de = null; renderDrillList(); switchScreen('drillScreen'); };
+})();
+function deBuild() {
+  if (!de.name.trim()) return { err: '名前を入れてください' };
+  if (!de.seq) return { err: 'ミノを1つ以上追加してください' };
+  const steps = [];
+  for (let i = 0; i < de.play; i++) {
+    const st = de.steps[i], inf = de.info[i], o = {};
+    if (!inf || !inf.ch) return { err: `${i + 1}手目: 条件を満たす置き方がありません` };
+    if (st.lines !== '') o.lines = parseInt(st.lines, 10);
+    if (st.spin && de.seq[i] === 'T') o.spin = st.spin;
+    if (st.fix) o.cells = inf.ch.cells.map(c => c.slice());
+    steps.push(o);
+  }
+  const d = { id: de.id || ('d' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36)), cat: (de.cat || '').trim() || 'その他', name: de.name.trim().slice(0, 40), desc: (de.desc || '').trim().slice(0, 160), board: dePattern(), seq: de.seq, hold: !!de.hold, steps };
+  const v = drillVerify(d); if (!v.ok) return { err: v.msg };
+  return { drill: d };
+}
+document.getElementById('deTest').onclick = () => { const b = deBuild(); if (b.err) { document.getElementById('deStatus').textContent = '✕ ' + b.err; return; } startDrillObject(b.drill, true); };
+document.getElementById('deSave').onclick = async () => {
+  const b = deBuild(), st = document.getElementById('deStatus'); if (b.err) { st.textContent = '✕ ' + b.err; return; }
+  const list = drillRemote.filter(x => x.id !== b.drill.id); const idx = drillRemote.findIndex(x => x.id === b.drill.id);
+  if (idx >= 0) list.splice(idx, 0, b.drill); else list.push(b.drill);
+  try { await drillSaveRemote(list); toast('保存しました（全員に公開されます）'); de = null; renderDrillList(); switchScreen('drillScreen'); } catch (e) { st.textContent = '✕ 保存できませんでした: ' + e.message; }
+};
+
+document.getElementById('btnDrillOpen').onclick = () => { renderDrillList(); switchScreen('drillScreen'); drillLoadRemote(); };
+document.getElementById('btnDrillBack').onclick = () => switchScreen('lobbyScreen');
+document.getElementById('btnDrillRetry').onclick = drillRetry;
+document.getElementById('btnDrillHint').onclick = () => drillShowAnswer(false);
+document.getElementById('btnDrillAnswer').onclick = () => drillShowAnswer(true);
+document.getElementById('btnDrillNext').onclick = () => { if (drillState && drillState.fromEditor) { drillLeave(); return; } const all = drillAll(), i = all.findIndex(x => drillState && x.id === drillState.drill.id); const n = all[(i + 1) % all.length]; if (n) startDrill(n.id); };
+document.getElementById('btnDrillAdd').onclick = () => {
+  const st = document.getElementById('drillImportStatus'); let v;
+  try { v = JSON.parse(document.getElementById('drillImport').value); } catch (e) { st.textContent = 'JSONを読み取れません: ' + e.message; return; }
+  const list = Array.isArray(v) ? v : [v], added = [], notes = [];
+  for (const raw of list) {
+    const d = { id: 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1000), cat: raw.cat || '自作', name: String(raw.name || '自作ドリル').slice(0, 40), desc: String(raw.desc || '').slice(0, 120), board: raw.board, seq: raw.seq, hold: !!raw.hold, steps: raw.steps, custom: true };
+    const r = drillVerify(d); notes.push(`${d.name}: ${r.msg}`); if (r.ok) added.push(d);
+  }
+  if (added.length) { drillSave(DRILL_CUSTOM_KEY, [...drillCustom(), ...added]); renderDrillList(); document.getElementById('drillImport').value = ''; }
+  st.textContent = notes.join('\n') + (added.length ? `\n${added.length}件を追加しました` : '\n追加できませんでした');
+};
+
 document.getElementById('btnBackToLobby').onclick = () => {
+  if (drillState) { drillLeave(); return; }
   if (autoBuildRunning) stopAutoBuild('自動積み停止');
   runStartedAt = 0;
   { const p = pendingReplay;
@@ -2995,15 +3370,19 @@ function gameLoop(timestamp) {
   if (!lastDropTime) lastDropTime = timestamp;
   if (document.getElementById('gameScreen').classList.contains('active') && !isEnded && cur) {
     if (!isVsMode && soloStartAt) { updateSoloTimer(); if (isTimedMode(soloMode) && soloElapsed() >= ULTRA_MS) { finishSolo('win', `TIME UP!　SCORE ${runStats.score.toLocaleString()}（LEVEL ${runStats.level} / ${runStats.lines}ライン）`); render(); requestAnimationFrame(gameLoop); return; } }
-    if (timestamp - lastDropTime >= currentGravity()) {
-      if (move(0, 1)) lastDropTime = timestamp;
-      else lastDropTime = timestamp;
-    }
-    if (cur && checkCollision(cur.x, cur.y + 1, cur.type, cur.r)) {
-      if (!groundedAt) groundedAt = timestamp;
-      if (timestamp - groundedAt >= LOCK_DELAY) lockPiece();
-    } else {
-      groundedAt = 0;
+    const grav = drillState ? drillGravityMs() : currentGravity();   // 練習中は、選んだ落下の速さ（なし＝自動で落ちず、勝手に固定もされない）
+    if (drillState && grav === Infinity) { lastDropTime = timestamp; groundedAt = 0; }
+    else {
+      if (timestamp - lastDropTime >= grav) {
+        if (move(0, 1)) lastDropTime = timestamp;
+        else lastDropTime = timestamp;
+      }
+      if (cur && checkCollision(cur.x, cur.y + 1, cur.type, cur.r)) {
+        if (!groundedAt) groundedAt = timestamp;
+        if (timestamp - groundedAt >= LOCK_DELAY) lockPiece();
+      } else {
+        groundedAt = 0;
+      }
     }
   }
   render();
@@ -3027,7 +3406,7 @@ function refillBag() {
 }
 
 function spawnPiece() {
-  while (nextQ.length < 6) {
+  while (!drillState && nextQ.length < 6) {
     if (bag.length === 0) refillBag();
     nextQ.push(bag.shift());
   }
@@ -3144,6 +3523,8 @@ function lockPiece() {
   if (isEnded || !cur) return;
   const spin = isTSpin();
   const m = getShapeMatrix(cur.type, cur.r);
+  const drillCells = [];   // 固定したミノのマス（下から数えた[行,列]）。ライン消去の前に控えておく
+  if (drillState) m.forEach((row, r) => row.forEach((val, c) => { if (val) drillCells.push([ROWS - 1 - (cur.y + r), cur.x + c]); }));
   // ロックアウト: ミノ全体が盤面の上（21段目以上）で固定されたらゲームオーバー（一部でも盤面の中にあればセーフ）
   { let inField = false; m.forEach((row, r) => row.forEach((val) => { if (val && cur.y + r >= 0) inField = true; }));
     if (!inField) { isEnded = true; sendNet({ type: 'GAMEOVER' }); showRematch('GAME OVER'); finishRun(); return; } }
@@ -3167,6 +3548,7 @@ function lockPiece() {
     }
   }
   const perfectClear = cleared > 0 && board.every(row => row.every(cell => cell === null)) && hiddenRows.every(row => !row || row.every(cell => cell === null));
+  if (drillState) { drillOnLock(cur.type, drillCells, cleared, spin); return; }
   const previousB2B = b2b;
 
   if (cleared > 0) {
@@ -3262,6 +3644,7 @@ function updateGbBar() { drawGarbagePreview(); }
 
 function doHold() {
   if (!canHold || isEnded || !cur) return;
+  if (drillState && (drillState.drill.hold !== true || (!holdPiece && !nextQ.length))) return;
   const outgoing = cur.type;
   if (!holdPiece) {
     holdPiece = outgoing;
@@ -3646,7 +4029,8 @@ function render() {
   board.forEach((row, r) => row.forEach((val, c) => {
     if (val) { ctx.fillStyle = COLORS[val]; ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1); }
   }));
-  drawTemplateOverlay();
+  if (!drillState) drawTemplateOverlay();
+  drawDrillHint();
 
   if (!cur || isEnded) return;
   let gy = cur.y;
@@ -3662,7 +4046,7 @@ function render() {
   m.forEach((row, r) => row.forEach((val, c) => {
     if (val) ctx.fillRect((cur.x + c) * BLOCK_SIZE, (cur.y + r) * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
   }));
-  if (!drawPcGuide()) drawAiSuggestion();
+  if (!drillState && !drawPcGuide()) { if (!drillState) drawAiSuggestion(); }
 }
 
 
@@ -3699,7 +4083,7 @@ function drawNext() {
 
 function initGame() {
   runStats = newRunStats();
-  { const sp = document.getElementById('scorePanel'); if (sp) sp.style.display = isVsMode ? 'none' : 'flex'; }
+  { const sp = document.getElementById('scorePanel'); if (sp) sp.style.display = (isVsMode || drillState) ? 'none' : 'flex'; }
   soloStartAt = isVsMode ? 0 : performance.now();
   { const tb = document.getElementById('statTimeBox'); if (tb) tb.style.display = !isVsMode && soloMode !== 'marathon' ? '' : 'none'; }
   updateSoloTimer();
@@ -3724,6 +4108,7 @@ function initGame() {
   queueSeed = (!isVsMode || vsRule.nextMode === 'common') ? (Number(vsRule.seed) >>> 0) : (personalSeed ? personalSeed.seed : Math.floor(Math.random() * 1000000000));
   personalSeed = null;
   rnd = seededRandom(queueSeed);
+  if (drillState) { board = drillBoardOf(drillState.drill.board); hiddenRows = []; nextQ = drillState.drill.seq.split(''); soloStartAt = 0; runStartedAt = 0; replayEvents = []; }   // 回転入れ練習: 決まった盤面とミノの順で始める
 
   spawnPiece(); drawHold();
   lastDropTime = performance.now();
