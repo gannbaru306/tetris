@@ -3067,11 +3067,17 @@ const drillLoad = (k, def) => { try { const v = JSON.parse(localStorage.getItem(
 const drillSave = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
 let drillRemote = drillLoad('p2pDrillRemoteCache', []);   // 開発者が作って、全員に共有されているドリル（組み込みと同じIDのものは、その組み込みを置き換える）
 let drillHidden = drillLoad('p2pDrillHiddenCache', []);   // 開発者が削除した組み込みドリルのID
+let drillOrder = drillLoad('p2pDrillOrderCache', []);   // ドリルの並び順（ID）。開発者が並び替えると、全員に反映される
+let drillCatOrder = drillLoad('p2pDrillCatOrderCache', []);   // カテゴリの並び順
 const drillBuiltinIds = () => new Set(DRILLS_BUILTIN.map(b => b.id));
 function drillAll() {
   const ov = new Map(drillRemote.map(d => [d.id, d])), hid = new Set(drillHidden), bi = drillBuiltinIds(), out = [];
   for (const b of DRILLS_BUILTIN) { if (hid.has(b.id)) continue; out.push(ov.has(b.id) ? { ...ov.get(b.id), builtin: true } : { ...b, builtin: true }); }   // 組み込みは、置き換えがあればその内容を同じ位置に出す
   for (const d of drillRemote) if (!bi.has(d.id)) out.push({ ...d });
+  if (drillOrder.length) {   // 並び順が保存されていれば、その順に。順に載っていない新しいものは、最後に
+    const pos = new Map(drillOrder.map((id, i) => [id, i]));
+    return [...out.filter(d => pos.has(d.id)).sort((a, b) => pos.get(a.id) - pos.get(b.id)), ...out.filter(d => !pos.has(d.id))];
+  }
   return out;
 }
 function drillRowsOf(pat) { const rows = Array(ROWS).fill(0), top = ROWS - pat.length; pat.forEach((s, i) => { let m = 0; for (let c = 0; c < COLS; c++) if (s[c] === 'X') m |= 1 << c; rows[top + i] = m; }); return rows; }
@@ -3122,9 +3128,24 @@ function drillVerify(d) {
   return { ok: true, msg: '解けることを確認しました（' + notes.join('、') + '）' };
 }
 function drillProgress() { return drillLoad(DRILL_PROGRESS_KEY, {}); }
-async function drillLoadRemote() { try { const r = await api('/drills', undefined, 'GET'); if (Array.isArray(r.drills)) { drillRemote = r.drills; drillHidden = Array.isArray(r.hidden) ? r.hidden : []; drillSave('p2pDrillRemoteCache', drillRemote); drillSave('p2pDrillHiddenCache', drillHidden); renderDrillList(); } } catch (_) {} }
+async function drillLoadRemote() { try { const r = await api('/drills', undefined, 'GET'); if (Array.isArray(r.drills)) { drillRemote = r.drills; drillHidden = Array.isArray(r.hidden) ? r.hidden : []; drillOrder = Array.isArray(r.order) ? r.order : []; drillCatOrder = Array.isArray(r.catOrder) ? r.catOrder : []; drillSave('p2pDrillRemoteCache', drillRemote); drillSave('p2pDrillHiddenCache', drillHidden); drillSave('p2pDrillOrderCache', drillOrder); drillSave('p2pDrillCatOrderCache', drillCatOrder); renderDrillList(); } } catch (_) {} }
 const DRILL_CAT_ORDER = ['Tスピン', 'JLスピン', 'SZスピン', 'Iスピン'];
-function drillCats() { const set = new Set(drillAll().map(d => d.cat || 'その他')); return [...DRILL_CAT_ORDER.filter(c => set.has(c)), ...[...set].filter(c => !DRILL_CAT_ORDER.includes(c))]; }
+function drillCats() {
+  const set = new Set(drillAll().map(d => d.cat || 'その他')), base = [...DRILL_CAT_ORDER.filter(c => set.has(c)), ...[...set].filter(c => !DRILL_CAT_ORDER.includes(c))];
+  const known = drillCatOrder.filter(c => set.has(c)); return [...known, ...base.filter(c => !known.includes(c))];
+}
+// 並び替え（開発者）: 同じカテゴリの中で、1つ上／下へ。カテゴリ自体の上／下へ。保存すると全員に反映される
+async function drillApplyOrder(ids, cats) {
+  const prev = [drillOrder, drillCatOrder]; drillRememberList(); drillOrder = ids; drillCatOrder = cats; drillShowList(true);
+  try { await drillSaveRemote(drillRemote, drillHidden, ids, cats); } catch (e) { drillOrder = prev[0]; drillCatOrder = prev[1]; toast('並び替えを保存できませんでした: ' + e.message); drillShowList(true); }
+}
+function drillMove(id, dir) {
+  const all = drillAll(), d = all.find(x => x.id === id); if (!d) return;
+  const grp = all.filter(x => (x.cat || 'その他') === (d.cat || 'その他')), gi = grp.findIndex(x => x.id === id), gj = gi + dir; if (gj < 0 || gj >= grp.length) return;
+  const ids = all.map(x => x.id), a = ids.indexOf(grp[gi].id), b = ids.indexOf(grp[gj].id); [ids[a], ids[b]] = [ids[b], ids[a]];
+  drillApplyOrder(ids, drillCats());
+}
+function drillMoveCat(cat, dir) { const cats = drillCats(), i = cats.indexOf(cat), j = i + dir; if (i < 0 || j < 0 || j >= cats.length) return; [cats[i], cats[j]] = [cats[j], cats[i]]; drillApplyOrder(drillAll().map(x => x.id), cats); }
 let drillListY = 0;
 const drillScrollTop = () => { try { window.scrollTo(0, 0); } catch (_) {} };
 function drillShowList(keep) { renderDrillList(); switchScreen('drillScreen'); try { window.scrollTo(0, keep ? drillListY : 0); } catch (_) {} }
@@ -3134,8 +3155,12 @@ function renderDrillList() {
   if (isDeveloper()) { const nb = document.createElement('button'); nb.textContent = '＋ 新しいドリルを追加（全員に公開）'; nb.onclick = () => { drillRememberList(); deOpen(null); }; box.append(nb); }
   const prog = drillProgress(), all = drillAll();
   for (const cat of drillCats()) {
-    const h = document.createElement('div'); h.textContent = cat; h.style.cssText = 'font-weight:700;border-bottom:1px solid var(--border);padding-bottom:2px'; box.append(h);
-    for (const d of all.filter(x => (x.cat || 'その他') === cat)) {
+    const h = document.createElement('div'); h.style.cssText = 'font-weight:700;border-bottom:1px solid var(--border);padding-bottom:2px;display:flex;align-items:center;gap:6px';
+    const ht = document.createElement('span'); ht.textContent = cat; ht.style.flex = '1'; h.append(ht);
+    if (isDeveloper()) { const cats = drillCats(), ci = cats.indexOf(cat); for (const [lab, dir] of [['▲', -1], ['▼', 1]]) { const b = document.createElement('button'); b.className = 'alt'; b.textContent = lab; b.title = 'カテゴリを' + (dir < 0 ? '上' : '下') + 'へ'; b.disabled = ci + dir < 0 || ci + dir >= cats.length; b.style.cssText = 'flex:0 0 auto;width:auto;min-width:0;padding:2px 9px;font-size:.72rem'; b.onclick = () => drillMoveCat(cat, dir); h.append(b); } }
+    box.append(h);
+    const grp = all.filter(x => (x.cat || 'その他') === cat);
+    for (const d of grp) {
       const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:6px 8px';
       const info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:9em';
       const nm = document.createElement('div'); nm.style.fontWeight = '700'; const p = prog[d.id]; nm.textContent = (p && p.clears ? '✓ ' : '') + d.name + (p && p.clears ? `（成功${p.clears}回）` : ''); info.append(nm);
@@ -3144,14 +3169,15 @@ function renderDrillList() {
       const btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;align-items:center';
       btns.append(mkb('詳細', true, () => drillOpenDetail(d.id)), mkb('挑戦', false, () => { drillRememberList(); startDrill(d.id); }, true));
       if (isDeveloper()) {
-        btns.append(mkb('編集', true, () => { drillRememberList(); deOpen(d); }), mkb('削除', true, async () => { if (!confirm(`「${d.name}」を削除しますか？（全員から消えます）`)) return; try { await drillSaveRemote(drillRemote.filter(x => x.id !== d.id), drillBuiltinIds().has(d.id) ? [...new Set([...drillHidden, d.id])] : drillHidden); drillRememberList(); drillShowList(true); } catch (e) { toast('削除できませんでした: ' + e.message); } }));
+        const gi = grp.indexOf(d), up = mkb('▲', true, () => drillMove(d.id, -1)), dn = mkb('▼', true, () => drillMove(d.id, 1)); up.disabled = gi === 0; dn.disabled = gi === grp.length - 1; up.title = '1つ上へ'; dn.title = '1つ下へ';
+        btns.append(up, dn, mkb('編集', true, () => { drillRememberList(); deOpen(d); }), mkb('削除', true, async () => { if (!confirm(`「${d.name}」を削除しますか？（全員から消えます）`)) return; try { await drillSaveRemote(drillRemote.filter(x => x.id !== d.id), drillBuiltinIds().has(d.id) ? [...new Set([...drillHidden, d.id])] : drillHidden); drillRememberList(); drillShowList(true); } catch (e) { toast('削除できませんでした: ' + e.message); } }));
       }
       row.append(info, btns); box.append(row);
     }
   }
-  if (isDeveloper() && (drillHidden.length || drillRemote.some(d => drillBuiltinIds().has(d.id)))) {
+  if (isDeveloper() && (drillHidden.length || drillOrder.length || drillRemote.some(d => drillBuiltinIds().has(d.id)))) {
     const rb = document.createElement('button'); rb.className = 'alt'; rb.textContent = '組み込みのドリルを初期状態に戻す（編集・削除を取り消す）'; rb.style.fontSize = '.76rem';
-    rb.onclick = async () => { if (!confirm('最初から入っているドリルの編集と削除を、すべて取り消しますか？（追加したドリルはそのまま残ります）')) return; try { await drillSaveRemote(drillRemote.filter(d => !drillBuiltinIds().has(d.id)), []); drillRememberList(); drillShowList(true); } catch (e) { toast('戻せませんでした: ' + e.message); } };
+    rb.onclick = async () => { if (!confirm('最初から入っているドリルの編集と削除を、すべて取り消しますか？（追加したドリルはそのまま残ります。並び順も最初に戻ります）')) return; try { await drillSaveRemote(drillRemote.filter(d => !drillBuiltinIds().has(d.id)), [], [], []); drillRememberList(); drillShowList(true); } catch (e) { toast('戻せませんでした: ' + e.message); } };
     box.append(rb);
   }
 }
@@ -3241,7 +3267,12 @@ function drawDrillHint() {
 { const g = document.getElementById('drillGravity'); const saved = drillLoad(DRILL_GRAV_KEY, 'slow'); if (g) { g.value = saved; g.onchange = () => drillSave(DRILL_GRAV_KEY, g.value); } }
 
 // ---- 開発者: ドリルの作成・編集（保存すると全員の一覧に出る） ----
-async function drillSaveRemote(list, hidden) { const hid = hidden || drillHidden; const r = await api('/drills', { drills: list, hidden: hid }); drillRemote = r.drills || list; drillHidden = Array.isArray(r.hidden) ? r.hidden : hid; drillSave('p2pDrillRemoteCache', drillRemote); drillSave('p2pDrillHiddenCache', drillHidden); }
+async function drillSaveRemote(list, hidden, order, catOrder) {
+  const hid = hidden || drillHidden, ord = order || drillOrder, cats = catOrder || drillCatOrder;
+  const r = await api('/drills', { drills: list, hidden: hid, order: ord, catOrder: cats });
+  drillRemote = r.drills || list; drillHidden = Array.isArray(r.hidden) ? r.hidden : hid; drillOrder = Array.isArray(r.order) ? r.order : ord; drillCatOrder = Array.isArray(r.catOrder) ? r.catOrder : cats;
+  drillSave('p2pDrillRemoteCache', drillRemote); drillSave('p2pDrillHiddenCache', drillHidden); drillSave('p2pDrillOrderCache', drillOrder); drillSave('p2pDrillCatOrderCache', drillCatOrder);
+}
 const DE_CELL = 26, DE_COLS = 10;
 let de = null;   // { id, name, cat, desc, n, cells[n][10], seq, hold, play, steps:[{lines,spin,fix,pick,fixKey}], sel, info }
 function deBlank() { return { id: null, name: '', cat: 'Tスピン', desc: '', detail: '', n: 8, cells: Array.from({ length: 8 }, () => Array(DE_COLS).fill(false)), seq: '', hold: false, play: 1, steps: [], sel: 0, info: [] }; }
@@ -3384,12 +3415,15 @@ document.getElementById('deSave').onclick = async () => {
   if (b.err) { st.textContent = '✕ ' + b.err; if (b.focus) { const el = document.getElementById(b.focus); try { el.scrollIntoView({ block: 'center' }); } catch (_) {} el.focus(); } return; }
   const list = drillRemote.filter(x => x.id !== b.drill.id); const idx = drillRemote.findIndex(x => x.id === b.drill.id);
   if (idx >= 0) list.splice(idx, 0, b.drill); else list.push(b.drill);
-  let note = '';
+  let note = '', mirrorId = null;
   if (document.getElementById('deMirrorAdd').checked) {
     const m = drillMirror(b.drill), v = drillVerify(m);
-    if (v.ok) { list.push(m); note = `（反転版「${m.name}」も追加）`; } else note = '（反転版は解けないため、追加しませんでした）';
+    if (v.ok) { list.push(m); mirrorId = m.id; note = `（反転版「${m.name}」も追加）`; } else note = '（反転版は解けないため、追加しませんでした）';
   }
-  try { await drillSaveRemote(list); toast('保存しました ' + note); de = null; drillShowList(true); } catch (e) { st.textContent = '✕ 保存できませんでした: ' + e.message; }
+  // 並び順: 反転版は、元のドリルの次の位置に入れる（編集して追加した場合も）
+  const ids = drillAll().map(x => x.id).filter(id => id !== mirrorId); if (!ids.includes(b.drill.id)) ids.push(b.drill.id);
+  if (mirrorId) ids.splice(ids.indexOf(b.drill.id) + 1, 0, mirrorId);
+  try { await drillSaveRemote(list, drillHidden, ids, drillCatOrder); toast('保存しました ' + note); de = null; drillShowList(true); } catch (e) { st.textContent = '✕ 保存できませんでした: ' + e.message; }
 };
 
 document.getElementById('btnDrillOpen').onclick = () => { drillListY = 0; drillShowList(false); drillLoadRemote(); };
