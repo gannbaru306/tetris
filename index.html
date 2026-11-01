@@ -328,6 +328,7 @@
       <div id="ddSeq" style="font-family:monospace;letter-spacing:.15em"></div>
       <div id="ddGoal" style="font-size:.82rem"></div>
       <div id="ddDetail" style="white-space:pre-wrap;line-height:1.7;font-size:.86rem"></div>
+      <button id="ddSide" class="alt" style="display:none">向き: 左</button>
       <button id="ddAnswer" class="alt">答えの位置を見る</button>
       <button id="ddGo">挑戦</button>
       <button id="ddBack" class="alt">一覧へ戻る</button>
@@ -365,7 +366,7 @@
       <div id="deSteps" style="display:flex;flex-direction:column;gap:6px"></div>
       <canvas id="dePrev" style="border:1px solid var(--border);border-radius:6px;max-width:100%;align-self:center"></canvas>
       <div id="deStatus" style="font-size:.8rem;white-space:pre-wrap"></div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:.8rem"><input type="checkbox" id="deMirrorAdd" style="width:auto">左右反転した版も同時に追加する（S⇔Z、J⇔L のミノも入れ替え）</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:.8rem"><input type="checkbox" id="deMirrorAdd" style="width:auto">左右反転でも遊べるようにする（プレイヤーが向きを選べます。S⇔Z、J⇔L も入れ替わります）</label>
       <div style="position:sticky;bottom:0;z-index:6;background:var(--panel);padding:8px 0 4px;border-top:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap">
         <button id="deTest" class="alt" style="flex:1">テストプレイ</button>
         <button id="deSave" style="flex:1">保存して全員に公開</button>
@@ -386,6 +387,7 @@
         <button id="btnDrillHint" class="alt" style="flex:1;min-width:5em;padding:6px;font-size:.78rem">ヒント</button>
         <button id="btnDrillAnswer" class="alt" style="flex:1;min-width:5em;padding:6px;font-size:.78rem">答え</button>
         <button id="btnDrillNext" style="flex:1;min-width:5em;padding:6px;font-size:.78rem;display:none">次の問題</button>
+        <button id="btnDrillSide" class="alt" style="flex:1;min-width:5em;padding:6px;font-size:.78rem;display:none">左右反転</button>
       </div>
       <div style="display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--sub)">落下<select id="drillGravity" style="width:auto;padding:2px 6px;font-size:.76rem"><option value="slow">ゆっくり</option><option value="normal">ふつう</option><option value="none">なし（止まっている）</option></select><span>ミノは、設置するまで自由落下します（ロックまでの猶予あり）</span></div>
     </div>
@@ -3058,7 +3060,8 @@ function resetForRematch() {
 // ==========================================
 // 回転入れ練習（決まった盤面・ミノの順で、Tスピンや縦向きの回転入れを練習する）
 // ==========================================
-const DRILLS_BUILTIN = [{"id": "tsd-l", "cat": "Tスピン", "name": "TSD（基本）（左側）", "desc": "基本のTスピンダブル", "board": ["XX........", "X...XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}], "detail": "張り出しの下の穴に、Tを横から入れて、回転で2ライン消す基本のTスピンダブルです。"}, {"id": "tsd-r", "cat": "Tスピン", "name": "TSD（基本）（右側）", "desc": "基本のTスピンダブル", "board": ["........XX", "XXXXXX...X", "XXXXXXX.XX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}], "detail": "張り出しの下の穴に、Tを横から入れて、回転で2ライン消す基本のTスピンダブルです。"}, {"id": "tst-l", "cat": "Tスピン", "name": "TST（左側）", "desc": "1列の井戸に入れるTスピントリプル", "board": [".XX.......", ".X........", "XX.XXXXXXX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 3, "spin": "full"}], "detail": "屋根の下の1列の井戸へ、Tを縦向きに回して入れて、3ライン消すTスピントリプルです。"}, {"id": "tst-r", "cat": "Tスピン", "name": "TST（右側）", "desc": "1列の井戸に入れるTスピントリプル", "board": [".......XX.", "........X.", "XXXXXXX.XX", "XXXXXX..XX", "XXXXXXX.XX"], "seq": "T", "hold": false, "steps": [{"lines": 3, "spin": "full"}], "detail": "屋根の下の1列の井戸へ、Tを縦向きに回して入れて、3ライン消すTスピントリプルです。"}, {"id": "fin-l", "cat": "Tスピン", "name": "FIN（左側）", "desc": "5番目のキックで入るTSD", "board": ["XXX.......", "X.........", "X...XXXXXX", "X..XXXXXXX", "X.XXXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}], "detail": "Tを真下向き（180°）で屋根の下に入れ、寄せてから回転すると、2段下へキックされて入るTSD（5番目のキック）です。ソフトドロップで落として入れると、Tスピンになりません。"}, {"id": "fin-r", "cat": "Tスピン", "name": "FIN（右側）", "desc": "5番目のキックで入るTSD", "board": [".......XXX", ".........X", "XXXXXX...X", "XXXXXXX..X", "XXXXXXXX.X"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}], "detail": "Tを真下向き（180°）で屋根の下に入れ、寄せてから回転すると、2段下へキックされて入るTSD（5番目のキック）です。ソフトドロップで落として入れると、Tスピンになりません。"}, {"id": "neo-l", "cat": "Tスピン", "name": "NEO（左側）", "desc": "キックが真下2段のミニTSD", "board": ["XXX.......", "X.........", "XX..XXXXXX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "mini"}], "detail": "FINと似た形で、キックが真下2段になるものです。2ライン消えますが、ミニTスピンダブル判定（火力は小さい）になります。"}, {"id": "neo-r", "cat": "Tスピン", "name": "NEO（右側）", "desc": "キックが真下2段のミニTSD", "board": [".......XXX", ".........X", "XXXXXX..XX", "XXXXXX..XX", "XXXXXXX.XX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "mini"}], "detail": "FINと似た形で、キックが真下2段になるものです。2ライン消えますが、ミニTスピンダブル判定（火力は小さい）になります。"}, {"id": "iso-l", "cat": "Tスピン", "name": "ISO（左側）", "desc": "TSTの形に入れるTSD", "board": ["XXX.......", "X.........", "XX.XXXX.XX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}], "detail": "TSTの形で、1行だけ足りない穴にTSDで入れます。前向きの2つの角が埋まっているので、TSD判定になります。"}, {"id": "iso-r", "cat": "Tスピン", "name": "ISO（右側）", "desc": "TSTの形に入れるTSD", "board": [".......XXX", ".........X", "XX.XXXX.XX", "XXXXXX..XX", "XXXXXXX.XX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}], "detail": "TSTの形で、1行だけ足りない穴にTSDで入れます。前向きの2つの角が埋まっているので、TSD判定になります。"}, {"id": "ruf-l", "cat": "Tスピン", "name": "RUF（左側）", "desc": "屋根側へ戻るTスピンシングル", "board": ["...XXX....", ".....XXXXX", "XXX.XXXXXX", "XX..XXXXXX", "XXX.XXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 1, "spin": "full"}], "detail": "屋根がずれたTSTの穴にTを入れた後、もう一度回転して屋根側へ戻る、Tスピンシングル（TSS）です。TSTではなく、1ラインだけ消します。"}, {"id": "ruf-r", "cat": "Tスピン", "name": "RUF（右側）", "desc": "屋根側へ戻るTスピンシングル", "board": ["....XXX...", "XXXXX.....", "XXXXXX.XXX", "XXXXXX..XX", "XXXXXX.XXX"], "seq": "T", "hold": false, "steps": [{"lines": 1, "spin": "full"}], "detail": "屋根がずれたTSTの穴にTを入れた後、もう一度回転して屋根側へ戻る、Tスピンシングル（TSS）です。TSTではなく、1ラインだけ消します。"}, {"id": "s3", "cat": "SZスピン", "name": "Sスピン（トリプル）", "desc": "Sを縦に入れて3ライン", "board": ["....X.....", "XX.XXXXXXX", "XX..XXXXXX", "XXX.XXXXXX"], "seq": "S", "hold": false, "steps": [{"lines": 3, "cells": [[2, 2], [1, 2], [1, 3], [0, 3]]}], "detail": "Sを縦にして、屋根の下の段差へ回転で入れて、3ライン消します。"}, {"id": "z3", "cat": "SZスピン", "name": "Zスピン（トリプル）", "desc": "Zを縦に入れて3ライン", "board": [".X........", "XXX.XXXXXX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "Z", "hold": false, "steps": [{"lines": 3, "cells": [[2, 3], [1, 2], [1, 3], [0, 2]]}], "detail": "Zを縦にして、屋根の下の段差へ回転で入れて、3ライン消します。"}, {"id": "l3", "cat": "JLスピン", "name": "Lスピン（トリプル）", "desc": "Lを縦に入れて3ライン", "board": ["XX........", "X.........", "XX.XXXXXXX", "XX.XXXXXXX", "XX..XXXXXX"], "seq": "L", "hold": false, "steps": [{"lines": 3, "cells": [[2, 2], [1, 2], [0, 2], [0, 3]]}], "detail": "Lを縦にして、屋根の下へ回転で入れて、3ライン消します。"}, {"id": "j3", "cat": "JLスピン", "name": "Jスピン（トリプル）", "desc": "Jを縦に入れて3ライン", "board": ["XXX.......", "X.........", "XX..XXXXXX", "XX.XXXXXXX", "XX.XXXXXXX"], "seq": "J", "hold": false, "steps": [{"lines": 3, "cells": [[2, 2], [2, 3], [1, 2], [0, 2]]}], "detail": "Jを縦にして、屋根の下へ回転で入れて、3ライン消します。"}, {"id": "i4", "cat": "Iスピン", "name": "Iスピン（4ライン）", "desc": "Iを縦に入れて4ライン", "board": ["..XX......", "..X.......", "XXX.XXXXXX", "XXX.XXXXXX", "XXX.XXXXXX", "XXX.XXXXXX"], "seq": "I", "hold": false, "steps": [{"lines": 4, "cells": [[3, 3], [2, 3], [1, 3], [0, 3]]}], "detail": "Iを縦にして、屋根の下の井戸へ回転で入れて、4ライン消します。"}];
+const DRILLS_BUILTIN = [{"id": "tsd-l", "cat": "Tスピン", "name": "TSD（基本）", "desc": "基本のTスピンダブル", "board": ["XX........", "X...XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}], "detail": "張り出しの下の穴に、Tを横から入れて、回転で2ライン消す基本のTスピンダブルです。左右どちら向きでも練習できます。", "mirror": true}, {"id": "tst-l", "cat": "Tスピン", "name": "TST", "desc": "1列の井戸に入れるTスピントリプル", "board": [".XX.......", ".X........", "XX.XXXXXXX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 3, "spin": "full"}], "detail": "屋根の下の1列の井戸へ、Tを縦向きに回して入れて、3ライン消すTスピントリプルです。左右どちら向きでも練習できます。", "mirror": true}, {"id": "fin-l", "cat": "Tスピン", "name": "FIN", "desc": "5番目のキックで入るTSD", "board": ["XXX.......", "X.........", "X...XXXXXX", "X..XXXXXXX", "X.XXXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}], "detail": "Tを真下向き（180°）で屋根の下に入れ、寄せてから回転すると、2段下へキックされて入るTSD（5番目のキック）です。ソフトドロップで落として入れると、Tスピンになりません。左右どちら向きでも練習できます。", "mirror": true}, {"id": "neo-l", "cat": "Tスピン", "name": "NEO", "desc": "キックが真下2段のミニTSD", "board": ["XXX.......", "X.........", "XX..XXXXXX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "mini"}], "detail": "FINと似た形で、キックが真下2段になるものです。2ライン消えますが、ミニTスピンダブル判定（火力は小さい）になります。左右どちら向きでも練習できます。", "mirror": true}, {"id": "iso-l", "cat": "Tスピン", "name": "ISO", "desc": "TSTの形に入れるTSD", "board": ["XXX.......", "X.........", "XX.XXXX.XX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 2, "spin": "full"}], "detail": "TSTの形で、1行だけ足りない穴にTSDで入れます。前向きの2つの角が埋まっているので、TSD判定になります。左右どちら向きでも練習できます。", "mirror": true}, {"id": "ruf-l", "cat": "Tスピン", "name": "RUF", "desc": "屋根側へ戻るTスピンシングル", "board": ["...XXX....", ".....XXXXX", "XXX.XXXXXX", "XX..XXXXXX", "XXX.XXXXXX"], "seq": "T", "hold": false, "steps": [{"lines": 1, "spin": "full"}], "detail": "屋根がずれたTSTの穴にTを入れた後、もう一度回転して屋根側へ戻る、Tスピンシングル（TSS）です。TSTではなく、1ラインだけ消します。左右どちら向きでも練習できます。", "mirror": true}, {"id": "s3", "cat": "SZスピン", "name": "Sスピン（トリプル）", "desc": "Sを縦に入れて3ライン", "board": ["....X.....", "XX.XXXXXXX", "XX..XXXXXX", "XXX.XXXXXX"], "seq": "S", "hold": false, "steps": [{"lines": 3, "cells": [[2, 2], [1, 2], [1, 3], [0, 3]]}], "detail": "Sを縦にして、屋根の下の段差へ回転で入れて、3ライン消します。"}, {"id": "z3", "cat": "SZスピン", "name": "Zスピン（トリプル）", "desc": "Zを縦に入れて3ライン", "board": [".X........", "XXX.XXXXXX", "XX..XXXXXX", "XX.XXXXXXX"], "seq": "Z", "hold": false, "steps": [{"lines": 3, "cells": [[2, 3], [1, 2], [1, 3], [0, 2]]}], "detail": "Zを縦にして、屋根の下の段差へ回転で入れて、3ライン消します。"}, {"id": "l3", "cat": "JLスピン", "name": "Lスピン（トリプル）", "desc": "Lを縦に入れて3ライン", "board": ["XX........", "X.........", "XX.XXXXXXX", "XX.XXXXXXX", "XX..XXXXXX"], "seq": "L", "hold": false, "steps": [{"lines": 3, "cells": [[2, 2], [1, 2], [0, 2], [0, 3]]}], "detail": "Lを縦にして、屋根の下へ回転で入れて、3ライン消します。"}, {"id": "j3", "cat": "JLスピン", "name": "Jスピン（トリプル）", "desc": "Jを縦に入れて3ライン", "board": ["XXX.......", "X.........", "XX..XXXXXX", "XX.XXXXXXX", "XX.XXXXXXX"], "seq": "J", "hold": false, "steps": [{"lines": 3, "cells": [[2, 2], [2, 3], [1, 2], [0, 2]]}], "detail": "Jを縦にして、屋根の下へ回転で入れて、3ライン消します。"}, {"id": "i4", "cat": "Iスピン", "name": "Iスピン（4ライン）", "desc": "Iを縦に入れて4ライン", "board": ["..XX......", "..X.......", "XXX.XXXXXX", "XXX.XXXXXX", "XXX.XXXXXX", "XXX.XXXXXX"], "seq": "I", "hold": false, "steps": [{"lines": 4, "cells": [[3, 3], [2, 3], [1, 3], [0, 3]]}], "detail": "Iを縦にして、屋根の下の井戸へ回転で入れて、4ライン消します。"}];
+const DRILL_RETIRED_IDS = new Set(['tsd-r', 'tst-r', 'fin-r', 'neo-r', 'iso-r', 'ruf-r']);   // 左右を1つに統合したため、使わなくなったID;
 let drillState = null;   // { drill, step, failed, done, hint:[[行,列]...]|null }
 const DRILL_GRAV_KEY = 'p2pDrillGravity';
 const drillGravityMs = () => { const g = (document.getElementById('drillGravity') || {}).value || 'slow'; return g === 'none' ? Infinity : g === 'normal' ? 400 : 1000; };   // 落下: ゆっくり=1秒に1マス / ふつう=0.4秒に1マス / なし
@@ -3067,13 +3070,21 @@ const drillLoad = (k, def) => { try { const v = JSON.parse(localStorage.getItem(
 const drillSave = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
 let drillRemote = drillLoad('p2pDrillRemoteCache', []);   // 開発者が作って、全員に共有されているドリル（組み込みと同じIDのものは、その組み込みを置き換える）
 let drillHidden = drillLoad('p2pDrillHiddenCache', []);   // 開発者が削除した組み込みドリルのID
+const DRILL_SIDE_KEY = 'p2pDrillSideV1';
+let drillSides = drillLoad(DRILL_SIDE_KEY, {});   // ドリルごとの向き（'R'＝左右反転）。向きを選べるドリルだけ
+const drillSideOf = id => (drillSides[id] === 'R' ? 'R' : 'L');
+function drillSetSide(id, side) { if (side === 'R') drillSides[id] = 'R'; else delete drillSides[id]; drillSave(DRILL_SIDE_KEY, drillSides); }
+const DRILL_MIRROR_PIECE_MAP = { I: 'I', O: 'O', T: 'T', S: 'Z', Z: 'S', J: 'L', L: 'J' };
+// 左右反転したドリル（盤面・ミノ・答えの位置を左右逆に。S⇔Z、J⇔L も入れ替え）。IDと名前は元のまま
+function drillMirrorData(d) { return { ...d, board: d.board.map(r => r.split('').reverse().join('')), seq: d.seq.split('').map(c => DRILL_MIRROR_PIECE_MAP[c]).join(''), steps: d.steps.map(st => { const o = { ...st }; if (st.cells) o.cells = st.cells.map(([h, c]) => [h, COLS - 1 - c]); return o; }) }; }
+const drillResolve = (d, side) => (d.mirror && side === 'R' ? drillMirrorData(d) : d);
 let drillOrder = drillLoad('p2pDrillOrderCache', []);   // ドリルの並び順（ID）。開発者が並び替えると、全員に反映される
 let drillCatOrder = drillLoad('p2pDrillCatOrderCache', []);   // カテゴリの並び順
 const drillBuiltinIds = () => new Set(DRILLS_BUILTIN.map(b => b.id));
 function drillAll() {
   const ov = new Map(drillRemote.map(d => [d.id, d])), hid = new Set(drillHidden), bi = drillBuiltinIds(), out = [];
   for (const b of DRILLS_BUILTIN) { if (hid.has(b.id)) continue; out.push(ov.has(b.id) ? { ...ov.get(b.id), builtin: true } : { ...b, builtin: true }); }   // 組み込みは、置き換えがあればその内容を同じ位置に出す
-  for (const d of drillRemote) if (!bi.has(d.id)) out.push({ ...d });
+  for (const d of drillRemote) if (!bi.has(d.id) && !DRILL_RETIRED_IDS.has(d.id)) out.push({ ...d });
   if (drillOrder.length) {   // 並び順が保存されていれば、その順に。順に載っていない新しいものは、最後に
     const pos = new Map(drillOrder.map((id, i) => [id, i]));
     return [...out.filter(d => pos.has(d.id)).sort((a, b) => pos.get(a.id) - pos.get(b.id)), ...out.filter(d => !pos.has(d.id))];
@@ -3167,6 +3178,7 @@ function renderDrillList() {
       const ds = document.createElement('div'); ds.textContent = d.desc || ''; ds.style.cssText = 'font-size:.74rem;color:var(--sub)'; info.append(ds);
       const mkb = (label, alt, fn, wide) => { const b = document.createElement('button'); if (alt) b.className = 'alt'; b.textContent = label; b.style.cssText = `flex:0 0 auto;width:auto;min-width:0;padding:6px ${wide ? 14 : 10}px;font-size:${wide ? '.85rem' : '.74rem'}`; b.onclick = fn; return b; };
       const btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;align-items:center';
+      if (d.mirror) { const sb = mkb('', true, () => { drillSetSide(d.id, drillSideOf(d.id) === 'R' ? 'L' : 'R'); sb.textContent = '向き: ' + (drillSideOf(d.id) === 'R' ? '右' : '左'); }); sb.textContent = '向き: ' + (drillSideOf(d.id) === 'R' ? '右' : '左'); sb.title = '左向き／右向きを切り替え'; btns.append(sb); }
       btns.append(mkb('詳細', true, () => drillOpenDetail(d.id)), mkb('挑戦', false, () => { drillRememberList(); startDrill(d.id); }, true));
       if (isDeveloper()) {
         const gi = grp.indexOf(d), up = mkb('▲', true, () => drillMove(d.id, -1)), dn = mkb('▼', true, () => drillMove(d.id, 1)); up.disabled = gi === 0; dn.disabled = gi === grp.length - 1; up.title = '1つ上へ'; dn.title = '1つ下へ';
@@ -3184,7 +3196,8 @@ function renderDrillList() {
 // 詳細画面（入れ方の説明・最初の盤面・ミノの順）。ここからも挑戦できる
 let ddId = '', ddGhost = false;
 function drillOpenDetail(id) {
-  const d = drillAll().find(x => x.id === id); if (!d) return; drillRememberList(); ddId = id; ddGhost = false;
+  const d0 = drillAll().find(x => x.id === id); if (!d0) return; drillRememberList(); ddId = id; ddGhost = false; const d = drillResolve(d0, drillSideOf(id));
+  const sb = document.getElementById('ddSide'); sb.style.display = d0.mirror ? '' : 'none'; sb.textContent = '向き: ' + (drillSideOf(id) === 'R' ? '右' : '左');
   document.getElementById('ddName').textContent = d.name; document.getElementById('ddCat').textContent = d.cat || 'その他'; document.getElementById('ddDesc').textContent = d.desc || '';
   const seqEl = document.getElementById('ddSeq'); seqEl.textContent = ''; for (const ch of d.seq) { const sp = document.createElement('span'); sp.textContent = ch; sp.style.color = COLORS[ch]; seqEl.append(sp); }
   document.getElementById('ddGoal').textContent = '目標: ' + drillGoalText(d, 0);
@@ -3199,22 +3212,24 @@ function drillDrawDetailBoard(d) {
 }
 document.getElementById('ddBack').onclick = () => drillShowList(true);
 document.getElementById('ddGo').onclick = () => { if (ddId) startDrill(ddId); };
-document.getElementById('ddAnswer').onclick = () => { const d = drillAll().find(x => x.id === ddId); if (!d) return; ddGhost = !ddGhost; document.getElementById('ddAnswer').textContent = ddGhost ? '答えの位置を隠す' : '答えの位置を見る'; drillDrawDetailBoard(d); };
-function startDrill(id) { const d = drillAll().find(x => x.id === id); if (d) startDrillObject(d, false); }
-function startDrillObject(d, fromEditor) {
+document.getElementById('ddSide').onclick = () => { drillSetSide(ddId, drillSideOf(ddId) === 'R' ? 'L' : 'R'); const g = ddGhost; drillOpenDetail(ddId); ddGhost = g; const d0 = drillAll().find(x => x.id === ddId); if (d0) drillDrawDetailBoard(drillResolve(d0, drillSideOf(ddId))); };
+document.getElementById('ddAnswer').onclick = () => { const d0 = drillAll().find(x => x.id === ddId); if (!d0) return; const d = drillResolve(d0, drillSideOf(ddId)); ddGhost = !ddGhost; document.getElementById('ddAnswer').textContent = ddGhost ? '答えの位置を隠す' : '答えの位置を見る'; drillDrawDetailBoard(d); };
+function startDrill(id) { const d = drillAll().find(x => x.id === id); if (d) startDrillObject(drillResolve(d, drillSideOf(id)), false, d); }
+function startDrillObject(d, fromEditor, base) {
   leaveRoom(); isVsMode = false;
-  drillState = { drill: d, step: 0, failed: false, done: false, hint: null, fromEditor: !!fromEditor };
+  drillState = { drill: d, base: base || d, step: 0, failed: false, done: false, hint: null, fromEditor: !!fromEditor };
   document.getElementById('matchModeLabel').textContent = `回転入れ練習：${d.name}`;
   document.getElementById('rematchArea').classList.remove('active');
   document.getElementById('btnBackToLobby').textContent = '一覧へ戻る';
   switchScreen('gameScreen'); initGame(); drillUpdateBar('');
 }
-function drillRetry() { if (drillState) { const d = drillState.drill, fe = drillState.fromEditor; drillState = { drill: d, step: 0, failed: false, done: false, hint: null, fromEditor: fe }; initGame(); drillUpdateBar(''); } }
+function drillRetry() { if (drillState) { const d = drillState.drill, fe = drillState.fromEditor, bs = drillState.base; drillState = { drill: d, base: bs, step: 0, failed: false, done: false, hint: null, fromEditor: fe }; initGame(); drillUpdateBar(''); } }
 function drillLeave() { const fe = drillState && drillState.fromEditor; drillState = null; isEnded = true; document.getElementById('drillBar').style.display = 'none'; document.getElementById('btnBackToLobby').textContent = 'ロビーへ戻る'; if (fe && de) { deRenderAll(); switchScreen('drillEditScreen'); try { window.scrollTo(0, de.y || 0); } catch (_) {} return; } drillShowList(true); }
 function drillUpdateBar(msg, kind) {
   const bar = document.getElementById('drillBar'); if (!drillState) { bar.style.display = 'none'; return; }
   const d = drillState.drill; bar.style.display = 'flex';
-  document.getElementById('drillTitle').textContent = d.name + (d.steps.length > 1 ? `（${Math.min(drillState.step + 1, d.steps.length)}/${d.steps.length}手目）` : '');
+  const isR = !!(drillState.base && drillState.base.mirror && drillState.drill !== drillState.base); document.getElementById('btnDrillSide').style.display = drillState.base && drillState.base.mirror ? '' : 'none'; document.getElementById('btnDrillSide').textContent = isR ? '左向きにする' : '右向きにする';
+  document.getElementById('drillTitle').textContent = d.name + (isR ? '（右向き）' : '') + (d.steps.length > 1 ? `（${Math.min(drillState.step + 1, d.steps.length)}/${d.steps.length}手目）` : '');
   document.getElementById('drillGoal').textContent = '目標: ' + drillGoalText(d, Math.min(drillState.step, d.steps.length - 1));
   const m = document.getElementById('drillMsg'); m.textContent = msg || ''; m.style.color = kind === 'ok' ? '#a6e3a1' : kind === 'ng' ? '#f38ba8' : 'var(--text)';
   if (!msg || kind !== 'keep') { if (!drillState.hint) document.getElementById('drillAnswerText').textContent = ''; }
@@ -3275,12 +3290,12 @@ async function drillSaveRemote(list, hidden, order, catOrder) {
 }
 const DE_CELL = 26, DE_COLS = 10;
 let de = null;   // { id, name, cat, desc, n, cells[n][10], seq, hold, play, steps:[{lines,spin,fix,pick,fixKey}], sel, info }
-function deBlank() { return { id: null, name: '', cat: 'Tスピン', desc: '', detail: '', n: 8, cells: Array.from({ length: 8 }, () => Array(DE_COLS).fill(false)), seq: '', hold: false, play: 1, steps: [], sel: 0, info: [] }; }
+function deBlank() { return { id: null, name: '', cat: 'Tスピン', desc: '', detail: '', mirror: false, n: 8, cells: Array.from({ length: 8 }, () => Array(DE_COLS).fill(false)), seq: '', hold: false, play: 1, steps: [], sel: 0, info: [] }; }
 function deFromDrill(d) {
   const n = Math.max(8, Math.min(20, d.board.length)), top = n - d.board.length;
   const cells = Array.from({ length: n }, (_, r) => Array.from({ length: DE_COLS }, (_, c) => r >= top && d.board[r - top][c] === 'X'));
   const steps = d.seq.split('').map((_, i) => { const st = d.steps[i] || {}; return { lines: st.lines == null ? '' : String(st.lines), spin: st.spin || '', fix: !!st.cells, pick: 0, fixKey: st.cells ? drillCellKey(st.cells) : '' }; });
-  return { id: d.id, name: d.name, cat: d.cat || 'その他', desc: d.desc || '', detail: d.detail || '', n, cells, seq: d.seq, hold: !!d.hold, play: d.steps.length, steps, sel: 0, info: [] };
+  return { id: d.id, name: d.name, cat: d.cat || 'その他', desc: d.desc || '', detail: d.detail || '', mirror: !!d.mirror, n, cells, seq: d.seq, hold: !!d.hold, play: d.steps.length, steps, sel: 0, info: [] };
 }
 function dePattern() { let rows = de.cells.map(r => r.map(v => v ? 'X' : '.').join('')); while (rows.length > 1 && rows[0].indexOf('X') < 0) rows.shift(); return rows; }
 function deSpec(i) { const st = de.steps[i]; const o = {}; if (st.lines !== '') o.lines = parseInt(st.lines, 10); if (st.spin && de.seq[i] === 'T') o.spin = st.spin; return o; }
@@ -3351,7 +3366,7 @@ function deStatusText() {
   return ok;
 }
 function deRenderAll() {
-  document.getElementById('deName').value = de.name; document.getElementById('deDesc').value = de.desc; document.getElementById('deDetail').value = de.detail || ''; document.getElementById('deHold').checked = de.hold; document.getElementById('deMirrorAdd').checked = false;
+  document.getElementById('deName').value = de.name; document.getElementById('deDesc').value = de.desc; document.getElementById('deDetail').value = de.detail || ''; document.getElementById('deHold').checked = de.hold; document.getElementById('deMirrorAdd').checked = !!de.mirror;
   document.getElementById('deHead').textContent = de.id ? 'ドリルを編集' : 'ドリルを追加';
   const rs = document.getElementById('deRows'); if (!rs.options.length) for (let i = 4; i <= 20; i++) rs.append(new Option(String(i), String(i))); rs.value = String(de.n);
   deRenderCat();
@@ -3384,6 +3399,7 @@ function deOpen(d) { de = d ? deFromDrill(d) : deBlank(); drillScrollTop(); cons
   document.getElementById('deDetail').oninput = e => { de.detail = e.target.value; };
   document.getElementById('deDesc').oninput = e => { de.desc = e.target.value; };
   document.getElementById('deHold').onchange = e => { de.hold = e.target.checked; };
+  document.getElementById('deMirrorAdd').onchange = e => { de.mirror = e.target.checked; };
   document.getElementById('dePlay').onchange = e => { de.play = parseInt(e.target.value, 10) || 1; deRenderSteps(); deStatusText(); };
   document.getElementById('deCancel').onclick = () => { de = null; drillShowList(true); };
 })();
@@ -3399,36 +3415,27 @@ function deBuild(forTest) {
     if (st.fix) o.cells = inf.ch.cells.map(c => c.slice());
     steps.push(o);
   }
-  const d = { id: de.id || ('d' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36)), cat: (de.cat || '').trim() || 'その他', name: (de.name.trim() || '（テスト）').slice(0, 40), desc: (de.desc || '').trim().slice(0, 160), detail: (de.detail || '').trim().slice(0, 600), board: dePattern(), seq: de.seq, hold: !!de.hold, steps };
+  const d = { id: de.id || ('d' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36)), cat: (de.cat || '').trim() || 'その他', name: (de.name.trim() || '（テスト）').slice(0, 40), desc: (de.desc || '').trim().slice(0, 160), detail: (de.detail || '').trim().slice(0, 600), board: dePattern(), seq: de.seq, hold: !!de.hold, mirror: !!de.mirror, steps };
   const v = drillVerify(d); if (!v.ok) return { err: v.msg };
+  if (d.mirror) { const vm = drillVerify(drillMirrorData(d)); if (!vm.ok) return { err: '左右反転すると解けません（' + vm.msg + '）。「左右反転でも遊べるようにする」を外してください' }; }
   return { drill: d };
 }
 document.getElementById('deTest').onclick = () => { const b = deBuild(true); if (b.err) { document.getElementById('deStatus').textContent = '✕ ' + b.err; return; } de.y = window.scrollY || 0; startDrillObject(b.drill, true); };
-// 左右反転した版: 盤面を左右逆に、ミノもS⇔Z・J⇔Lに入れ替え、答えの位置も左右逆にする
-const DRILL_MIRROR_PIECE = { I: 'I', O: 'O', T: 'T', S: 'Z', Z: 'S', J: 'L', L: 'J' };
-function drillMirror(d) {
-  const nm = d.name.includes('（左側）') ? d.name.replace('（左側）', '（右側）') : d.name.includes('（右側）') ? d.name.replace('（右側）', '（左側）') : d.name + '（反転）';
-  return { ...d, id: 'd' + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36), name: nm.slice(0, 40), board: d.board.map(r => r.split('').reverse().join('')), seq: d.seq.split('').map(c => DRILL_MIRROR_PIECE[c]).join(''), steps: d.steps.map(st => { const o = { ...st }; if (st.cells) o.cells = st.cells.map(([h, c]) => [h, DE_COLS - 1 - c]); return o; }) };
-}
 document.getElementById('deSave').onclick = async () => {
   const b = deBuild(false), st = document.getElementById('deStatus');
   if (b.err) { st.textContent = '✕ ' + b.err; if (b.focus) { const el = document.getElementById(b.focus); try { el.scrollIntoView({ block: 'center' }); } catch (_) {} el.focus(); } return; }
   const list = drillRemote.filter(x => x.id !== b.drill.id); const idx = drillRemote.findIndex(x => x.id === b.drill.id);
   if (idx >= 0) list.splice(idx, 0, b.drill); else list.push(b.drill);
-  let note = '', mirrorId = null;
-  if (document.getElementById('deMirrorAdd').checked) {
-    const m = drillMirror(b.drill), v = drillVerify(m);
-    if (v.ok) { list.push(m); mirrorId = m.id; note = `（反転版「${m.name}」も追加）`; } else note = '（反転版は解けないため、追加しませんでした）';
-  }
-  // 並び順: 反転版は、元のドリルの次の位置に入れる（編集して追加した場合も）
-  const ids = drillAll().map(x => x.id).filter(id => id !== mirrorId); if (!ids.includes(b.drill.id)) ids.push(b.drill.id);
-  if (mirrorId) ids.splice(ids.indexOf(b.drill.id) + 1, 0, mirrorId);
-  try { await drillSaveRemote(list, drillHidden, ids, drillCatOrder); toast('保存しました ' + note); de = null; drillShowList(true); } catch (e) { st.textContent = '✕ 保存できませんでした: ' + e.message; }
+  try { await drillSaveRemote(list, drillHidden, drillOrder, drillCatOrder); toast('保存しました'); de = null; drillShowList(true); } catch (e) { st.textContent = '✕ 保存できませんでした: ' + e.message; }
 };
 
 document.getElementById('btnDrillOpen').onclick = () => { drillListY = 0; drillShowList(false); drillLoadRemote(); };
 document.getElementById('btnDrillBack').onclick = () => switchScreen('lobbyScreen');
 document.getElementById('btnDrillRetry').onclick = drillRetry;
+document.getElementById('btnDrillSide').onclick = () => {   // 向きを切り替えて、最初からやり直す（選んだ向きは、次回も使われる）
+  if (!drillState || !drillState.base || !drillState.base.mirror) return; const b = drillState.base, isR = drillState.drill !== b, fe = drillState.fromEditor;
+  if (!fe) drillSetSide(b.id, isR ? 'L' : 'R'); startDrillObject(isR ? b : drillMirrorData(b), fe, b);
+};
 document.getElementById('btnDrillHint').onclick = () => drillShowAnswer(false);
 document.getElementById('btnDrillAnswer').onclick = () => drillShowAnswer(true);
 document.getElementById('btnDrillNext').onclick = () => { if (drillState && drillState.fromEditor) { drillLeave(); return; } const all = drillAll(), i = all.findIndex(x => drillState && x.id === drillState.drill.id); const n = all[(i + 1) % all.length]; if (n) startDrill(n.id); };
